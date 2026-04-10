@@ -140,7 +140,14 @@ async function changeTimeZone() {
   const timeZoneModal = await modalController.create({
     component: TimeZoneModal,
   });
-  return timeZoneModal.present();
+  timeZoneModal.present();
+
+  const { data } = await timeZoneModal.onDidDismiss();
+  if (data && data.timeZoneId) {
+    await store.dispatch("user/setUserTimeZone", {
+      "tzId": data.timeZoneId
+    })
+  }
 }
 
 function logout() {

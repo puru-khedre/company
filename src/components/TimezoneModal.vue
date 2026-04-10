@@ -150,11 +150,7 @@ function selectSearchBarText(event: any) {
 }
 
 async function setUserTimeZone() {
-  return store.dispatch("user/setUserTimeZone", {
-    "tzId": timeZoneId.value
-  }).then(() => {
-    closeModal()
-  })
+  modalController.dismiss({ timeZoneId: timeZoneId.value });
 }
 function preventSpecialCharacters($event: any) {
   // Searching special characters fails the API, hence, they must be omitted

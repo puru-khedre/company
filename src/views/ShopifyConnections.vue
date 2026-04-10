@@ -4,6 +4,7 @@
 
     <ion-header :translucent="true">
       <ion-toolbar>
+        <ion-menu-button slot="start" />
         <ion-title>{{ translate("Shopify connections") }}</ion-title>
         <ion-buttons slot="end">
           <ion-button slot="icon-only">
@@ -17,12 +18,9 @@
     </ion-header>
 
     <ion-content id="filter-content">
-      <div class="find">
-        <section class="search">
-          <ion-searchbar :placeholder="translate('Search keys')" />
-        </section>
-
+      <div>
         <aside class="filters">
+          <ion-searchbar :placeholder="translate('Search keys')" />
           <ion-list>
             <ion-item lines="none">
               <ion-icon :icon="flashOutline" slot="start" />
@@ -32,17 +30,17 @@
         </aside>
 
         <main>
-          <div class="list-item" @click="openShopifyConnectionDetails()">
+          <div class="list-item" v-for="shop in shops" :key="shop.shopId" @click="openShopifyConnectionDetails(shop)">
             <ion-item lines="none">
               <ion-icon slot="start" :icon="storefrontOutline" />
               <ion-label class="ion-text-wrap">
-                {{ "Shop ID" }}
-                <p>{{ "Shop connection name" }}</p>
+                <p class="overline">{{ shop.shopId }}</p>
+                {{ shop.name }}
               </ion-label>
             </ion-item>
 
             <div class="tablet" @click.stop="">
-              <ion-chip outline>
+              <ion-chip outline :href="'https://' + shop.myshopifyDomain + '/admin'" target="_blank">
                 <ion-label>{{ translate("Shopify link") }}</ion-label>
                 <ion-icon :icon="openOutline" color="primary" />
               </ion-chip>
@@ -50,40 +48,12 @@
 
             <div class="tablet">
               <ion-label class="ion-text-center">
-                {{ "<product store name>" }}
-                <p>{{ "product store" }}</p>
+                {{ shop.productStoreId }}
+                <p>{{ translate("product store") }}</p>
               </ion-label>
             </div>
 
-            <ion-button fill="clear" color="medium" @click="openShopifyConnectionActionsPopover($event)">
-              <ion-icon slot="icon-only" :icon="ellipsisVerticalOutline" />
-            </ion-button>
-          </div>
-
-          <div class="list-item" @click="openShopifyConnectionDetails()">
-            <ion-item lines="none">
-              <ion-icon slot="start" :icon="storefrontOutline" />
-              <ion-label class="ion-text-wrap">
-                {{ "Shop ID" }}
-                <p>{{ "Shop connection name" }}</p>
-              </ion-label>
-            </ion-item>
-
-            <div class="tablet" @click.stop="">
-              <ion-chip outline>
-                <ion-label>{{ translate("Shopify link") }}</ion-label>
-                <ion-icon :icon="openOutline" color="primary" />
-              </ion-chip>
-            </div>
-
-            <div class="tablet">
-              <ion-label class="ion-text-center">
-                {{ "<product store name>" }}
-                <p>{{ "product store" }}</p>
-              </ion-label>
-            </div>
-
-            <ion-button fill="clear" color="medium" @click="openShopifyConnectionActionsPopover($event)">
+            <ion-button fill="clear" color="medium" @click.stop="openShopifyConnectionActionsPopover($event)">
               <ion-icon slot="icon-only" :icon="ellipsisVerticalOutline" />
             </ion-button>
           </div>
@@ -94,14 +64,23 @@
 </template>
 
 <script setup lang="ts">
-import { IonButton, IonButtons, IonChip, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonMenuButton, IonPage, IonSearchbar, IonTitle, IonToggle, IonToolbar, popoverController } from "@ionic/vue";
+import { IonButton, IonButtons, IonChip, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonMenuButton, IonPage, IonSearchbar, IonTitle, IonToggle, IonToolbar, onIonViewWillEnter, popoverController } from "@ionic/vue";
 import { ellipsisVerticalOutline, filterOutline, flashOutline, informationCircleOutline, openOutline, storefrontOutline } from "ionicons/icons";
 import { translate } from "@/i18n";
 import { useRouter } from "vue-router";
+import { computed } from "vue";
+import { useStore } from "vuex";
 import ShopifyConnectionActionsPopover from "@/components/ShopifyConnectionActionsPopover.vue";
 import ShopifyConnectionFilters from "@/components/ShopifyConnectionFilters.vue";
 
 const router = useRouter();
+const store = useStore();
+
+const shops = computed(() => store.getters["shopify/getShops"])
+
+onIonViewWillEnter(async () => {
+  await store.dispatch("shopify/fetchShopifyShops")
+})
 
 async function openShopifyConnectionActionsPopover(event: Event) {
   const shopifyConnectionActionsPopover = await popoverController.create({
@@ -113,14 +92,25 @@ async function openShopifyConnectionActionsPopover(event: Event) {
   shopifyConnectionActionsPopover.present()
 }
 
-function openShopifyConnectionDetails() {
-  router.push({ path: "/shopify-connection-details" })
+function openShopifyConnectionDetails(shop: any) {
+  store.dispatch("shopify/updateCurrentShop", shop)
+  router.push({ path: `/shopify-connection-details/${shop.shopId}` })
 }
 </script>
 
 <style scoped>
+
+.filters {
+  display: flex;
+  gap: var(--spacer-xs);
+}
+
+.filters > * {
+  flex: 1;
+}
+
 .list-item {
-  --columns-desktop: 5;
+  --columns-desktop: 4;
   border-bottom: var(--border-medium);
 }
 

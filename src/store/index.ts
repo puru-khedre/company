@@ -8,6 +8,7 @@ import userModule from "./modules/user";
 import productStoreModule from "./modules/productStore";
 import utilModule from "./modules/util"
 import netSuiteModule from "./modules/netSuite"
+import shopifyModule from "./modules/shopify"
 import { setPermissions } from "@/authorization"
 
 // TODO check how to register it from the components only
@@ -17,7 +18,7 @@ import { setPermissions } from "@/authorization"
 const state: any = {}
 
 const persistState = createPersistedState({
-  paths: ["user", "util", "productStore", "netSuite"],
+  paths: ["user", "util", "productStore", "netSuite", "shopify"],
   fetchBeforeUse: true
 })
 
@@ -32,7 +33,8 @@ const store = createStore<RootState>({
     "user": userModule,
     "productStore": productStoreModule,
     "util": utilModule,
-    "netSuite": netSuiteModule
+    "netSuite": netSuiteModule,
+    "shopify": shopifyModule
   },
 })
 
