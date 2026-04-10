@@ -9,27 +9,57 @@ import { UtilService } from "@/services/UtilService"
 const actions: ActionTree<UtilState, RootState> = {
 
   async fetchFacilityGroups({ commit }) {
-    let facilityGroups = [] as any;
+    let facilityGroups = [] as any, pageIndex = 0, resp;
 
     try {
-      const resp = await UtilService.fetchFacilityGroups({ pageSize: 100 });
+      do {
+        resp = await UtilService.fetchFacilityGroups({ pageSize: 100, pageIndex });
 
-      if(!hasError(resp)) {
-        facilityGroups = resp.data;
-      } else {
-        throw resp.data;
-      }
+        if(!hasError(resp)) {
+          facilityGroups = facilityGroups.concat(resp.data);
+        } else {
+          throw resp.data;
+        }
+        pageIndex++;
+      } while (resp.data.length >= 100);
     } catch(error: any) {
       logger.error(error);
     }
     commit(types.UTIL_FACILITY_GROUPS_UPDATED, facilityGroups);
   },
   
+  async fetchFacilities({ commit }) {
+    let facilities = [] as any, pageIndex = 0, resp;
+
+    try {
+      do {
+        resp = await UtilService.fetchFacilities({
+          facilityTypeId: "VIRTUAL_FACILITY",
+          facilityTypeId_not: "Y",
+          parentTypeId: "VIRTUAL_FACILITY",
+          parentTypeId_not: "Y",
+          pageSize: 100,
+          pageIndex
+        })
+
+        if(!hasError(resp) && resp.data) {
+          facilities = facilities.concat(resp.data.filter((facility: any) => facility.externalId));
+        } else {
+          throw resp.data
+        }
+        pageIndex++;
+      } while (resp.data.length >= 100);
+    } catch (error) {
+      logger.error(error);
+    }
+    commit(types.UTIL_FACILITIES_UPDATED, facilities)
+  },
+  
   async fetchDBICCountries({ commit }) {
     let countries = [] as any;
 
     try {
-      const resp = await UtilService.fetchDBICCountries({ geoIdTo: "DBIC", pageSize: 200 })
+      const resp = await UtilService.fetchDBICCountries({toGeoId: "DBIC", pageSize: 200 })
       if(!hasError(resp)) {
         countries = resp.data;
       } else {
@@ -47,7 +77,7 @@ const actions: ActionTree<UtilState, RootState> = {
     let operatingCountries = [] as any;
 
     try {
-      const resp = await UtilService.fetchOperatingCountries({ pageSize: 200 })
+      const resp = await UtilService.fetchOperatingCountries({ pageSize: 300, geoTypeEnumId: 'GEOT_COUNTRY' })
       if(!hasError(resp)) {
         operatingCountries = resp.data;
       } else {
@@ -65,7 +95,7 @@ const actions: ActionTree<UtilState, RootState> = {
     let productIdentifiers = [] as any;
 
     try {
-      const resp = await UtilService.fetchEnums({ enumTypeId: "SHOP_PROD_IDENTITY" })
+      const resp = await UtilService.fetchEnums({ enumTypeId: "SHOP_PROD_IDENTITY", pageSize: 100 })
       if(!hasError(resp)) {
         productIdentifiers = resp.data;
       } else {
@@ -77,26 +107,51 @@ const actions: ActionTree<UtilState, RootState> = {
     commit(types.UTIL_PRODUCT_IDENTIFIERS_UPDATED, productIdentifiers)
   },
 
-  async fetchShipmentMethodTypes({ commit, state }, payload) {
+  async fetchShipmentMethodTypes({ commit, state }) {
     if(state.shipmentMethodTypes.length) return;
 
-    let shipmentMethodTypes = [] as any;
+    let shipmentMethodTypes = [] as any, pageIndex = 0, resp;
 
     try {
-      const resp = await UtilService.fetchShipmentMethodTypes(payload)
-      if(!hasError(resp)) {
-        shipmentMethodTypes = resp.data;
-      } else {
-        throw resp.data;
-      }
-    } catch(error: any) {
+      do {
+        resp = await UtilService.fetchShipmentMethodTypes({ pageSize: 100, pageIndex });
+
+        if(!hasError(resp)) {
+          shipmentMethodTypes = shipmentMethodTypes.concat(resp.data);
+        } else {
+          throw resp.data;
+        }
+        pageIndex++;
+      } while (resp.data.length >= 100);
+    } catch (error: any) {
       logger.error(error);
     }
     commit(types.UTIL_SHIPMENT_METHOD_TYPES_UPDATED, shipmentMethodTypes)
   },
 
+  async fetchOrganizationPartyId({ commit }) {
+    let partyId = ""
+
+    try {
+      const resp = await UtilService.fetchOrganization({
+        roleTypeId: 'INTERNAL_ORGANIZATIO',
+        pageSize: 1
+      })
+
+      if(!hasError(resp)) {
+        partyId = resp.data[0]?.partyId
+      } else {
+        throw resp.data
+      }
+    } catch (error) {
+      logger.error(error)
+    }
+    commit(types.UTIL_ORGANIZATION_PARTY_ID_UPDATED, partyId)
+  },
+
   async clearUtilState({ commit }) {
     commit(types.UTIL_CLEARED)
+    commit(types.UTIL_ORGANIZATION_PARTY_ID_UPDATED, "")
   }
 }
 

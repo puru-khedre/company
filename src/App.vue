@@ -1,12 +1,16 @@
 <template>
   <ion-app>
-    <ion-router-outlet />
+    <ion-split-pane content-id="main-content" when="lg">
+      <Menu />
+      <ion-router-outlet id="main-content"></ion-router-outlet>
+    </ion-split-pane>
   </ion-app>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { IonApp, IonRouterOutlet, loadingController } from "@ionic/vue";
+import { IonApp, IonRouterOutlet, IonSplitPane, loadingController } from "@ionic/vue";
+import Menu from '@/components/Menu.vue';
 import emitter from "@/event-bus"
 import { Settings } from 'luxon'
 import store from "./store";
@@ -22,7 +26,7 @@ const maxAge = process.env.VUE_APP_CACHE_MAX_AGE ? parseInt(process.env.VUE_APP_
 
 initialise({
   token: userToken.value,
-  instanceUrl: instanceUrl.value,
+  instanceUrl: instanceUrl.value.replace("admin/", ""), // TODO: remove component replace logic once we start storing the oms url in state without component name
   cacheMaxAge: maxAge,
   events: {
     responseError: () => {
@@ -31,19 +35,20 @@ initialise({
     queueTask: (payload: any) => {
       emitter.emit("queueTask", payload);
     }
-  }
+  },
+  systemType: "MOQUI"
 })
 
-async function presentLoader(options = { message: "Click the backdrop to dismiss.", backdropDismiss: true }) {
+async function presentLoader(options = { message: '', backdropDismiss: false }) {
   // When having a custom message remove already existing loader, if not removed it takes into account the already existing loader
   if(options.message && loader.value) dismissLoader();
 
   if (!loader.value) {
     loader.value = await loadingController
       .create({
-        message: translate(options.message),
+        message: options.message ? translate(options.message) : (options.backdropDismiss ? translate("Click the backdrop to dismiss.") : translate("Loading...")),
         translucent: true,
-        backdropDismiss: options.backdropDismiss
+        backdropDismiss: options.backdropDismiss || false
       });
   }
   loader.value.present();
@@ -59,9 +64,9 @@ function dismissLoader() {
 onMounted(async () => {
   loader.value = await loadingController
     .create({
-      message: translate("Click the backdrop to dismiss."),
+      message: translate("Loading..."),
       translucent: true,
-      backdropDismiss: true
+      backdropDismiss: false
     });
   emitter.on("presentLoader", presentLoader);
   emitter.on("dismissLoader", dismissLoader);
@@ -79,3 +84,4 @@ onUnmounted(() => {
   resetConfig()
 })
 </script>
+

@@ -25,7 +25,7 @@
           <ion-button color="danger" @click="logout()">{{ translate("Logout") }}</ion-button>
           <!-- Commenting this code as we currently do not have reset password functionality -->
           <!-- <ion-button fill="outline" color="medium">{{ "Reset password") }}</ion-button> -->
-          <ion-button fill="outline" @click="goToLaunchpad()">
+          <ion-button :standalone-hidden="!hasPermission(Actions.APP_PWA_STANDALONE_ACCESS)" fill="outline" @click="goToLaunchpad()">
             {{ translate("Go to Launchpad") }}
             <ion-icon slot="end" :icon="openOutline" />
           </ion-button>
@@ -47,7 +47,7 @@
           <ion-card-content>
             {{ $t('This is the name of the OMS you are connected to right now. Make sure that you are connected to the right instance before proceeding.') }}
           </ion-card-content>
-          <ion-button :disabled="!omsRedirectionInfo.token || !omsRedirectionInfo.url" @click="goToOms(omsRedirectionInfo.token, omsRedirectionInfo.url)" fill="clear">
+          <ion-button :disabled="!omsRedirectionInfo.token || !omsRedirectionInfo.url || !hasPermission(Actions.APP_COMMERCE_VIEW)" @click="goToOms(omsRedirectionInfo.token, omsRedirectionInfo.url)" fill="clear">
             {{ $t('Go to OMS') }}
             <ion-icon slot="end" :icon="openOutline" />
           </ion-button>
@@ -71,8 +71,19 @@
           <ion-card-content>
             {{ translate("The timezone you select is used to ensure automations you schedule are always accurate to the time you select.") }}
           </ion-card-content>
+          <ion-item v-if="showBrowserTimeZone">
+            <ion-label>
+              <p class="overline">{{ translate("Browser TimeZone") }}</p>
+              {{ browserTimeZone.id }}
+              <p v-if="showDateTime">{{ getCurrentTime(browserTimeZone.id, dateTimeFormat) }}</p>
+            </ion-label>
+          </ion-item>
           <ion-item lines="none">
-            <ion-label>{{ userProfile && userProfile.timeZone ? userProfile.timeZone : "-" }}</ion-label>
+            <ion-label>
+              <p class="overline">{{ translate("Selected TimeZone") }}</p>
+              {{ currentTimeZoneId }}
+              <p v-if="showDateTime">{{ getCurrentTime(currentTimeZoneId, dateTimeFormat) }}</p>
+            </ion-label>
             <ion-button @click="changeTimeZone()" slot="end" fill="outline" color="dark">{{ translate("Change") }}</ion-button>
           </ion-item>
         </ion-card>
@@ -83,7 +94,8 @@
 
 <script setup lang="ts">
 import { IonAvatar, IonButton, IonCard, IonCardContent, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonMenuButton, IonPage, IonTitle, IonToolbar, modalController } from "@ionic/vue";
-import { computed, onMounted, ref } from "vue";
+import { Actions, hasPermission } from '@/authorization'
+import { computed, onMounted, ref , defineProps} from "vue";
 import { useStore } from "vuex";
 import TimeZoneModal from "@/components/TimezoneModal.vue";
 import Image from "@/components/Image.vue"
@@ -91,7 +103,7 @@ import { DateTime } from "luxon";
 import { translate } from "@/i18n"
 import { openOutline } from "ionicons/icons"
 import { goToOms } from "@hotwax/dxp-components";
-
+import { getCurrentTime } from "../utils"
 const store = useStore()
 const appVersion = ref("")
 const appInfo = (process.env.VUE_APP_VERSION_INFO ? JSON.parse(process.env.VUE_APP_VERSION_INFO) : {}) as any
@@ -99,7 +111,27 @@ const appInfo = (process.env.VUE_APP_VERSION_INFO ? JSON.parse(process.env.VUE_A
 const userProfile = computed(() => store.getters["user/getUserProfile"])
 const oms = computed(() => store.getters["user/getInstanceUrl"])
 const omsRedirectionInfo = computed(() => store.getters["user/getOmsRedirectionInfo"])
+const currentTimeZoneId = computed(() => userProfile.value.timeZone)
 
+const browserTimeZone = ref({
+  label: '',
+  id: Intl.DateTimeFormat().resolvedOptions().timeZone
+})
+
+const props = defineProps({
+  showBrowserTimeZone: {
+    type: Boolean,
+    default: true
+  },
+  showDateTime: {
+    type: Boolean,
+    default: true
+  },
+  dateTimeFormat: {
+    type: String,
+    default: 't ZZZZ'
+  }
+})
 onMounted(() => {
   appVersion.value = appInfo.branch ? (appInfo.branch + "-" + appInfo.revision) : appInfo.tag;
 })

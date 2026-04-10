@@ -9,7 +9,9 @@ import logger from "@/logger"
 import emitter from "@/event-bus"
 import { Settings } from "luxon"
 import { useAuthStore } from '@hotwax/dxp-components'
-import { resetConfig } from '@/adapter'
+import { resetConfig, updateToken, updateInstanceUrl } from '@/adapter'
+import router from '@/router'
+import { getServerPermissionsFromRules, prepareAppPermissions, resetPermissions, setPermissions } from "@/authorization"
 
 const actions: ActionTree<UserState, RootState> = {
 
@@ -23,8 +25,35 @@ const actions: ActionTree<UserState, RootState> = {
 
       const { token, oms, omsRedirectionUrl } = payload;
       dispatch("setUserInstanceUrl", oms);
+      
+      // Getting the permissions list from server
+      const permissionId = process.env.VUE_APP_PERMISSION_ID;
+      // Prepare permissions list
+      const serverPermissionsFromRules = getServerPermissionsFromRules();
+      if (permissionId) serverPermissionsFromRules.push(permissionId);
 
-      emitter.emit("presentLoader", { message: "Logging in...", backdropDismiss: false })
+      const serverPermissions: Array<string> = await UserService.getUserPermissions({
+        permissionIds: [...new Set(serverPermissionsFromRules)]
+      }, omsRedirectionUrl, token);
+      const appPermissions = prepareAppPermissions(serverPermissions);
+
+
+      // Checking if the user has permission to access the app
+      // If there is no configuration, the permission check is not enabled
+      if (permissionId) {
+        // As the token is not yet set in the state passing token headers explicitly
+        // TODO Abstract this out, how token is handled should be part of the method not the callee
+        const hasPermission = appPermissions.some((appPermission: any) => appPermission.action === permissionId );
+        // If there are any errors or permission check fails do not allow user to login
+        if (!hasPermission) {
+          const permissionError = 'You do not have permission to access the app.';
+          showToast(translate(permissionError));
+          logger.error("error", permissionError);
+          return Promise.reject(new Error(permissionError));
+        }
+      }
+
+      emitter.emit("presentLoader", { message: "Logging in..." })
       const api_key = await UserService.login(token)
 
       const userProfile = await UserService.getUserProfile(api_key);
@@ -32,13 +61,24 @@ const actions: ActionTree<UserState, RootState> = {
       if (userProfile.timeZone) {
         Settings.defaultZone = userProfile.timeZone;
       }
-
+      
+      setPermissions(appPermissions);
       if(omsRedirectionUrl && token) {
         dispatch("setOmsRedirectionInfo", { url: omsRedirectionUrl, token })
       }
+
+      updateToken(api_key);
+
       commit(types.USER_TOKEN_CHANGED, { newToken: api_key })
       commit(types.USER_INFO_UPDATED, userProfile);
+      commit(types.USER_PERMISSIONS_UPDATED, appPermissions);
+      this.dispatch('util/fetchOrganizationPartyId');
       emitter.emit("dismissLoader")
+
+      const productStoreId = router.currentRoute.value.query.productStoreId
+      if(productStoreId) {
+        return `/product-store-details/${productStoreId}`;
+      }
     } catch (err: any) {
       emitter.emit("dismissLoader")
       showToast(translate(err));
@@ -51,7 +91,7 @@ const actions: ActionTree<UserState, RootState> = {
   * Logout user
   */
   async logout({ commit, dispatch }) {
-    emitter.emit('presentLoader', { message: 'Logging out', backdropDismiss: false })
+    emitter.emit('presentLoader', { message: 'Logging out' })
 
     const authStore = useAuthStore()
 
@@ -59,9 +99,10 @@ const actions: ActionTree<UserState, RootState> = {
     commit(types.USER_END_SESSION)
     this.dispatch("productStore/clearProductStoreState");
     this.dispatch("util/clearUtilState");
+    this.dispatch("netSuite/clearNetSuiteState");
     dispatch("setOmsRedirectionInfo", { url: "", token: "" })
     resetConfig();
-
+    resetPermissions();
     // reset plugin state on logout
     authStore.$reset()
 
@@ -91,6 +132,7 @@ const actions: ActionTree<UserState, RootState> = {
   */
   setUserInstanceUrl({ commit }, payload) {
     commit(types.USER_INSTANCE_URL_UPDATED, payload)
+    updateInstanceUrl(payload)
   },
 }
 

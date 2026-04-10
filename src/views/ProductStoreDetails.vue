@@ -2,7 +2,7 @@
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-back-button slot="start" default-href="/tabs/product-store"/>
+        <ion-back-button slot="start" default-href="/product-store"/>
         <ion-title>{{ productStore.storeName }}</ion-title>
       </ion-toolbar>
     </ion-header>
@@ -52,7 +52,7 @@
               </ion-item-divider>
 
               <ion-item>
-                <ion-input :label="translate('ID prefix')" :placeholder="translate('prefix')" :value="productStore.orderNumberPrefix" @keydown.enter="updateProductStoreDetail($event, 'orderNumberPrefix', false)" />
+                <ion-input :label="translate('ID prefix')" :placeholder="translate('prefix')" :value="productStore.orderNumberPrefix" @keydown.enter="updateProductStoreDetail($event, 'orderNumberPrefix', false)" @ionBlur="updateProductStoreDetail($event, 'orderNumberPrefix', false)" />
               </ion-item>
               <ion-item lines="none">
                 <ion-label>
@@ -87,7 +87,7 @@
               </ion-item-divider>
 
               <ion-item>
-                <ion-input :label="translate('Create deadline days')" :placeholder="translate('days count')" type="number" min="0" :value="settings['RETURN_DEADLINE_DAYS']?.settingValue" @keydown.enter="updateProductStoreSettings($event, 'RETURN_DEADLINE_DAYS', false)" @keydown="validateInput($event)" />
+                <ion-input :label="translate('Create deadline days')" :placeholder="translate('days count')" type="number" min="0" :value="settings['RETURN_DEADLINE_DAYS']?.settingValue" @keydown.enter="updateProductStoreSettings($event, 'RETURN_DEADLINE_DAYS', false)" @keydown="validateInput($event)" @ionBlur="updateProductStoreSettings($event, 'RETURN_DEADLINE_DAYS', false)" />
               </ion-item>
               <ion-item lines="none">
                 <ion-label>
@@ -113,7 +113,7 @@
                   {{ settings['PRE_SLCTD_FAC_TAG'].settingValue }}
                   <ion-icon :icon="closeCircleOutline" @click.stop="removeTag('PRE_SLCTD_FAC_TAG')" />
                 </ion-chip>
-                <ion-button fill="clear" @click="createUpdateTag('PRE_SLCTD_FAC_TAG')" v-else>
+                <ion-button fill="clear" size="default" @click="createUpdateTag('PRE_SLCTD_FAC_TAG')" v-else>
                   <ion-icon slot="icon-only" :icon="addCircleOutline" />
                 </ion-button>
               </ion-item>
@@ -129,7 +129,7 @@
                   {{ settings['ORD_ITM_SHIP_FAC'].settingValue }}
                   <ion-icon :icon="closeCircleOutline" @click.stop="removeTag('ORD_ITM_SHIP_FAC')" />
                 </ion-chip>
-                <ion-button fill="clear" @click="createUpdateTag('ORD_ITM_SHIP_FAC')" v-else>
+                <ion-button fill="clear" size="default" @click="createUpdateTag('ORD_ITM_SHIP_FAC')" v-else>
                   <ion-icon slot="icon-only" :icon="addCircleOutline" />
                 </ion-button>
               </ion-item>
@@ -148,7 +148,7 @@
               </ion-item>
 
               <ion-item>
-                <ion-input :label="translate('Minimum shipment threshold')" :placeholder="translate('threshold')" type="number" min="0" :value="settings['BRK_SHPMNT_THRESHOLD']?.settingValue" @keydown.enter="updateProductStoreSettings($event, 'BRK_SHPMNT_THRESHOLD', false)" @keydown="validateInput($event)" />
+                <ion-input :label="translate('Minimum shipment threshold')" :placeholder="translate('threshold')" type="number" min="0" :value="settings['BRK_SHPMNT_THRESHOLD']?.settingValue" @keydown.enter="updateProductStoreSettings($event, 'BRK_SHPMNT_THRESHOLD', false)" @keydown="validateInput($event)" @ionBlur="updateProductStoreSettings($event, 'BRK_SHPMNT_THRESHOLD', false)" />
               </ion-item>
               <ion-item lines="none">
                 <ion-label>
@@ -187,7 +187,7 @@
                 </ion-item>
   
                 <ion-item>
-                  <ion-input :label="translate('Auto cancellations days')" :placeholder="translate('days count')" type="number" min="0" :value="productStore.daysToCancelNonPay" @keydown.enter="updateProductStoreDetail($event, 'daysToCancelNonPay', false)" :disabled="!autoCancellationActive" @keydown="validateInput($event)" />
+                  <ion-input :label="translate('Auto cancellations days')" :placeholder="translate('days count')" type="number" min="0" :value="productStore.daysToCancelNonPay" @keydown.enter="updateProductStoreDetail($event, 'daysToCancelNonPay', false)" :disabled="!autoCancellationActive" @keydown="validateInput($event)" @ionBlur="updateProductStoreDetail($event, 'daysToCancelNonPay', false)" />
                 </ion-item>
                 <ion-item lines="none">
                   <ion-label>
@@ -284,13 +284,13 @@
 
               <ion-item>
                 <ion-select :label="translate('Primary identifier')" interface="popover" :placeholder="translate('Select')" :value="getPreferredIdentification('primaryId')" @ionChange="updatePreferredIdentification($event, 'primaryId')">
-                  <ion-select-option v-for="option in productIdentificationOptions" :key="option" :value="option">{{ option }}</ion-select-option>
+                  <ion-select-option v-for="option in productIdentificationOptions" :key="option" :value="option.goodIdentificationTypeId">{{ option.description ? option.description : option.goodIdentificationTypeId }}</ion-select-option>
                 </ion-select>
               </ion-item>
 
               <ion-item>
                 <ion-select :label="translate('Secondary identifier')" interface="popover" :placeholder="translate('Select')" :value="getPreferredIdentification('secondaryId')" @ionChange="updatePreferredIdentification($event, 'secondaryId')">
-                  <ion-select-option v-for="option in productIdentificationOptions" :key="option" :value="option">{{ option }}</ion-select-option>
+                  <ion-select-option v-for="option in productIdentificationOptions" :key="option" :value="option.goodIdentificationTypeId">{{ option.description ? option.description : option.goodIdentificationTypeId }}</ion-select-option>
                 </ion-select>
               </ion-item>
 
@@ -312,11 +312,11 @@
 
             <ion-list>
               <ion-item>
-                <ion-toggle :checked="getBooleanValue(settings['CUST_DLVR_MTHD_UPD']?.settingValue)" @click.prevent="updateProductStoreSettings($event, 'CUST_DLVR_MTHD_UPD', true)" >{{ translate("Delivery method") }}</ion-toggle>
+                <ion-toggle :checked="getBooleanValue(settings['CUST_DLVRMTHD_UPDATE']?.settingValue)" @click.prevent="updateProductStoreSettings($event, 'CUST_DLVRMTHD_UPDATE', true)" >{{ translate("Delivery method") }}</ion-toggle>
               </ion-item>
 
               <ion-item>
-                <ion-select :label="translate('Shipment method')" interface="popover" :placeholder="translate('Select')" :value="settings['RF_SHIP_MTHD']?.settingValue" @ionChange="updateProductStoreSettings($event, 'RF_SHIP_MTHD', false)" >
+                <ion-select :label="translate('Shipment method')" interface="popover" :placeholder="translate('Select')" :value="settings['RF_SHIPPING_METHOD']?.settingValue" @ionChange="updateProductStoreSettings($event, 'RF_SHIPPING_METHOD', false)" >
                   <ion-select-option v-for="shipmentMethod in shipmentMethodTypes" :key="shipmentMethod.shipmentMethodTypeId" :value="shipmentMethod.shipmentMethodTypeId">{{ shipmentMethod.description ? shipmentMethod.description : shipmentMethod.shipmentMethodTypeId }}</ion-select-option>
                 </ion-select>
               </ion-item>
@@ -356,11 +356,11 @@ import logger from "@/logger";
 import { ProductStoreService } from "@/services/ProductStoreService";
 import emitter from "@/event-bus";
 import { DateTime } from "luxon";
+import { useProductIdentificationStore } from "@hotwax/dxp-components";
 
 const props = defineProps(["productStoreId"]);
 const store = useStore();
 
-const productIdentificationOptions = ["productId", "groupId", "groupName", "internalName", "parentProductName", "primaryProductCategoryName", "sku", "title", "SHOPIFY_PROD_SKU"];
 const autoCancellationActive = ref(false);
 
 const facilityGroups = computed(() => store.getters["util/getFacilityGroups"])
@@ -369,10 +369,13 @@ const settings = computed(() => store.getters["productStore/getCurrentStoreSetti
 const dbicCountriesCount = computed(() => store.getters["util/getDBICCountriesCount"])
 const productIdentifiers = computed(() => store.getters["util/getProductIdentifiers"])
 const shipmentMethodTypes = computed(() => store.getters["util/getShipmentMethodTypes"])
+const productIdentificationOptions = computed(() => useProductIdentificationStore()?.getProductIdentificationOptions)
 
 onIonViewWillEnter(async() => {
-  await Promise.allSettled([store.dispatch("util/fetchDBICCountries"), store.dispatch("productStore/fetchProductStoreDetails", props.productStoreId), store.dispatch("productStore/fetchCurrentStoreSettings", props.productStoreId), store.dispatch("util/fetchFacilityGroups"), store.dispatch("util/fetchProductIdentifiers"), store.dispatch("util/fetchShipmentMethodTypes", { pageSize: 250 })])  
+  emitter.emit("presentLoader");
+  await Promise.allSettled([store.dispatch("util/fetchDBICCountries"), store.dispatch("productStore/fetchProductStoreDetails", props.productStoreId), store.dispatch("productStore/fetchCurrentStoreSettings", props.productStoreId), store.dispatch("util/fetchFacilityGroups"), store.dispatch("util/fetchProductIdentifiers"), store.dispatch("util/fetchShipmentMethodTypes"), useProductIdentificationStore()?.prepareProductIdentifierOptions()])
   if(productStore.value.daysToCancelNonPay) autoCancellationActive.value = true;
+  emitter.emit("dismissLoader");
 })
 
 function getPreferredIdentification(id: string) {

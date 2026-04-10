@@ -2,7 +2,7 @@
   <ion-page>
     <ion-header>
       <ion-toolbar>
-        <ion-back-button default-href="/tabs/product-store" slot="start"></ion-back-button>
+        <ion-back-button default-href="/product-store" slot="start"></ion-back-button>
         <ion-title>{{ translate("Create product store") }}</ion-title>
         <ion-progress-bar value="0.25" />
       </ion-toolbar>
@@ -57,6 +57,7 @@ import SelectOperatingCountriesModal from "@/components/SelectOperatingCountries
 import { generateInternalId, hasError, showToast } from "@/utils";
 import logger from "@/logger";
 import { ProductStoreService } from "@/services/ProductStoreService";
+import emitter from "@/event-bus";
 
 const store = useStore();
 const router = useRouter();
@@ -72,6 +73,7 @@ const storeId = ref({}) as any;
 const productStores = computed(() => store.getters["productStore/getProductStores"])
 const dbicCountriesCount = computed(() => store.getters["util/getDBICCountriesCount"])
 const company = computed(() => store.getters["productStore/getCompany"])
+const organizationPartyId = computed(() => store.getters["util/getOrganizationPartyId"])
 
 onIonViewWillEnter(async () => {
   await store.dispatch("util/fetchDBICCountries");
@@ -96,11 +98,14 @@ async function manageConfigurations() {
 
   let resp;
 
+  emitter.emit("presentLoader");
+
   try {
     const payload = {
       storeName: formData.value.storeName,
       productStoreId: formData.value.productStoreId,
-      companyName: company.value.companyName
+      companyName: company.value.companyName,
+      payToPartyId: organizationPartyId.value
     } as any;
 
     if(!productStores.value.length) {
@@ -113,10 +118,10 @@ async function manageConfigurations() {
       const productStoreId = resp.data.productStoreId;
       
       if(!dbicCountriesCount.value) {
-        const responses = await Promise.allSettled(selectedCountries.value.map((country: any) => ProductStoreService.updateDBICCountries({
+        const responses = await Promise.allSettled(selectedCountries.value.map((country: any) => ProductStoreService.addDBICCountries({
             geoId: country.geoId,
-            geoIdTo: "DBIC",
-            geoAssocTypeId: "GROUP_MEMBER"
+            toGeoId: "DBIC",
+            geoAssocTypeEnumId: "GROUP_MEMBER"
           }))
         )
         
@@ -131,6 +136,7 @@ async function manageConfigurations() {
       }
 
       showToast(translate("Product store created successfully."))
+      emitter.emit("dismissLoader");
       router.replace(`add-configurations/${productStoreId}`);
     } else {
       throw resp.data;
@@ -139,6 +145,8 @@ async function manageConfigurations() {
     showToast(translate(error.response?.data?.errors ? error.response.data.errors : "Failed to create product store."))
     logger.error(error);
   } 
+
+  emitter.emit("dismissLoader");
 }
 
 async function openSelectOperatingCountriesModal() {

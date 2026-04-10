@@ -6,6 +6,9 @@ const getters: GetterTree <UtilState, RootState> = {
   getFacilityGroups(state) {
     return state.facilityGroups
   },
+  getFacilities(state) {
+    return state.facilities
+  },
   getOperatingCountries(state) {
     return state.operatingCountries;
   },
@@ -17,6 +20,9 @@ const getters: GetterTree <UtilState, RootState> = {
   },
   getShipmentMethodTypes(state) {
     return state.shipmentMethodTypes;
+  },
+  getOrganizationPartyId(state) {
+    return state.organizationPartyId;
   }
 }
 export default getters;
