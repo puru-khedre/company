@@ -51,6 +51,9 @@
             <ion-item detail class="item-box" lines="none" button @click="openShopifyLocations()">
               <ion-label>{{ translate("Inventory locations") }}</ion-label>
             </ion-item>
+            <ion-item detail class="item-box" lines="none" button @click="openProductTypes()">
+              <ion-label>{{ translate("Product types") }}</ion-label>
+            </ion-item>
           </section>
         </div>
 
@@ -65,9 +68,6 @@
             </ion-item>
             <ion-item detail class="item-box" lines="none" button @click="openSalesChannels()">
               <ion-label>{{ translate("Sales channels") }}</ion-label>
-            </ion-item>
-            <ion-item detail class="item-box" lines="none" button @click="openProductTypes()">
-              <ion-label>{{ translate("Product types") }}</ion-label>
             </ion-item>
           </section>
         </div>
