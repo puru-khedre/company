@@ -45,7 +45,7 @@
         <div class="ion-margin-top">
           <h1>{{ translate("Products and Inventory") }}</h1>
           <section>
-            <ion-item detail class="item-box" lines="none" button @click="openDownloadProductsModal()">
+            <ion-item detail class="item-box" lines="none" button @click="openProductSync()">
               <ion-label>{{ translate("Download products") }}</ion-label>
             </ion-item>
             <ion-item detail class="item-box" lines="none" button @click="openShopifyLocations()">
@@ -78,7 +78,7 @@
 
 
 <script setup lang="ts">
-import { alertController, IonBackButton, IonContent, IonHeader, IonItem, IonLabel, IonPage, IonSkeletonText, IonTitle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
+import { IonBackButton, IonContent, IonHeader, IonItem, IonLabel, IonPage, IonSkeletonText, IonTitle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
 import { translate } from "@/i18n";
 import { computed, defineProps, ref } from "vue";
 import { useStore } from "vuex";
@@ -111,21 +111,8 @@ async function openProductStoreModal() {
   modal.present();
 }
 
-async function openDownloadProductsModal() {
-  const alert = await alertController.create({
-    header: translate("Download products"),
-    message: translate("This will trigger a background job to import new products from Shopify. proceed?", { name: shop.value.name }),
-    buttons: [
-      { text: translate("Cancel"), role: "cancel" },
-      { 
-        text: translate("Download"),
-        handler: () => {
-          store.dispatch("shopify/triggerProductDownload", { shopId: shop.value.shopId });
-        }
-      }
-    ]
-  });
-  await alert.present();
+function openProductSync() {
+  router.push(`/shopify-connection-details/${props.id}/product-sync`);
 }
 
 function openShopDetails() {
