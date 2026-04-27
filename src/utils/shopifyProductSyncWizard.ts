@@ -7,6 +7,9 @@ export type ProductSyncWizardStep =
   | "progress"
   | "reconcile";
 
+export type ProductSyncExperienceMode = "first-time" | "returning" | "auto";
+export type ProductSyncExperienceView = "first-time" | "returning";
+
 export type ProductSyncMessageState =
   | "SmsgProduced"
   | "SmsgSent"
@@ -172,4 +175,15 @@ export function requiresPreflightConfirmation(summary: ProductSyncPreflightSumma
   }
 
   return summary.matched / summary.sampled < 0.7;
+}
+
+export function resolveProductSyncExperienceMode(
+  mode: ProductSyncExperienceMode,
+  shopifyShopProductCount = 0
+): ProductSyncExperienceView {
+  if (mode === "first-time" || mode === "returning") {
+    return mode;
+  }
+
+  return shopifyShopProductCount > 0 ? "returning" : "first-time";
 }

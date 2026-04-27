@@ -6,6 +6,9 @@
           <ion-back-button :default-href="'/shopify-connection-details/' + id" />
         </ion-buttons>
         <ion-title>{{ translate("Product sync") }}</ion-title>
+        <ion-buttons slot="end">
+          <ion-button @click="showModeModal = true" data-testid="product-sync-mode-button">{{ translate("Mode") }}</ion-button>
+        </ion-buttons>
       </ion-toolbar>
     </ion-header>
 
@@ -20,356 +23,112 @@
       </ion-card>
 
       <template v-else>
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>{{ translate("Sync product catalog") }}</ion-card-title>
-          </ion-card-header>
+        <shopify-product-sync-returning-view
+          v-if="activeExperienceMode === 'returning'"
+          :is-sync-scheduled="isSyncScheduled"
+          :last-sync-label="lastSyncLabel"
+          :next-sync-label="nextSyncLabel"
+          :progress-steps="returningProgressSteps"
+          :recent-sync-errors="recentSyncErrors"
+          :recent-sync-updates="recentSyncUpdates"
+          :selected-product-store-name="selectedProductStoreName"
+          :unsynced-updates-count="shopifyShopProductCount"
+          :sync-job-obj="syncJobObj"
+          @open-history="openHistory"
+          @run-job="runSyncJob"
+        />
 
-          <ion-card-content>
-            <p v-if="currentStep === 'home'">
-              {{ translate("Looks like you’re syncing products from this Shopify account to HotWax for the first time.") }}
-            </p>
-            <p v-if="currentStep === 'home'">
-              {{ translate("Before you start the import process, lets make sure everything is configured correctly.") }}
-            </p>
-          </ion-card-content>
+        <shopify-product-sync-wizard-view
+          v-else
+          :current-step="currentStep"
+          :draft="draft"
+          :get-connected-shop-label="getConnectedShopLabel"
+          :get-product-store-name="getProductStoreName"
+          :has-related-shops="hasRelatedShops"
+          :identifier-locked="identifierLocked"
+          :identifier-options="identifierOptions"
+          :import-status-badge-color="importStatusBadgeColor"
+          :import-status-label="importStatusLabel"
+          :is-review-loading="isReviewLoading"
+          :is-saving="isSaving"
+          :next-disabled="nextDisabled"
+          :preflight-requires-confirmation="preflightRequiresConfirmation"
+          :preflight-result="preflightResult"
+          :preflight-subtitle="preflightSubtitle"
+          :preflight-title="preflightTitle"
+          :preflight-warning-confirmed="preflightWarningConfirmed"
+          :product-store-locked="productStoreLocked"
+          :product-stores="productStores"
+          :product-type-mappings="productTypeMappings"
+          :product-type-mappings-label="productTypeMappingsLabel"
+          :progress-badge-color="progressBadgeColor"
+          :progress-state="progressState"
+          :progress-status="progressStatus"
+          :progress-steps="progressSteps"
+          :reconcile-available="reconcileAvailable"
+          :recommended-identifier-enum-id="recommendedIdentifierEnumId"
+          :related-shops="relatedShops"
+          :review-ready="reviewReady"
+          :review-stats="reviewStats"
+          :selected-identifier-label="selectedIdentifierLabel"
+          :selected-product-store-name="selectedProductStoreName"
+          :shop-id="id"
+          :show-mistake-modal="showMistakeModal"
+          :show-start-sync-modal="showStartSyncModal"
+          :start-sync-disabled="startSyncDisabled"
+          @accept-preflight-and-open-start-sync="acceptPreflightAndOpenStartSync"
+          @close-mistake-modal="showMistakeModal = false"
+          @close-start-sync-modal="showStartSyncModal = false"
+          @go-back="goBack"
+          @go-next="goNext"
+          @identifier-change="handleIdentifierChange"
+          @load-progress="loadProgress"
+          @open-mistake-modal="openMistakeModal"
+          @open-start-sync-modal="openStartSyncModal"
+          @product-store-change="handleProductStoreChange"
+          @start-product-sync="startProductSync"
+          @toggle-preflight-warning-confirmation="togglePreflightWarningConfirmation"
+          @toggle-product-store-verification="toggleProductStoreVerification"
+          @toggle-start-confirmation="toggleStartConfirmation"
+        />
 
-          <ion-list lines="full">
-            <ion-item>
-              <ion-label>{{ translate("Product store") }}</ion-label>
-              <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("Internal name mapping") }}</ion-label>
-              <ion-note slot="end">{{ selectedIdentifierLabel }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("Product types") }}</ion-label>
-              <ion-note slot="end">{{ productTypeMappingsLabel }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("Start product import") }}</ion-label>
-              <ion-badge slot="end" :color="importStatusBadgeColor">{{ importStatusLabel }}</ion-badge>
-            </ion-item>
-          </ion-list>
-        </ion-card>
-
-        <ion-card v-if="currentStep === 'home'">
-          <ion-card-content>
-            <ion-button expand="block" @click="goNext()" data-testid="review-configurations">
-              {{ translate("Review configurations") }}
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-
-        <ion-card v-if="currentStep === 'product-store'">
-          <ion-card-header>
-            <ion-card-title>{{ translate("Confirm product store") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("Only Shopify stores with the same catalog should share a Product Store.") }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-list lines="full">
-            <ion-radio-group :value="draft.selectedProductStoreId" @ionChange="handleProductStoreChange($event.detail.value)">
-              <ion-item v-for="productStore in productStores" :key="productStore.productStoreId">
-                <ion-radio slot="start" :value="productStore.productStoreId" :disabled="productStoreLocked" />
-                <ion-label>
-                  {{ getProductStoreName(productStore) }}
-                  <p>{{ productStore.productStoreId }}</p>
-                  <p>{{ getConnectedShopLabel(productStore.productStoreId) }}</p>
-                </ion-label>
-              </ion-item>
-            </ion-radio-group>
-          </ion-list>
-          <ion-list v-if="hasRelatedShops" lines="full">
-            <ion-item>
-              <ion-label>
-                {{ translate("Verify related Shopify stores") }}
-                <p>{{ translate("Make sure these Shopify stores use the same catalog before continuing.") }}</p>
-              </ion-label>
-            </ion-item>
-            <ion-item v-for="relatedShop in relatedShops" :key="relatedShop.shopId">
-              <ion-label>
-                {{ relatedShop.name || relatedShop.shopId }}
-                <p>{{ relatedShop.shopId === id ? translate("New shop") : translate("Connected shop") }}</p>
-              </ion-label>
-              <ion-note slot="end">{{ relatedShop.createdDate || relatedShop.createdStamp || translate("Created date unavailable") }}</ion-note>
-            </ion-item>
-          </ion-list>
-          <ion-item
-            lines="full"
-            button
-            :disabled="!draft.selectedProductStoreId || productStoreLocked"
-            @click="toggleProductStoreVerification()"
-          >
-            <ion-checkbox
-              :checked="draft.productStoreVerified"
-              :disabled="!draft.selectedProductStoreId || productStoreLocked"
-              label-placement="end"
-              data-testid="product-store-verification"
-            >
-              {{ translate("I have verified that these Shopify stores are part of the selected Product Store.") }}
-            </ion-checkbox>
-          </ion-item>
-          <ion-card-content>
-            <ion-button fill="clear" @click="goBack()">{{ translate("Back") }}</ion-button>
-            <ion-button expand="block" :disabled="nextDisabled || isSaving" @click="goNext()" data-testid="product-store-next">
-              {{ translate("Next") }}
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-
-        <ion-card v-if="currentStep === 'identifier'">
-          <ion-card-header>
-            <ion-card-title>{{ translate("Confirm internal name mapping") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("The identifier controls how Shopify products match HotWax products.") }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-list v-if="identifierLocked" lines="full">
-            <ion-item>
-              <ion-label>
-                {{ translate("This setting cannot be changed because this Product Store already has synced products.") }}
-              </ion-label>
-            </ion-item>
-          </ion-list>
-          <ion-list lines="full">
-            <ion-radio-group :value="draft.selectedIdentifierEnumId" @ionChange="handleIdentifierChange($event.detail.value)">
-              <ion-item v-for="identifier in identifierOptions" :key="identifier.enumId">
-                <ion-radio slot="start" :value="identifier.enumId" :disabled="identifierLocked" />
-                <ion-label>
-                  {{ identifier.description || identifier.enumId }}
-                  <p v-if="identifier.enumId === recommendedIdentifierEnumId">{{ translate("Recommended") }}</p>
-                </ion-label>
-              </ion-item>
-            </ion-radio-group>
-          </ion-list>
-          <ion-list v-if="hasRelatedShops" lines="full">
-            <ion-item v-for="relatedShop in relatedShops" :key="relatedShop.shopId">
-              <ion-label>
-                {{ relatedShop.name || relatedShop.shopId }}
-                <p>{{ relatedShop.shopId === id ? translate("New shop") : translate("Connected shop") }}</p>
-              </ion-label>
-            </ion-item>
-          </ion-list>
-          <ion-card-content>
-            <ion-button fill="clear" @click="goBack()">{{ translate("Back") }}</ion-button>
-            <ion-button expand="block" :disabled="nextDisabled || isSaving" @click="goNext()" data-testid="identifier-next">
-              {{ translate("Next") }}
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-
-        <ion-card v-if="currentStep === 'product-types'">
-          <ion-card-header>
-            <ion-card-title>{{ translate("Map product types") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("Review the Shopify product type mappings before import.") }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-list lines="full">
-            <ion-item v-if="!productTypeMappings.length">
-              <ion-label>
-                {{ translate("No product type mappings found") }}
-                <p>{{ translate("Product type mapping is informational for this first version.") }}</p>
-              </ion-label>
-            </ion-item>
-            <ion-item v-for="mapping in productTypeMappings" :key="`${mapping.mappedKey}-${mapping.mappedValue}`">
-              <ion-label>
-                {{ mapping.mappedKey }}
-                <p>{{ mapping.mappedValue }}</p>
-              </ion-label>
-            </ion-item>
-          </ion-list>
-          <ion-card-content>
-            <ion-button fill="clear" @click="goBack()">{{ translate("Back") }}</ion-button>
-            <ion-button expand="block" :disabled="nextDisabled" @click="goNext()" data-testid="finish-configuration">
-              {{ translate("Finish configuration") }}
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-
-        <ion-card v-if="currentStep === 'review'">
-          <ion-card-header>
-            <ion-card-title>{{ translate("Review product import") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("Compare Shopify and HotWax catalog state before starting the first import.") }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-card-content v-if="isReviewLoading">
-            <ion-spinner name="crescent" />
-          </ion-card-content>
-          <ion-list v-else lines="full">
-            <ion-item>
-              <ion-label>{{ translate("Shopify products") }}</ion-label>
-              <ion-note slot="end">{{ reviewStats.shopifyProductCount }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("Shopify variants") }}</ion-label>
-              <ion-note slot="end">{{ reviewStats.shopifyVariantCount }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("HotWax products") }}</ion-label>
-              <ion-note slot="end">{{ reviewStats.omsProductCount }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("HotWax variants") }}</ion-label>
-              <ion-note slot="end">{{ reviewStats.omsVariantCount }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("Linked Shopify stores") }}</ion-label>
-              <ion-note slot="end">{{ reviewStats.linkedShopCount }}</ion-note>
-            </ion-item>
-          </ion-list>
-          <ion-card-content>
-            <ion-button fill="clear" @click="goBack()">{{ translate("Back") }}</ion-button>
-            <ion-button expand="block" fill="outline" :disabled="!reviewReady" @click="openMistakeModal()" data-testid="mistake-check">
-              {{ translate("Am I making a mistake?") }}
-            </ion-button>
-            <ion-button expand="block" :disabled="!reviewReady" @click="openStartSyncModal()" data-testid="run-product-import">
-              {{ translate("Run product import") }}
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-
-        <template v-if="currentStep === 'progress'">
-          <ion-card>
-            <ion-card-header>
-              <ion-card-title>{{ translate("Track sync progress") }}</ion-card-title>
-              <ion-card-subtitle>{{ translate("Monitor each step as products get imported from Shopify") }}</ion-card-subtitle>
-            </ion-card-header>
-            <ion-list lines="full">
-              <ion-item v-for="step in progressSteps" :key="step.name">
-                <ion-label>
-                  {{ step.name }}
-                  <p v-if="step.caption">{{ step.caption }}</p>
-                </ion-label>
-                <ion-badge slot="end" :color="step.color">{{ step.status }}</ion-badge>
-              </ion-item>
-            </ion-list>
-          </ion-card>
-          <ion-card>
-            <ion-card-header>
-              <ion-card-title>{{ translate("Bulk operation") }}</ion-card-title>
-              <ion-card-subtitle>{{ translate("Status from the backend sync lifecycle") }}</ion-card-subtitle>
-            </ion-card-header>
-            <ion-progress-bar v-if="progressStatus === 'running'" type="indeterminate" />
-            <ion-list lines="full">
-              <ion-item>
-                <ion-label>{{ translate("System message") }}</ion-label>
-                <ion-note slot="end">{{ progressState.systemMessageState }}</ion-note>
-              </ion-item>
-              <ion-item>
-                <ion-label>{{ translate("Sync status") }}</ion-label>
-                <ion-badge slot="end" :color="progressBadgeColor">{{ progressStatus }}</ion-badge>
-              </ion-item>
-              <ion-item>
-                <ion-label>{{ translate("Bulk operation id") }}</ion-label>
-                <ion-note slot="end">{{ progressState.bulkOperationId || translate("Not available") }}</ion-note>
-              </ion-item>
-              <ion-item>
-                <ion-label>{{ translate("Queued jobs ahead") }}</ion-label>
-                <ion-note slot="end">{{ progressState.queuedJobsAhead || 0 }}</ion-note>
-              </ion-item>
-            </ion-list>
-            <ion-card-content>
-              <ion-button expand="block" fill="outline" @click="loadProgress()">{{ translate("Refresh status") }}</ion-button>
-              <ion-button expand="block" :disabled="!reconcileAvailable" @click="goNext()" data-testid="reconcile-sync">
-                {{ translate("Reconcile product sync") }}
-              </ion-button>
-            </ion-card-content>
-          </ion-card>
-        </template>
-
-        <ion-card v-if="currentStep === 'reconcile'">
-          <ion-card-header>
-            <ion-card-title>{{ translate("Product sync setup complete") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("Shopify product sync now runs automatically every 15 minutes.") }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-list lines="full">
-            <ion-item>
-              <ion-label>{{ translate("Shopify products") }}</ion-label>
-              <ion-note slot="end">{{ reviewStats.shopifyProductCount }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("HotWax products") }}</ion-label>
-              <ion-note slot="end">{{ reviewStats.omsProductCount }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>{{ translate("Completion status") }}</ion-label>
-              <ion-badge slot="end" color="success">{{ translate("Complete") }}</ion-badge>
-            </ion-item>
-          </ion-list>
-        </ion-card>
-
-        <ion-modal :is-open="showMistakeModal" @didDismiss="showMistakeModal = false">
+        <ion-modal :is-open="showModeModal" @didDismiss="showModeModal = false">
           <ion-header>
             <ion-toolbar>
-              <ion-title>{{ translate("Am I making a mistake?") }}</ion-title>
+              <ion-title>{{ translate("Product sync mode") }}</ion-title>
               <ion-buttons slot="end">
-                <ion-button @click="showMistakeModal = false">{{ translate("Close") }}</ion-button>
+                <ion-button @click="showModeModal = false">{{ translate("Close") }}</ion-button>
               </ion-buttons>
             </ion-toolbar>
           </ion-header>
           <ion-content>
             <ion-card>
               <ion-card-header>
-                <ion-card-title>{{ preflightTitle }}</ion-card-title>
-                <ion-card-subtitle>{{ preflightSubtitle }}</ion-card-subtitle>
+                <ion-card-title>{{ translate("Product sync mode") }}</ion-card-title>
               </ion-card-header>
               <ion-list lines="full">
-                <ion-item v-for="item in preflightResult.items" :key="item.label || item.id">
-                  <ion-label>
-                    {{ item.label || item.name || item.identifier }}
-                    <p>{{ item.detail || item.identifier || item.status }}</p>
-                  </ion-label>
-                  <ion-badge slot="end" :color="getPreflightBadgeColor(item.status)">{{ item.status }}</ion-badge>
+                <ion-item>
+                  <ion-segment :value="experienceMode" @ionChange="handleExperienceModeChange($event.detail.value)" data-testid="product-sync-mode">
+                    <ion-segment-button value="first-time">
+                      <ion-label>{{ translate("First-time setup") }}</ion-label>
+                    </ion-segment-button>
+                    <ion-segment-button value="returning">
+                      <ion-label>{{ translate("Returning user") }}</ion-label>
+                    </ion-segment-button>
+                    <ion-segment-button value="auto">
+                      <ion-label>{{ translate("Auto") }}</ion-label>
+                    </ion-segment-button>
+                  </ion-segment>
+                </ion-item>
+                <ion-item>
+                  <ion-label>{{ translate("Shopify shop products") }}</ion-label>
+                  <ion-note slot="end">{{ shopifyShopProductCount }}</ion-note>
+                </ion-item>
+                <ion-item>
+                  <ion-label>{{ translate("Active view") }}</ion-label>
+                  <ion-badge slot="end" :color="activeExperienceMode === 'returning' ? 'primary' : 'medium'">{{ activeExperienceModeLabel }}</ion-badge>
                 </ion-item>
               </ion-list>
-              <ion-item
-                v-if="preflightRequiresConfirmation"
-                lines="full"
-                button
-                @click="togglePreflightWarningConfirmation()"
-              >
-                <ion-checkbox
-                  :checked="preflightWarningConfirmed"
-                  label-placement="end"
-                  data-testid="preflight-warning-confirmation"
-                >
-                  {{ translate("I reviewed the warning and want to continue.") }}
-                </ion-checkbox>
-              </ion-item>
-              <ion-card-content v-if="preflightRequiresConfirmation">
-                <ion-button expand="block" :disabled="!preflightWarningConfirmed" @click="acceptPreflightAndOpenStartSync()" data-testid="accept-preflight-warning">
-                  {{ translate("Continue to import") }}
-                </ion-button>
-              </ion-card-content>
-            </ion-card>
-          </ion-content>
-        </ion-modal>
-
-        <ion-modal :is-open="showStartSyncModal" @didDismiss="showStartSyncModal = false">
-          <ion-header>
-            <ion-toolbar>
-              <ion-title>{{ translate("Start product sync") }}</ion-title>
-              <ion-buttons slot="end">
-                <ion-button @click="showStartSyncModal = false">{{ translate("Close") }}</ion-button>
-              </ion-buttons>
-            </ion-toolbar>
-          </ion-header>
-          <ion-content>
-            <ion-card>
-              <ion-card-header>
-                <ion-card-title>{{ translate("First product sync cannot be cancelled") }}</ion-card-title>
-                <ion-card-subtitle>{{ translate("Incorrect Shopify store to Product Store mapping can corrupt catalog state.") }}</ion-card-subtitle>
-              </ion-card-header>
-              <ion-item lines="full" button @click="toggleStartConfirmation()">
-                <ion-checkbox
-                  :checked="draft.startConfirmed"
-                  label-placement="end"
-                  data-testid="start-sync-confirmation"
-                >
-                  {{ translate("I understand and want to start the first product sync.") }}
-                </ion-checkbox>
-              </ion-item>
-              <ion-card-content>
-                <ion-button expand="block" :disabled="startSyncDisabled || isSaving" @click="startProductSync()" data-testid="start-product-sync">
-                  {{ translate("Start product sync") }}
-                </ion-button>
-              </ion-card-content>
             </ion-card>
           </ion-content>
         </ion-modal>
@@ -387,9 +146,7 @@ import {
   IonCard,
   IonCardContent,
   IonCardHeader,
-  IonCardSubtitle,
   IonCardTitle,
-  IonCheckbox,
   IonContent,
   IonHeader,
   IonItem,
@@ -399,16 +156,20 @@ import {
   IonNote,
   onIonViewWillEnter,
   IonPage,
-  IonProgressBar,
-  IonRadio,
-  IonRadioGroup,
+  IonSegment,
+  IonSegmentButton,
   IonSpinner,
   IonTitle,
-  IonToolbar
+  IonToolbar,
+  alertController
 } from "@ionic/vue";
+
 import { translate } from "@/i18n";
 import { computed, defineProps, onBeforeUnmount, ref, watch } from "vue";
 import { useStore } from "vuex";
+import { useRouter } from "vue-router";
+import ShopifyProductSyncReturningView from "@/components/ShopifyProductSyncReturningView.vue";
+import ShopifyProductSyncWizardView from "@/components/ShopifyProductSyncWizardView.vue";
 import { ProductStoreService } from "@/services/ProductStoreService";
 import { ShopifyService } from "@/services/ShopifyService";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
@@ -421,27 +182,41 @@ import {
   nextProductSyncStep,
   normalizeProductSyncStatus,
   previousProductSyncStep,
+  ProductSyncExperienceMode,
   ProductSyncWizardStep,
   requiresPreflightConfirmation,
+  resolveProductSyncExperienceMode,
   selectProductStore,
   shouldShowProductSyncProgress
 } from "@/utils/shopifyProductSyncWizard";
 import { hasError, showToast } from "@/utils";
 import logger from "@/logger";
+import useServiceJob from "@/composables/useServiceJob";
+import { useSystemMessage } from "@/composables/useSystemMessage";
+import { useProductUpdateHistory } from "@/composables/useProductUpdateHistory";
 
 const props = defineProps(["id"]);
 const store = useStore();
+const router = useRouter();
+const { jobs } = useServiceJob();
+const { fetchSystemMessages, fetchMdmLogBySystemMessageId, currentMdmLog, errorLogs } = useSystemMessage();
+const { productUpdateHistories, fetchProductUpdateHistory } = useProductUpdateHistory();
+
+const latestSystemMessage = ref<any>(null);
 const isLoading = ref(true);
 const isSaving = ref(false);
 const isReviewLoading = ref(false);
+const showModeModal = ref(false);
 const showMistakeModal = ref(false);
 const showStartSyncModal = ref(false);
 const preflightLoaded = ref(false);
 const preflightAccepted = ref(false);
 const preflightWarningConfirmed = ref(false);
+const experienceMode = ref<ProductSyncExperienceMode>("auto");
 const currentStep = ref<ProductSyncWizardStep>("home");
 const draft = ref(createProductSyncWizardDraft());
 const relatedShops = ref<any[]>([]);
+const shopifyShopProductCount = ref(0);
 const syncJobId = ref("");
 const setupState = ref<any>({
   hasLinkedOmsProducts: false,
@@ -475,7 +250,6 @@ let progressPoll: number | undefined;
 
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
 const productStores = computed(() => store.getters["productStore/getProductStores"] || []);
-const productIdentifiers = computed(() => store.getters["util/getProductIdentifiers"] || []);
 const productTypeMappings = computed(() => store.getters["shopify/getShopifyTypeMappings"]("SHOPIFY_PRODUCT_TYPE"));
 const productTypeMappingsLabel = computed(() => {
   return productTypeMappings.value.length ? `${productTypeMappings.value.length} ${translate("mappings")}` : translate("Setup");
@@ -486,17 +260,12 @@ const selectedProductStore = computed(() => {
 const selectedProductStoreName = computed(() => {
   return getProductStoreName(selectedProductStore.value) || shop.value.productStoreId || translate("Not linked");
 });
-const identifierOptions = computed(() => {
-  if (productIdentifiers.value.length) {
-    return productIdentifiers.value;
-  }
+const identifierOptions = ref([
+  { enumId: "SHOPIFY_PRODUCT_SKU", description: "SKU" },
+  { enumId: "SHOPIFY_PRODUCT_UPCA", description: "UPCA / Barcode" },
+  { enumId: "SHOPIFY_PRODUCT_ID", description: "Shopify internal id" }
+]);
 
-  return [
-    { enumId: "SHOPIFY_PRODUCT_SKU", description: "SKU" },
-    { enumId: "SHOPIFY_PRODUCT_UPCA", description: "UPCA / Barcode" },
-    { enumId: "SHOPIFY_PRODUCT_ID", description: "Shopify internal id" }
-  ];
-});
 const recommendedIdentifierEnumId = computed(() => {
   const skuIdentifier = identifierOptions.value.find((identifier: any) => {
     return identifier.enumId.includes("SKU") || (identifier.description || "").toLowerCase() === "sku";
@@ -511,6 +280,43 @@ const productStoreLocked = computed(() => !!setupState.value.productStoreLocked 
 const identifierLocked = computed(() => !!setupState.value.identifierLocked || !!setupState.value.hasLinkedOmsProducts);
 const hasRelatedShops = computed(() => {
   return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);
+});
+const activeExperienceMode = computed(() => {
+  return resolveProductSyncExperienceMode(experienceMode.value, shopifyShopProductCount.value);
+});
+const activeExperienceModeLabel = computed(() => {
+  return activeExperienceMode.value === "returning" ? translate("Returning user") : translate("First-time setup");
+});
+const lastSyncLabel = computed(() => {
+  return progressState.value.updatedAt || progressState.value.lastUpdatedStamp || translate("Sync time");
+});
+const syncJobObj = computed(() => {
+  if (syncJobId.value) {
+    const job = jobs.value.find((j: any) => j.jobName === syncJobId.value);
+    if (job) return job;
+  }
+
+  const possibleRemoteIds = [
+    shop.value.systemMessageRemoteId,
+    latestSystemMessage.value?.systemMessageRemoteId,
+    shop.value.shopifyConfigId,
+    props.id
+  ].filter(Boolean);
+
+  return jobs.value.find((job: any) => {
+    return job.instanceOfProductId === "QUEUE_UPD_PRD_FEED" &&
+      (job.serviceJobParameters || []).some((param: any) => possibleRemoteIds.includes(param.parameterValue));
+  });
+});
+
+
+
+
+const isSyncScheduled = computed(() => {
+  return !!syncJobObj.value?.cronString;
+});
+const nextSyncLabel = computed(() => {
+  return syncJobObj.value?.cronString || translate("Not scheduled");
 });
 const reviewReady = computed(() => {
   return !!reviewStats.value.loaded && !isReviewLoading.value;
@@ -576,6 +382,98 @@ const progressSteps = computed(() => {
     }
   ];
 });
+const returningProgressSteps = computed(() => {
+  if (syncJobId.value) {
+    return progressSteps.value;
+  }
+
+  const msg = latestSystemMessage.value;
+  let reqCaption = nextSyncLabel.value;
+  let reqStatus = translate("Sent");
+  let reqColor = "primary";
+
+  if (msg) {
+    reqCaption = msg.statusId;
+    if (msg.statusId === "SmsgError" || msg.statusId === "SmsgRejected") {
+      reqStatus = translate("Error");
+      reqColor = "danger";
+    } else if (msg.statusId === "SmsgConsumed") {
+      reqStatus = translate("Complete");
+      reqColor = "success";
+    } else {
+      reqStatus = translate("Sent");
+      reqColor = "primary";
+    }
+  } else {
+    reqStatus = translate("Pending");
+    reqColor = "medium";
+  }
+
+  let mdmCaption = currentMdmLog.value?.totalRecordCount ? `${currentMdmLog.value.totalRecordCount}` : "";
+  let mdmStatus = translate("Pending");
+  let mdmColor = "medium";
+
+  if (currentMdmLog.value?.statusId) {
+    if (currentMdmLog.value.statusId === "DmlSuccess") {
+      mdmStatus = translate("Complete");
+      mdmColor = "success";
+    } else if (currentMdmLog.value.statusId === "DmlError") {
+      mdmStatus = translate("Error");
+      mdmColor = "danger";
+    } else {
+      mdmStatus = translate("Running");
+      mdmColor = "primary";
+    }
+  }
+
+  return [
+    {
+      name: translate("Request product export from Shopify"),
+      caption: reqCaption,
+      status: reqStatus,
+      color: reqColor
+    },
+    {
+      name: translate("Process export request in Shopify"),
+      status: translate("Pending"),
+      color: "medium"
+    },
+    {
+      name: translate("Process exported file from Shopify"),
+      caption: mdmCaption,
+      status: mdmStatus,
+      color: mdmColor
+    },
+    {
+      name: translate("Complete"),
+      status: "",
+      color: "medium"
+    }
+  ];
+});
+const recentSyncUpdates = computed(() => {
+  return productUpdateHistories.value.map((history: any) => ({
+    id: history.productId,
+    internalName: history.diffs?.title || history.productId,
+    shopifyId: history.parentProductId || "N/A",
+    updatedTime: history.lastUpdatedStamp ? new Date(history.lastUpdatedStamp).toLocaleString() : translate("Recent"),
+    details: history.details || []
+  }));
+});
+
+
+const recentSyncErrors = computed(() => {
+  if (errorLogs.value && errorLogs.value.length) {
+    return errorLogs.value.map((err: any, index: number) => ({
+      id: err.id || err.internalName || err.shopifyId || `sync-error-${index}`,
+      internalName: err.internalName || translate("Unknown product"),
+      shopifyId: err.shopifyId || err.id || "N/A",
+      updatedTime: err.updatedTime || currentMdmLog.value?.createdDate || translate("Recent"),
+      errorContent: err.errorString || err.error || err.message || JSON.stringify(err)
+    }));
+  }
+  return [];
+});
 const preflightTitle = computed(() => {
   return requiresPreflightConfirmation(preflightResult.value)
     ? translate("Review possible catalog mismatch")
@@ -614,15 +512,29 @@ async function loadWizard() {
       await store.dispatch("shopify/fetchShopifyShops");
     }
 
+    const { fetchJobs, fetchJobDetail } = useServiceJob();
     await Promise.all([
       store.dispatch("productStore/fetchProductStores"),
-      store.dispatch("util/fetchProductIdentifiers"),
-      store.dispatch("shopify/fetchShopifyTypeMappings", "SHOPIFY_PRODUCT_TYPE")
+      store.dispatch("shopify/fetchShopifyTypeMappings", "SHOPIFY_PRODUCT_TYPE"),
+      fetchJobs()
     ]);
+
+
+    // Fetch details for QUEUE_UPD_PRD_FEED jobs to get parameters (needed to find the job for this shop)
+    const syncJobs = jobs.value.filter((job: any) => job.instanceOfProductId === "QUEUE_UPD_PRD_FEED" || (syncJobId.value && job.jobName === syncJobId.value));
+
+    await Promise.all(syncJobs.map(async (job: any) => {
+      const details = await fetchJobDetail(job.jobName);
+      Object.assign(job, details);
+    }));
+
 
     if (shop.value.productStoreId) {
       await store.dispatch("productStore/fetchProductStoreDetails", shop.value.productStoreId);
     }
+
+    await loadLatestSystemMessage();
+    await loadShopifyShopProductCount();
 
     setupState.value = await ShopifyProductSyncService.fetchSetupState({
       shopId: props.id,
@@ -661,6 +573,32 @@ async function loadWizard() {
   }
 }
 
+async function loadShopifyShopProductCount() {
+  const countState = await ShopifyProductSyncService.fetchShopifyShopProductCount({
+    shopId: props.id
+  });
+  shopifyShopProductCount.value = Number(countState.count || 0);
+}
+
+async function loadLatestSystemMessage() {
+  if (shop.value.systemMessageRemoteId) {
+    const messages = await fetchSystemMessages({
+      systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+      systemMessageRemoteId: shop.value.systemMessageRemoteId,
+      orderBy: "-initDate",
+      pageSize: 1
+    });
+
+    if (messages && messages.length > 0) {
+      latestSystemMessage.value = messages[0];
+      await fetchMdmLogBySystemMessageId(latestSystemMessage.value.systemMessageId);
+    }
+  }
+
+  await fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 });
+}
+
+
 async function loadProductStoreContext(productStoreId: string) {
   const context = await ShopifyProductSyncService.fetchProductStoreContext({
     shopId: props.id,
@@ -690,6 +628,51 @@ function handleProductStoreChange(productStoreId: string) {
 function handleIdentifierChange(identifierEnumId: string) {
   if (identifierLocked.value) return;
   draft.value.selectedIdentifierEnumId = identifierEnumId;
+}
+
+function handleExperienceModeChange(mode: ProductSyncExperienceMode) {
+  if (!mode) return;
+  showModeModal.value = false;
+  window.setTimeout(() => {
+    experienceMode.value = mode;
+  }, 250);
+}
+
+async function runSyncJob(job: any) {
+  if (!job?.jobName) return;
+
+  const jobAlert = await alertController.create({
+    header: translate("Run now"),
+    message: translate("Running this job now will not replace this job. A copy of this job will be created and run immediately. You may not be able to reverse this action."),
+    buttons: [
+      {
+        text: translate("Cancel"),
+        role: "cancel",
+      },
+      {
+        text: translate("Run now"),
+        handler: async () => {
+          const { runNow } = useServiceJob();
+          try {
+            await runNow(job.jobName);
+            showToast(translate("Job has been scheduled to run now"));
+          } catch (err) {
+            logger.error("Failed to run job now", err);
+            showToast(translate("Failed to run job"));
+          }
+        }
+      }
+    ]
+  });
+
+  await jobAlert.present();
+}
+
+
+
+function openHistory() {
+
+  router.push(`/shopify-connection-details/${props.id}/product-sync/history`);
 }
 
 async function goNext() {
@@ -896,9 +879,10 @@ async function loadReconcile() {
   }
 }
 
-function getPreflightBadgeColor(status: string) {
-  if (status === "matched") return "success";
-  if (status === "missing" || status === "duplicate" || status === "conflicting" || status === "conflict") return "danger";
-  return "warning";
-}
 </script>
+
+<style>
+
+
+
+</style>

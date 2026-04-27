@@ -12,6 +12,7 @@ import { useAuthStore } from '@hotwax/dxp-components'
 import { resetConfig, updateToken, updateInstanceUrl } from '@/adapter'
 import router from '@/router'
 import { getServerPermissionsFromRules, prepareAppPermissions, resetPermissions, setPermissions } from "@/authorization"
+import useServiceJob from "@/composables/useServiceJob"
 
 const actions: ActionTree<UserState, RootState> = {
 
@@ -73,6 +74,7 @@ const actions: ActionTree<UserState, RootState> = {
       commit(types.USER_INFO_UPDATED, userProfile);
       commit(types.USER_PERMISSIONS_UPDATED, appPermissions);
       this.dispatch('util/fetchOrganizationPartyId');
+      useServiceJob().fetchJobs();
       emitter.emit("dismissLoader")
 
       const productStoreId = router.currentRoute.value.query.productStoreId

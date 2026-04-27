@@ -6,6 +6,7 @@ import {
   createProductSyncWizardDraft,
   getReviewImportAction,
   requiresPreflightConfirmation,
+  resolveProductSyncExperienceMode,
   selectProductStore,
   shouldShowProductSyncProgress
 } from "../../src/utils/shopifyProductSyncWizard";
@@ -155,5 +156,12 @@ describe("shopify product sync wizard state", () => {
     assert.equal(requiresPreflightConfirmation({ matched: 4, sampled: 10 }), true);
     assert.equal(requiresPreflightConfirmation({ matched: 6, sampled: 10 }), true);
     assert.equal(requiresPreflightConfirmation({ matched: 7, sampled: 10 }), false);
+  });
+
+  test("experience mode can be forced or resolved from Shopify shop product count", () => {
+    assert.equal(resolveProductSyncExperienceMode("first-time", 10), "first-time");
+    assert.equal(resolveProductSyncExperienceMode("returning", 0), "returning");
+    assert.equal(resolveProductSyncExperienceMode("auto", 0), "first-time");
+    assert.equal(resolveProductSyncExperienceMode("auto", 1), "returning");
   });
 });

@@ -26,6 +26,8 @@
     "axios-cache-adapter": "^2.7.3",
     "boon-js": "^2.0.3",
     "core-js": "^3.6.5",
+    "cron-parser": "^5.5.0",
+    "cronstrue": "^3.14.0",
     "http-status-codes": "^2.1.4",
     "luxon": "^2.3.0",
     "mitt": "^2.1.0",

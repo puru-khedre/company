@@ -43,6 +43,47 @@ export interface ShopifyProductSyncProgressState {
   backendAvailable?: boolean;
 }
 
+export interface ShopifyShopProductCount {
+  count: number;
+  backendAvailable?: boolean;
+}
+
+const STATUS_COMPLETED = "completed";
+const STATUS_COMPLETED_WITH_ERRORS = "completed-with-errors";
+
+export interface ShopifyProductSyncHistoryOperation {
+  id: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  statusLabel: string;
+  metricValue?: number | string;
+  metricLabel?: string;
+  actionLabel?: string;
+  detailType: string;
+}
+
+export interface ShopifyProductSyncHistoryRun {
+  id: string;
+  systemMessageId: string;
+  createdTime: string;
+  bulkOperationStatus: string;
+  bulkOperationStatusLabel: string;
+  mdmStatus: string;
+  mdmStatusLabel: string;
+  bulkOperationId: string;
+  objectCount: number;
+  mdmImportId: string;
+  totalRecordCount: number;
+  failedRecordCount: number;
+  operations: ShopifyProductSyncHistoryOperation[];
+}
+
+export interface ShopifyProductSyncHistoryState {
+  runs: ShopifyProductSyncHistoryRun[];
+  backendAvailable?: boolean;
+}
+
 const fallbackSetupState = (payload: any): ShopifyProductSyncSetupState => ({
   hasLinkedOmsProducts: false,
   productStoreLocked: false,
@@ -85,6 +126,104 @@ const fallbackProgress = (
   backendAvailable: false
 });
 
+const fallbackHistory = (): ShopifyProductSyncHistoryState => ({
+  runs: [
+    {
+      id: "sync-run-1001",
+      systemMessageId: "SMSG-1001",
+      createdTime: "2026-04-27 09:15",
+      bulkOperationStatus: "completed",
+      bulkOperationStatusLabel: "Completed",
+      mdmStatus: "completed-with-errors",
+      mdmStatusLabel: "Completed with errors",
+      bulkOperationId: "gid://shopify/BulkOperation/1001",
+      objectCount: 50,
+      mdmImportId: "MDM-1001",
+      totalRecordCount: 50,
+      failedRecordCount: 5,
+      operations: [
+        {
+          id: "sync-run-1001-system",
+          title: "System message id",
+          subtitle: "Created time",
+          status: STATUS_COMPLETED,
+          statusLabel: "Completed",
+          detailType: "Shopify bulk operation"
+        },
+        {
+          id: "sync-run-1001-shopify",
+          title: "Shopify bulk operation Id",
+          subtitle: "Created time",
+          status: STATUS_COMPLETED,
+          statusLabel: "Completed",
+          metricValue: 50,
+          metricLabel: "object count",
+          actionLabel: "view query",
+          detailType: "Shopify bulk operation"
+        },
+        {
+          id: "sync-run-1001-mdm",
+          title: "HotWax bulk import id",
+          subtitle: "Created time",
+          status: STATUS_COMPLETED_WITH_ERRORS,
+          statusLabel: "Completed with errors",
+          metricValue: 50,
+          metricLabel: "total record count",
+          actionLabel: "5 failed record count",
+          detailType: "MDM bulk operation"
+        }
+      ]
+    },
+    {
+      id: "sync-run-1000",
+      systemMessageId: "SMSG-1000",
+      createdTime: "2026-04-27 08:45",
+      bulkOperationStatus: "completed",
+      bulkOperationStatusLabel: "Completed",
+      mdmStatus: "completed",
+      mdmStatusLabel: "Completed",
+      bulkOperationId: "gid://shopify/BulkOperation/1000",
+      objectCount: 44,
+      mdmImportId: "MDM-1000",
+      totalRecordCount: 44,
+      failedRecordCount: 0,
+      operations: [
+        {
+          id: "sync-run-1000-system",
+          title: "System message id",
+          subtitle: "Created time",
+          status: STATUS_COMPLETED,
+          statusLabel: "Completed",
+          detailType: "Shopify bulk operation"
+        },
+        {
+          id: "sync-run-1000-shopify",
+          title: "Shopify bulk operation Id",
+          subtitle: "Created time",
+          status: STATUS_COMPLETED,
+          statusLabel: "Completed",
+          metricValue: 44,
+          metricLabel: "object count",
+          actionLabel: "view query",
+          detailType: "Shopify bulk operation"
+        },
+        {
+          id: "sync-run-1000-mdm",
+          title: "HotWax bulk import id",
+          subtitle: "Created time",
+          status: STATUS_COMPLETED,
+          statusLabel: "Completed",
+          metricValue: 44,
+          metricLabel: "total record count",
+          actionLabel: "0 failed record count",
+          detailType: "MDM bulk operation"
+        }
+      ]
+    }
+  ],
+  backendAvailable: false
+});
+
 async function callBackend<T>(request: any, fallback: T): Promise<T> {
   try {
     const resp = await api(request) as any;
@@ -102,6 +241,19 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
       method: "get"
     },
     fallbackSetupState(payload)
+  );
+};
+
+const fetchShopifyShopProductCount = async (payload: any): Promise<ShopifyShopProductCount> => {
+  return callBackend(
+    {
+      url: `oms/shopifyShops/${payload.shopId}/productSync/shopifyShopProducts/count`,
+      method: "get"
+    },
+    {
+      count: 0,
+      backendAvailable: false
+    }
   );
 };
 
@@ -195,12 +347,32 @@ const fetchReconcile = async (payload: any): Promise<any> => {
   );
 };
 
+const fetchHistory = async (payload: any): Promise<ShopifyProductSyncHistoryState> => {
+  const history = await callBackend(
+    {
+      url: `oms/shopifyShops/${payload.shopId}/productSync/history`,
+      method: "get",
+      params: {
+        limit: 20
+      }
+    },
+    fallbackHistory()
+  );
+
+  return {
+    ...history,
+    runs: (history.runs || []).slice(0, 20)
+  };
+};
+
 export const ShopifyProductSyncService = {
+  fetchShopifyShopProductCount,
   fetchSetupState,
   fetchProductStoreContext,
   fetchReviewStats,
   fetchPreflight,
   startInitialImport,
   fetchProgress,
-  fetchReconcile
+  fetchReconcile,
+  fetchHistory
 };

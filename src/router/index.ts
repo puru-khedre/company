@@ -110,6 +110,13 @@ const routes: Array<RouteRecordRaw> = [
     beforeEnter: authGuard,
   },
   {
+    path: '/shopify-connection-details/:id/product-sync/history',
+    name: 'ShopifyProductSyncHistory',
+    component: () => import('@/views/ShopifyProductSyncHistory.vue'),
+    props: true,
+    beforeEnter: authGuard,
+  },
+  {
     path: '/shopify-connection-details/:id/instance-details',
     name: 'ShopifyInstanceDetails',
     component: () => import('@/views/ShopifyShopDetails.vue'),
