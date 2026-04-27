@@ -8,16 +8,19 @@ import logger from "@/logger"
 
 const actions: ActionTree<ShopifyState, RootState> = {
   async fetchShopifyShops({ commit }) {
+    commit(types.SHOPIFY_FETCH_STATUS_UPDATED, { shops: 'pending' })
     let shops = [];
     try {
       const resp = await ShopifyService.fetchShopifyShops({ pageSize: 100 });
       if (!hasError(resp) && resp.data) {
         shops = resp.data;
+        commit(types.SHOPIFY_FETCH_STATUS_UPDATED, { shops: 'success', lastFetched: Date.now() })
       } else {
         throw resp.data;
       }
     } catch (error) {
       logger.error(error);
+      commit(types.SHOPIFY_FETCH_STATUS_UPDATED, { shops: 'error' })
     }
     commit(types.SHOPIFY_SHOPS_UPDATED, shops);
   },

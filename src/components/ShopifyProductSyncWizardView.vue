@@ -208,7 +208,7 @@
           }}</ion-card-subtitle>
       </ion-card-header>
       <ion-list lines="full">
-        <ion-item v-for="step in progressSteps" :key="step.name">
+        <ion-item v-for="step in progressSteps" :key="step.name" button detail @click="$emit('openStepDetails', step)">
           <ion-label>
             {{ step.name }}
             <p v-if="step.caption">{{ step.caption }}</p>
@@ -424,6 +424,7 @@ defineEmits([
   "loadProgress",
   "openMistakeModal",
   "openStartSyncModal",
+  "openStepDetails",
   "productStoreChange",
   "startProductSync",
   "togglePreflightWarningConfirmation",

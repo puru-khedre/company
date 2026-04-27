@@ -3,7 +3,7 @@
     <ion-card>
       <ion-card-header>
         <ion-card-title>{{ translate("Summary") }}</ion-card-title>
-        <ion-card-subtitle>{{ translate("Running every 15 min") }}</ion-card-subtitle>
+        <ion-card-subtitle>{{ summarySubtitle }}</ion-card-subtitle>
         <ion-buttons>
           <ion-button fill="clear" :disabled="!syncJobObj" @click="$emit('run-job', syncJobObj)">
 
@@ -22,12 +22,13 @@
           <ion-label>{{ translate("Last sync") }}</ion-label>
           <ion-note slot="end">{{ lastSyncLabel }}</ion-note>
         </ion-item>
-        <ion-item>
+        <ion-item button :detail="isSyncScheduled" @click="isSyncScheduled ? $emit('openSyncJobDetails') : undefined">
           <ion-label>{{ translate("Next sync time") }}
             <p v-if="isSyncScheduled">{{ nextSyncLabel }}</p>
           </ion-label>
-          <ion-note slot="end" v-if="isSyncScheduled">4 mins</ion-note>
-          <ion-button slot="end" fill="outline" color="primary" v-else @click="openScheduleModal()">{{ translate("Schedule") }}</ion-button>
+          <ion-badge slot="end" color="warning" v-if="isSyncPaused">{{ translate("Paused") }}</ion-badge>
+          <ion-note slot="end" v-else-if="isSyncScheduled">{{ nextSyncRelativeLabel }}</ion-note>
+          <ion-button slot="end" fill="outline" color="primary" v-else @click.stop="openScheduleModal()">{{ translate("Schedule") }}</ion-button>
         </ion-item>
         <ion-item>
           <ion-label>{{ translate("Product store") }}</ion-label>
@@ -51,10 +52,11 @@
         </ion-buttons>
       </ion-card-header>
       <ion-list lines="full">
-        <ion-item v-for="step in progressSteps" :key="step.name">
+        <ion-item v-for="step in progressSteps" :key="step.name" button detail @click="$emit('openStepDetails', step)">
           <ion-label>
             {{ step.name }}
             <p v-if="step.caption">{{ step.caption }}</p>
+            <p v-if="step.id">{{ translate("ID") }}: {{ step.id }}</p>
           </ion-label>
           <ion-badge v-if="step.status" slot="end" :color="step.color">{{ step.status }}</ion-badge>
         </ion-item>
@@ -204,9 +206,12 @@ import ShopifyProductSyncActionsPopover from "./ShopifyProductSyncActionsPopover
 const props = defineProps<{
 
   isSyncScheduled?: boolean
+  isSyncPaused?: boolean
   lastSyncLabel: string
   nextSyncLabel: string
-  progressSteps: Array<{ name: string, caption?: string, status?: string, color?: string }>
+  nextSyncRelativeLabel: string
+  summarySubtitle: string
+  progressSteps: Array<{ name: string, caption?: string, status?: string, color?: string, type?: string, id?: string }>
   recentSyncErrors: Array<{ id: string, internalName: string, shopifyId: string, updatedTime: string, errorContent: string }>
   recentSyncUpdates: Array<{
     id: string,
@@ -219,14 +224,14 @@ const props = defineProps<{
   unsyncedUpdatesCount: number | string
   syncJobObj?: any
 }>();
-const emit = defineEmits(["openHistory", "scheduleSync", "run-job", "openUnsyncedUpdates"]);
+const emit = defineEmits(["openHistory", "scheduleSync", "run-job", "openUnsyncedUpdates", "openSyncJobDetails", "openStepDetails", "togglePauseSyncJob"]);
 
 
 
 async function openScheduleModal() {
   const scheduleModal = await modalController.create({
     component: ScheduleModal,
-    componentProps: { cronExpression: "0 0/15 * * *" },
+    componentProps: { cronExpression: props.syncJobObj?.cronExpression || "0 0/15 * * *" },
     showBackdrop: true,
     swipeToClose: true
   });
@@ -241,6 +246,9 @@ async function openScheduleModal() {
 async function openActionsPopover(event: Event) {
   const popover = await popoverController.create({
     component: ShopifyProductSyncActionsPopover,
+    componentProps: {
+      isPaused: props.isSyncPaused
+    },
     event,
     showBackdrop: false
   });
@@ -250,9 +258,9 @@ async function openActionsPopover(event: Event) {
   if (data?.action === 'reschedule') {
     openScheduleModal();
   } else if (data?.action === 'pause') {
-    // Handle pause
-    console.log("Pause sync requested");
-    // typically would call a service to unschedule/disable the job
+    emit("togglePauseSyncJob", true);
+  } else if (data?.action === 'resume') {
+    emit("togglePauseSyncJob", false);
   }
 }
 

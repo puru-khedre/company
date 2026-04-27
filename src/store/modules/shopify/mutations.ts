@@ -24,6 +24,9 @@ const mutations: MutationTree <ShopifyState> = {
     state.shopifyTypeMappings = {}
     state.shopifyShopsCarrierShipments = {}
     state.shopifyShopsLocations = {}
+  },
+  [types.SHOPIFY_FETCH_STATUS_UPDATED] (state, payload) {
+    state.fetchStatus = { ...state.fetchStatus, ...payload }
   }
 }
 export default mutations;

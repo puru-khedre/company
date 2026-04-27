@@ -12,7 +12,11 @@ const shopifyModule: Module <ShopifyState, RootState> = {
     current: {},
     shopifyTypeMappings: {},
     shopifyShopsCarrierShipments: {},
-    shopifyShopsLocations: {}
+    shopifyShopsLocations: {},
+    fetchStatus: {
+      shops: 'none',
+      lastFetched: 0
+    }
   },
   getters,
   actions,
