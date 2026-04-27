@@ -15,8 +15,8 @@ export interface ShopifyProductSyncSetupState {
 export interface ShopifyProductSyncReviewStats {
   shopifyProductCount: number;
   shopifyVariantCount: number;
-  omsProductCount: number;
-  omsVariantCount: number;
+  omsProductCount?: number;
+  omsVariantCount?: number;
   linkedShopCount: number;
   loaded: boolean;
   backendAvailable?: boolean;
@@ -45,11 +45,102 @@ export interface ShopifyProductSyncProgressState {
 
 export interface ShopifyShopProductCount {
   count: number;
+  lastSyncedAt?: string;
   backendAvailable?: boolean;
+}
+
+export interface ShopifyProductUpdateSyncRunState {
+  latestSystemMessage?: any;
+  latestConfirmedSystemMessage?: any;
+  lastSyncedAt?: string;
+  systemMessageRemoteId: string;
+}
+
+export interface ShopifyUnsyncedProductUpdate {
+  id: string;
+  title: string;
+  handle: string;
+  updatedAt: string;
+  vendor: string;
+  productType: string;
+  status: string;
+  totalInventory?: number;
+  imageUrl?: string;
+  imageAltText?: string;
+  variantsCount: number;
+}
+
+interface ShopifyGraphqlResponse {
+  response?: any;
+  data?: any;
+  errors?: any[];
+}
+
+interface SystemMessagesResponse {
+  systemMessages?: any[];
+  systemMessagesCount?: number;
 }
 
 const STATUS_COMPLETED = "completed";
 const STATUS_COMPLETED_WITH_ERRORS = "completed-with-errors";
+const PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID = "BulkQueryShopifyProductUpdates";
+
+const LIVE_CATALOG_COUNTS_QUERY = `
+query WizardLiveCatalogCounts {
+  productsCount {
+    count
+    precision
+  }
+  productVariantsCount {
+    count
+    precision
+  }
+}
+`;
+
+function buildProductUpdatesCountQuery(fromDate?: string) {
+  const filterQuery = fromDate ? `(query: "updated_at:>'${escapeGraphqlString(fromDate)}'")` : "";
+  return `
+query UnsyncedProductUpdatesCount {
+  productsCount${filterQuery} {
+    count
+    precision
+  }
+}
+`;
+}
+
+function buildProductUpdatesListQuery(fromDate?: string, first = 100) {
+  const pageSize = Math.min(Math.max(Number(first) || 100, 1), 100);
+  const filterQuery = fromDate ? `, query: "updated_at:>'${escapeGraphqlString(fromDate)}'"` : "";
+  return `
+query UnsyncedProductUpdates {
+  products(first: ${pageSize}${filterQuery}, sortKey: UPDATED_AT, reverse: true) {
+    nodes {
+      id
+      title
+      handle
+      updatedAt
+      vendor
+      productType
+      status
+      totalInventory
+      variantsCount {
+        count
+      }
+      featuredMedia {
+        ... on MediaImage {
+          image {
+            url
+            altText
+          }
+        }
+      }
+    }
+  }
+}
+`;
+}
 
 export interface ShopifyProductSyncHistoryOperation {
   id: string;
@@ -90,16 +181,6 @@ const fallbackSetupState = (payload: any): ShopifyProductSyncSetupState => ({
   identifierLocked: false,
   selectedProductStoreId: payload?.shop?.productStoreId || "",
   selectedIdentifierEnumId: payload?.productStore?.productIdentifierEnumId || "",
-  backendAvailable: false
-});
-
-const fallbackReviewStats = (linkedShopCount: number): ShopifyProductSyncReviewStats => ({
-  shopifyProductCount: 0,
-  shopifyVariantCount: 0,
-  omsProductCount: 0,
-  omsVariantCount: 0,
-  linkedShopCount,
-  loaded: true,
   backendAvailable: false
 });
 
@@ -234,6 +315,127 @@ async function callBackend<T>(request: any, fallback: T): Promise<T> {
   }
 }
 
+async function requestBackend<T>(request: any): Promise<T> {
+  const resp = await api(request) as any;
+  return resp?.data as T;
+}
+
+function getCount(payload: any, key: string): number {
+  const value = payload?.[key]?.count ?? payload?.response?.[key]?.count ?? payload?.data?.[key]?.count;
+  return Number(value || 0);
+}
+
+function escapeGraphqlString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function getTimestampValue(value: any): number {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  const timestamp = Number(value);
+  if (!Number.isNaN(timestamp)) return timestamp;
+  const parsedDate = new Date(value).getTime();
+  return Number.isNaN(parsedDate) ? 0 : parsedDate;
+}
+
+function getTimestampDate(value: any): string | undefined {
+  const timestamp = getTimestampValue(value);
+  if (!timestamp) return undefined;
+  if (typeof value === "number") return new Date(value).toISOString();
+  if (!Number.isNaN(Number(value))) return new Date(timestamp).toISOString();
+  const parsedDate = new Date(value);
+  return Number.isNaN(parsedDate.getTime()) ? undefined : parsedDate.toISOString();
+}
+
+function resolveSystemMessageRemoteId(payload: any): string {
+  return payload.systemMessageRemoteId ||
+    payload.shop?.systemMessageRemoteId ||
+    "";
+}
+
+function getLatestSystemMessage(systemMessages: any[], dateFields: string[]) {
+  return systemMessages.reduce((latest: any, systemMessage: any) => {
+    const systemMessageTimestamp = dateFields.reduce((timestamp, field) => {
+      return timestamp || getTimestampValue(systemMessage?.[field]);
+    }, 0);
+    const latestTimestamp = dateFields.reduce((timestamp, field) => {
+      return timestamp || getTimestampValue(latest?.[field]);
+    }, 0);
+
+    return systemMessageTimestamp > latestTimestamp ? systemMessage : latest;
+  }, undefined);
+}
+
+const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProductUpdateSyncRunState> => {
+  const systemMessageRemoteId = typeof payload === "string" ? payload : resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to find product update sync system messages.");
+  }
+
+  const pageSize = 1000;
+  let pageIndex = 0;
+  let systemMessages: any[] = [];
+  let totalCount = pageSize;
+
+  while (systemMessages.length < totalCount) {
+    const response = await requestBackend<SystemMessagesResponse>({
+      url: "admin/systemMessages",
+      method: "get",
+      params: {
+        systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
+        systemMessageRemoteId,
+        pageSize,
+        pageIndex
+      }
+    });
+    const page = response?.systemMessages || [];
+    systemMessages = systemMessages.concat(page);
+    totalCount = Number(response?.systemMessagesCount || systemMessages.length);
+    if (!page.length) break;
+    pageIndex += 1;
+  }
+
+  const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed");
+  const latestConfirmedSystemMessage = getLatestSystemMessage(confirmedMessages, ["processedDate", "lastUpdatedStamp", "initDate"]);
+  const latestSystemMessage = getLatestSystemMessage(systemMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
+
+  return {
+    latestSystemMessage,
+    latestConfirmedSystemMessage,
+    lastSyncedAt: getTimestampDate(latestConfirmedSystemMessage?.processedDate),
+    systemMessageRemoteId
+  };
+};
+
+const fetchLiveCatalogCounts = async (payload: any): Promise<ShopifyProductSyncReviewStats> => {
+  const systemMessageRemoteId = resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to fetch live catalog counts.");
+  }
+
+  const response = await requestBackend<ShopifyGraphqlResponse>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText: LIVE_CATALOG_COUNTS_QUERY
+    }
+  });
+
+  const graphQlPayload = response?.response || response?.data || response;
+  if (response?.errors?.length || graphQlPayload?.errors?.length) {
+    throw new Error(`Shopify live catalog count query returned errors: ${JSON.stringify(response?.errors || graphQlPayload.errors)}`);
+  }
+
+  return {
+    shopifyProductCount: getCount(graphQlPayload, "productsCount"),
+    shopifyVariantCount: getCount(graphQlPayload, "productVariantsCount"),
+    linkedShopCount: payload.linkedShopCount || 0,
+    loaded: true,
+    backendAvailable: true
+  };
+};
+
 const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupState> => {
   return callBackend(
     {
@@ -245,16 +447,67 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
 };
 
 const fetchShopifyShopProductCount = async (payload: any): Promise<ShopifyShopProductCount> => {
-  return callBackend(
-    {
-      url: `oms/shopifyShops/${payload.shopId}/productSync/shopifyShopProducts/count`,
-      method: "get"
-    },
-    {
-      count: 0,
-      backendAvailable: false
+  const systemMessageRemoteId = resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to fetch unsynced product update counts.");
+  }
+
+  const lastSyncedAt = payload.lastSyncedAt || (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+  const response = await requestBackend<ShopifyGraphqlResponse>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText: buildProductUpdatesCountQuery(lastSyncedAt)
     }
-  );
+  });
+
+  const graphQlPayload = response?.response || response?.data || response;
+  if (response?.errors?.length || graphQlPayload?.errors?.length) {
+    throw new Error(`Shopify unsynced product update count query returned errors: ${JSON.stringify(response?.errors || graphQlPayload.errors)}`);
+  }
+
+  return {
+    count: getCount(graphQlPayload, "productsCount"),
+    lastSyncedAt,
+    backendAvailable: true
+  };
+};
+
+const fetchUnsyncedProductUpdates = async (payload: any): Promise<ShopifyUnsyncedProductUpdate[]> => {
+  const systemMessageRemoteId = resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to fetch unsynced product updates.");
+  }
+
+  const lastSyncedAt = payload.lastSyncedAt || (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+  const response = await requestBackend<ShopifyGraphqlResponse>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText: buildProductUpdatesListQuery(lastSyncedAt, payload.pageSize || 100)
+    }
+  });
+
+  const graphQlPayload = response?.response || response?.data || response;
+  if (response?.errors?.length || graphQlPayload?.errors?.length) {
+    throw new Error(`Shopify unsynced product update list query returned errors: ${JSON.stringify(response?.errors || graphQlPayload.errors)}`);
+  }
+
+  return (graphQlPayload?.products?.nodes || []).map((product: any) => ({
+    id: product.id,
+    title: product.title,
+    handle: product.handle,
+    updatedAt: product.updatedAt,
+    vendor: product.vendor,
+    productType: product.productType,
+    status: product.status,
+    totalInventory: product.totalInventory,
+    imageUrl: product.featuredMedia?.image?.url,
+    imageAltText: product.featuredMedia?.image?.altText,
+    variantsCount: Number(product.variantsCount?.count || 0)
+  }));
 };
 
 const fetchProductStoreContext = async (payload: any): Promise<any> => {
@@ -275,16 +528,7 @@ const fetchProductStoreContext = async (payload: any): Promise<any> => {
 };
 
 const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewStats> => {
-  return callBackend(
-    {
-      url: `oms/shopifyShops/${payload.shopId}/productSync/review`,
-      method: "get",
-      params: {
-        productStoreId: payload.productStoreId
-      }
-    },
-    fallbackReviewStats(payload.linkedShopCount || 0)
-  );
+  return fetchLiveCatalogCounts(payload);
 };
 
 const fetchPreflight = async (payload: any): Promise<ShopifyProductSyncPreflightResult> => {
@@ -366,7 +610,9 @@ const fetchHistory = async (payload: any): Promise<ShopifyProductSyncHistoryStat
 };
 
 export const ShopifyProductSyncService = {
+  fetchProductUpdateSyncRunState,
   fetchShopifyShopProductCount,
+  fetchUnsyncedProductUpdates,
   fetchSetupState,
   fetchProductStoreContext,
   fetchReviewStats,

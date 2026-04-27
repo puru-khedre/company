@@ -32,9 +32,10 @@
           :recent-sync-errors="recentSyncErrors"
           :recent-sync-updates="recentSyncUpdates"
           :selected-product-store-name="selectedProductStoreName"
-          :unsynced-updates-count="shopifyShopProductCount"
+          :unsynced-updates-count="unsyncedUpdatesCountLabel"
           :sync-job-obj="syncJobObj"
           @open-history="openHistory"
+          @open-unsynced-updates="openUnsyncedUpdatesModal"
           @run-job="runSyncJob"
         />
 
@@ -132,6 +133,50 @@
             </ion-card>
           </ion-content>
         </ion-modal>
+
+        <ion-modal :is-open="showUnsyncedUpdatesModal" @didDismiss="showUnsyncedUpdatesModal = false">
+          <ion-header>
+            <ion-toolbar>
+              <ion-title>{{ translate("Un-synced Shopify updates") }}</ion-title>
+              <ion-buttons slot="end">
+                <ion-button @click="loadUnsyncedProductUpdates" :disabled="isUnsyncedUpdatesLoading">{{ translate("Refresh") }}</ion-button>
+                <ion-button @click="showUnsyncedUpdatesModal = false">{{ translate("Close") }}</ion-button>
+              </ion-buttons>
+            </ion-toolbar>
+          </ion-header>
+          <ion-content>
+            <ion-card v-if="isUnsyncedUpdatesLoading">
+              <ion-card-content>
+                <ion-spinner name="crescent" />
+              </ion-card-content>
+            </ion-card>
+              <ion-list v-else lines="full">
+              <ion-item v-if="shopifyShopProductCount > 100">
+                <ion-label>{{ translate("Showing the first 100 updated products.") }}</ion-label>
+                <ion-note slot="end">{{ translate("100+") }}</ion-note>
+              </ion-item>
+              <ion-item v-for="product in unsyncedProductUpdates" :key="product.id">
+                <ion-thumbnail v-if="product.imageUrl" slot="start">
+                  <ion-img :src="product.imageUrl" :alt="product.imageAltText || product.title" />
+                </ion-thumbnail>
+                <ion-label>
+                  {{ product.title }}
+                  <p>{{ product.handle }}</p>
+                  <p>{{ product.vendor || translate("No vendor") }} · {{ product.productType || translate("No type") }}</p>
+                  <p>{{ translate("Updated") }} {{ formatShopifyDate(product.updatedAt) }}</p>
+                </ion-label>
+                <ion-note slot="end">
+                  {{ product.variantsCount }} {{ translate("variants") }}
+                  <p>{{ product.status }}</p>
+                  <p>{{ translate("Inventory") }} {{ product.totalInventory ?? 0 }}</p>
+                </ion-note>
+              </ion-item>
+              <ion-item v-if="!unsyncedProductUpdates.length">
+                <ion-label>{{ translate("No un-synced product updates") }}</ion-label>
+              </ion-item>
+            </ion-list>
+          </ion-content>
+        </ion-modal>
       </template>
     </ion-content>
   </ion-page>
@@ -149,6 +194,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonImg,
   IonItem,
   IonLabel,
   IonList,
@@ -159,6 +205,7 @@ import {
   IonSegment,
   IonSegmentButton,
   IonSpinner,
+  IonThumbnail,
   IonTitle,
   IonToolbar,
   alertController
@@ -199,16 +246,21 @@ const props = defineProps(["id"]);
 const store = useStore();
 const router = useRouter();
 const { jobs } = useServiceJob();
-const { fetchSystemMessages, fetchMdmLogBySystemMessageId, currentMdmLog, errorLogs } = useSystemMessage();
+const { fetchMdmLogBySystemMessageId, currentMdmLog, errorLogs } = useSystemMessage();
 const { productUpdateHistories, fetchProductUpdateHistory } = useProductUpdateHistory();
+const PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID = "SYNC_SHPY_PRD_UPDS";
 
 const latestSystemMessage = ref<any>(null);
+const latestConfirmedSystemMessage = ref<any>(null);
+const lastProductUpdateSyncedAt = ref("");
 const isLoading = ref(true);
 const isSaving = ref(false);
 const isReviewLoading = ref(false);
 const showModeModal = ref(false);
 const showMistakeModal = ref(false);
 const showStartSyncModal = ref(false);
+const showUnsyncedUpdatesModal = ref(false);
+const isUnsyncedUpdatesLoading = ref(false);
 const preflightLoaded = ref(false);
 const preflightAccepted = ref(false);
 const preflightWarningConfirmed = ref(false);
@@ -217,6 +269,7 @@ const currentStep = ref<ProductSyncWizardStep>("home");
 const draft = ref(createProductSyncWizardDraft());
 const relatedShops = ref<any[]>([]);
 const shopifyShopProductCount = ref(0);
+const unsyncedProductUpdates = ref<any[]>([]);
 const syncJobId = ref("");
 const setupState = ref<any>({
   hasLinkedOmsProducts: false,
@@ -260,6 +313,9 @@ const selectedProductStore = computed(() => {
 const selectedProductStoreName = computed(() => {
   return getProductStoreName(selectedProductStore.value) || shop.value.productStoreId || translate("Not linked");
 });
+const unsyncedUpdatesCountLabel = computed(() => {
+  return shopifyShopProductCount.value > 100 ? "100+" : shopifyShopProductCount.value;
+});
 const identifierOptions = ref([
   { enumId: "SHOPIFY_PRODUCT_SKU", description: "SKU" },
   { enumId: "SHOPIFY_PRODUCT_UPCA", description: "UPCA / Barcode" },
@@ -288,7 +344,10 @@ const activeExperienceModeLabel = computed(() => {
   return activeExperienceMode.value === "returning" ? translate("Returning user") : translate("First-time setup");
 });
 const lastSyncLabel = computed(() => {
-  return progressState.value.updatedAt || progressState.value.lastUpdatedStamp || translate("Sync time");
+  const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConfirmedSystemMessage.value?.processedDate;
+  return lastSyncedAt
+    ? new Date(lastSyncedAt).toLocaleString()
+    : translate("Sync time");
 });
 const syncJobObj = computed(() => {
   if (syncJobId.value) {
@@ -296,17 +355,25 @@ const syncJobObj = computed(() => {
     if (job) return job;
   }
 
-  const possibleRemoteIds = [
-    shop.value.systemMessageRemoteId,
-    latestSystemMessage.value?.systemMessageRemoteId,
-    shop.value.shopifyConfigId,
-    props.id
+  const selectedShopIdentifiers = [
+    props.id,
+    shop.value.shopId,
+    shop.value.shopifyShopId
   ].filter(Boolean);
 
   return jobs.value.find((job: any) => {
-    return job.instanceOfProductId === "QUEUE_UPD_PRD_FEED" &&
-      (job.serviceJobParameters || []).some((param: any) => possibleRemoteIds.includes(param.parameterValue));
+    return job.instanceOfProductId === PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID &&
+      (job.serviceJobParameters || []).some((param: any) => {
+        return ["shopId", "shopifyShopId"].includes(param.parameterName) &&
+          selectedShopIdentifiers.includes(param.parameterValue);
+      });
   });
+});
+const selectedShopSystemMessageRemoteId = computed(() => {
+  return shop.value.systemMessageRemoteId ||
+    shop.value.shopifySystemMessageRemoteId ||
+    shop.value.shopRemoteId ||
+    "";
 });
 
 
@@ -453,13 +520,32 @@ const returningProgressSteps = computed(() => {
 });
 const recentSyncUpdates = computed(() => {
   return productUpdateHistories.value.map((history: any) => ({
-    id: history.productId,
-    internalName: history.diffs?.title || history.productId,
-    shopifyId: history.parentProductId || "N/A",
+    id: [history.shopId, history.productId, history.lastUpdatedStamp].filter(Boolean).join("-"),
+    internalName: history.diffs?.title || history.diffs?.handle || history.productId,
+    shopifyId: getShopifyProductReference(history),
     updatedTime: history.lastUpdatedStamp ? new Date(history.lastUpdatedStamp).toLocaleString() : translate("Recent"),
     details: history.details || []
   }));
 });
+
+function getShopifyProductReference(history: any) {
+  const diffId = history.diffs?.id ? String(history.diffs.id) : "";
+  const productReference = diffId.startsWith("gid://shopify/Product/")
+    ? diffId
+    : history.parentProductId || history.diffs?.parentProductId || history.productId || diffId;
+  if (!productReference) return "N/A";
+  if (String(productReference).startsWith("gid://shopify/")) return formatShopifyReference(productReference);
+  if (history.parentProductId || String(history.productId).length >= 10) return `Product ${productReference}`;
+  return String(productReference);
+}
+
+function formatShopifyReference(reference: string) {
+  const parts = String(reference).split("/");
+  const id = parts.pop();
+  const resource = parts.pop();
+  if (resource && id) return `${resource} ${id}`;
+  return reference;
+}
 
 
 const recentSyncErrors = computed(() => {
@@ -520,8 +606,8 @@ async function loadWizard() {
     ]);
 
 
-    // Fetch details for QUEUE_UPD_PRD_FEED jobs to get parameters (needed to find the job for this shop)
-    const syncJobs = jobs.value.filter((job: any) => job.instanceOfProductId === "QUEUE_UPD_PRD_FEED" || (syncJobId.value && job.jobName === syncJobId.value));
+    // Fetch details for product-update sync jobs to get parameters (needed to find the job for this shop)
+    const syncJobs = jobs.value.filter((job: any) => job.instanceOfProductId === PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID || (syncJobId.value && job.jobName === syncJobId.value));
 
     await Promise.all(syncJobs.map(async (job: any) => {
       const details = await fetchJobDetail(job.jobName);
@@ -575,24 +661,55 @@ async function loadWizard() {
 
 async function loadShopifyShopProductCount() {
   const countState = await ShopifyProductSyncService.fetchShopifyShopProductCount({
-    shopId: props.id
+    shopId: props.id,
+    systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+    lastSyncedAt: lastProductUpdateSyncedAt.value,
+    shop: shop.value
   });
   shopifyShopProductCount.value = Number(countState.count || 0);
 }
 
-async function loadLatestSystemMessage() {
-  if (shop.value.systemMessageRemoteId) {
-    const messages = await fetchSystemMessages({
-      systemMessageTypeId: "BulkQueryShopifyProductUpdates",
-      systemMessageRemoteId: shop.value.systemMessageRemoteId,
-      orderBy: "-initDate",
-      pageSize: 1
+async function loadUnsyncedProductUpdates() {
+  isUnsyncedUpdatesLoading.value = true;
+  try {
+    unsyncedProductUpdates.value = await ShopifyProductSyncService.fetchUnsyncedProductUpdates({
+      shopId: props.id,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      lastSyncedAt: lastProductUpdateSyncedAt.value,
+      shop: shop.value,
+      pageSize: 100
     });
+  } catch (error: any) {
+    logger.error(error);
+    unsyncedProductUpdates.value = [];
+    showToast(translate("Failed to load un-synced product updates."));
+  }
+  isUnsyncedUpdatesLoading.value = false;
+}
 
-    if (messages && messages.length > 0) {
-      latestSystemMessage.value = messages[0];
-      await fetchMdmLogBySystemMessageId(latestSystemMessage.value.systemMessageId);
-    }
+async function openUnsyncedUpdatesModal() {
+  showUnsyncedUpdatesModal.value = true;
+  await loadUnsyncedProductUpdates();
+}
+
+function formatShopifyDate(value: string) {
+  if (!value) return translate("Recent");
+  return new Date(value).toLocaleString();
+}
+
+async function loadLatestSystemMessage() {
+  const syncRunState = await ShopifyProductSyncService.fetchProductUpdateSyncRunState({
+    shopId: props.id,
+    systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+    shop: shop.value
+  });
+
+  latestSystemMessage.value = syncRunState.latestSystemMessage || null;
+  latestConfirmedSystemMessage.value = syncRunState.latestConfirmedSystemMessage || null;
+  lastProductUpdateSyncedAt.value = syncRunState.lastSyncedAt || "";
+
+  if (latestSystemMessage.value?.systemMessageId) {
+    await fetchMdmLogBySystemMessageId(latestSystemMessage.value.systemMessageId);
   }
 
   await fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 });
@@ -756,11 +873,26 @@ async function persistIdentifierSelection() {
 
 async function loadReviewStats() {
   isReviewLoading.value = true;
-  reviewStats.value = await ShopifyProductSyncService.fetchReviewStats({
-    shopId: props.id,
-    productStoreId: draft.value.selectedProductStoreId,
-    linkedShopCount: relatedShops.value.length
-  });
+  try {
+    reviewStats.value = await ShopifyProductSyncService.fetchReviewStats({
+      shopId: props.id,
+      productStoreId: draft.value.selectedProductStoreId,
+      linkedShopCount: relatedShops.value.length,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      shop: shop.value
+    });
+  } catch (error: any) {
+    logger.error(error);
+    reviewStats.value = {
+      shopifyProductCount: undefined,
+      shopifyVariantCount: undefined,
+      omsProductCount: undefined,
+      omsVariantCount: undefined,
+      linkedShopCount: relatedShops.value.length,
+      loaded: false
+    };
+    showToast(translate("Failed to load Shopify product counts."));
+  }
   isReviewLoading.value = false;
 }
 
@@ -880,9 +1012,3 @@ async function loadReconcile() {
 }
 
 </script>
-
-<style>
-
-
-
-</style>

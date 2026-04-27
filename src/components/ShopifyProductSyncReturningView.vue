@@ -33,7 +33,7 @@
           <ion-label>{{ translate("Product store") }}</ion-label>
           <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
         </ion-item>
-        <ion-item>
+        <ion-item button detail @click="$emit('openUnsyncedUpdates')">
           <ion-label>{{ translate("Un-synced updates") }}</ion-label>
           <ion-badge slot="end" color="medium">{{ unsyncedUpdatesCount }}</ion-badge>
         </ion-item>
@@ -76,26 +76,47 @@
       <ion-card v-for="item in filteredUpdates" :key="item.id">
         <ion-list lines="full">
           <ion-item>
-            <ion-label>
-              {{ item.internalName }}
+            <ion-label class="ion-text-wrap">
+              <h2>{{ item.internalName }}</h2>
               <p>{{ item.shopifyId }}</p>
             </ion-label>
             <ion-note slot="end">{{ item.updatedTime }}</ion-note>
           </ion-item>
-          <ion-item-divider color="light">
-            <ion-label>{{ translate("Changes") }}</ion-label>
-          </ion-item-divider>
-          <ion-item v-for="(detail, index) in item.details" :key="index">
-            <ion-label>
-              {{ detail.label }}
-              <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
-                {{ detail.type === 'added' ? translate('Added') : translate('Removed') }}
-              </p>
-            </ion-label>
-            <ion-label slot="end" class="ion-text-wrap ion-text-end">
-              {{ detail.value }}
-            </ion-label>
-          </ion-item>
+
+          <ion-card-content v-if="item.details.length">
+            <ion-chip v-for="label in getChangeSummary(item.details)" :key="label">
+              <ion-label>{{ label }}</ion-label>
+            </ion-chip>
+          </ion-card-content>
+
+          <ion-accordion-group>
+            <ion-accordion :value="item.id">
+              <ion-item slot="header">
+                <ion-label>
+                  {{ translate("Changes") }}
+                  <p>{{ translate("Review field-level updates") }}</p>
+                </ion-label>
+                <ion-badge slot="end" color="medium">{{ item.details.length }}</ion-badge>
+              </ion-item>
+              <ion-list slot="content" lines="full">
+                <ion-item v-for="(detail, index) in item.details" :key="index">
+                  <ion-label class="ion-text-wrap">
+                    <h3>{{ detail.label }}</h3>
+                    <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
+                      {{ getDetailActionLabel(detail.type) }}
+                    </p>
+                    <template v-if="detail.items?.length">
+                      <p v-for="(detailItem, detailItemIndex) in detail.items" :key="detailItemIndex">
+                        <template v-if="detailItem.label">{{ detailItem.label }}: </template>{{ detailItem.value }}
+                      </p>
+                    </template>
+                    <p v-else>{{ detail.value }}</p>
+                  </ion-label>
+                </ion-item>
+              </ion-list>
+            </ion-accordion>
+          </ion-accordion-group>
+
           <ion-item v-if="!item.details.length">
             <ion-label>{{ translate("No details found for this update") }}</ion-label>
           </ion-item>
@@ -155,6 +176,8 @@
 
 <script setup lang="ts">
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonBadge,
   IonButton,
   IonButtons,
@@ -165,7 +188,7 @@ import {
   IonCardTitle,
   IonIcon,
   IonItem,
-  IonItemDivider,
+  IonChip,
   IonLabel,
   IonList,
   IonNote,
@@ -185,12 +208,18 @@ const props = defineProps<{
   nextSyncLabel: string
   progressSteps: Array<{ name: string, caption?: string, status?: string, color?: string }>
   recentSyncErrors: Array<{ id: string, internalName: string, shopifyId: string, updatedTime: string, errorContent: string }>
-  recentSyncUpdates: Array<{ id: string, internalName: string, shopifyId: string, updatedTime: string, details: Array<{ type: string, label: string, value: string }> }>
+  recentSyncUpdates: Array<{
+    id: string,
+    internalName: string,
+    shopifyId: string,
+    updatedTime: string,
+    details: Array<{ type: string, label: string, value: string, items?: Array<{ label?: string, value: string }> }>
+  }>
   selectedProductStoreName: string
   unsyncedUpdatesCount: number | string
   syncJobObj?: any
 }>();
-const emit = defineEmits(["openHistory", "scheduleSync", "run-job"]);
+const emit = defineEmits(["openHistory", "scheduleSync", "run-job", "openUnsyncedUpdates"]);
 
 
 
@@ -231,6 +260,20 @@ async function openActionsPopover(event: Event) {
 
 const updatesQuery = ref("");
 const errorsQuery = ref("");
+const visibleChangeSummaryCount = 4;
+
+function getDetailActionLabel(type: string) {
+  return type === "added" ? translate("Added") : translate("Removed");
+}
+
+function getChangeSummary(details: Array<{ label: string }>) {
+  const labels = [...new Set(details.map((detail) => detail.label).filter(Boolean))];
+  if (labels.length <= visibleChangeSummaryCount) return labels;
+  return [
+    ...labels.slice(0, visibleChangeSummaryCount),
+    `+${labels.length - visibleChangeSummaryCount} more`
+  ];
+}
 
 const filteredUpdates = computed(() => {
   const query = updatesQuery.value.trim().toLowerCase();
