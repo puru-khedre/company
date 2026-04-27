@@ -271,6 +271,7 @@ const relatedShops = ref<any[]>([]);
 const shopifyShopProductCount = ref(0);
 const unsyncedProductUpdates = ref<any[]>([]);
 const syncJobId = ref("");
+const selectedShopSystemMessageRemoteId = ref("");
 const setupState = ref<any>({
   hasLinkedOmsProducts: false,
   productStoreLocked: false,
@@ -369,16 +370,6 @@ const syncJobObj = computed(() => {
       });
   });
 });
-const selectedShopSystemMessageRemoteId = computed(() => {
-  return shop.value.systemMessageRemoteId ||
-    shop.value.shopifySystemMessageRemoteId ||
-    shop.value.shopRemoteId ||
-    "";
-});
-
-
-
-
 const isSyncScheduled = computed(() => {
   return !!syncJobObj.value?.cronString;
 });
@@ -619,6 +610,7 @@ async function loadWizard() {
       await store.dispatch("productStore/fetchProductStoreDetails", shop.value.productStoreId);
     }
 
+    await loadSelectedShopSystemMessageRemoteId();
     await loadLatestSystemMessage();
     await loadShopifyShopProductCount();
 
@@ -657,6 +649,13 @@ async function loadWizard() {
   } finally {
     isLoading.value = false;
   }
+}
+
+async function loadSelectedShopSystemMessageRemoteId() {
+  selectedShopSystemMessageRemoteId.value = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
+    shopId: props.id,
+    shop: shop.value
+  });
 }
 
 async function loadShopifyShopProductCount() {

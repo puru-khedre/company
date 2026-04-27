@@ -81,6 +81,10 @@ interface SystemMessagesResponse {
   systemMessagesCount?: number;
 }
 
+interface SystemMessageRemotesResponse {
+  systemMessageRemoteList?: any[];
+}
+
 const STATUS_COMPLETED = "completed";
 const STATUS_COMPLETED_WITH_ERRORS = "completed-with-errors";
 const PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID = "BulkQueryShopifyProductUpdates";
@@ -353,6 +357,60 @@ function resolveSystemMessageRemoteId(payload: any): string {
     "";
 }
 
+function getShopRemoteCandidates(systemMessageRemoteList: any[], payload: any) {
+  const shopifyShopId = String(payload.shopifyShopId || payload.shop?.shopifyShopId || "");
+  const shopId = String(payload.shopId || payload.shop?.shopId || "");
+
+  return (systemMessageRemoteList || []).filter((remote: any) => {
+    const remoteMatchesShopifyShop = shopifyShopId && String(remote.remoteId) === shopifyShopId;
+    const internalMatchesShop = shopId && String(remote.internalId) === shopId;
+    return remoteMatchesShopifyShop && (!shopId || !remote.internalId || internalMatchesShop);
+  });
+}
+
+function sortShopRemoteCandidates(candidates: any[]) {
+  return [...candidates].sort((first: any, second: any) => {
+    const firstReadWrite = String(first.accessScopeEnumId || "").includes("READ_WRITE") ? 1 : 0;
+    const secondReadWrite = String(second.accessScopeEnumId || "").includes("READ_WRITE") ? 1 : 0;
+    return secondReadWrite - firstReadWrite;
+  });
+}
+
+const fetchShopSystemMessageRemoteId = async (payload: any): Promise<string> => {
+  const shopifyShopId = payload.shopifyShopId || payload.shop?.shopifyShopId;
+  if (!shopifyShopId) {
+    throw new Error("Shopify shop id is required to resolve SystemMessageRemote.remoteId.");
+  }
+
+  const response = await requestBackend<SystemMessageRemotesResponse>({
+    url: "oms/systemMessageRemotes",
+    method: "get"
+  });
+
+  const candidates = sortShopRemoteCandidates(getShopRemoteCandidates(response?.systemMessageRemoteList || [], payload));
+  if (!candidates.length) {
+    throw new Error(`No SystemMessageRemote found with remoteId ${shopifyShopId}.`);
+  }
+
+  for (const candidate of candidates) {
+    const systemMessagesResponse = await requestBackend<SystemMessagesResponse>({
+      url: "admin/systemMessages",
+      method: "get",
+      params: {
+        systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
+        systemMessageRemoteId: candidate.systemMessageRemoteId,
+        pageSize: 1
+      }
+    });
+
+    if (Number(systemMessagesResponse?.systemMessagesCount || 0) > 0) {
+      return candidate.systemMessageRemoteId;
+    }
+  }
+
+  return candidates[0].systemMessageRemoteId;
+};
+
 function getLatestSystemMessage(systemMessages: any[], dateFields: string[]) {
   return systemMessages.reduce((latest: any, systemMessage: any) => {
     const systemMessageTimestamp = dateFields.reduce((timestamp, field) => {
@@ -610,6 +668,7 @@ const fetchHistory = async (payload: any): Promise<ShopifyProductSyncHistoryStat
 };
 
 export const ShopifyProductSyncService = {
+  fetchShopSystemMessageRemoteId,
   fetchProductUpdateSyncRunState,
   fetchShopifyShopProductCount,
   fetchUnsyncedProductUpdates,
