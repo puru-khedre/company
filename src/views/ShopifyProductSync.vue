@@ -28,6 +28,7 @@
           :is-sync-scheduled="isSyncScheduled"
           :is-sync-paused="isSyncJobPaused"
           :last-sync-label="lastSyncLabel"
+          :last-sync-relative-label="lastSyncRelativeLabel"
           :next-sync-label="nextSyncLabel"
           :next-sync-relative-label="nextSyncRelativeLabel"
           :progress-steps="returningProgressSteps"
@@ -588,6 +589,15 @@ const lastSyncLabel = computed(() => {
   return lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleString()
     : translate("Sync time");
+});
+const lastSyncRelativeLabel = computed(() => {
+  const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConfirmedSystemMessage.value?.processedDate;
+  if (!lastSyncedAt) return translate("Sync time");
+
+  const dateTime = parseDateTimeValue(lastSyncedAt);
+  if (!dateTime || !dateTime.isValid) return translate("Sync time");
+
+  return dateTime.toRelative({ base: DateTime.fromMillis(currentTimeMs.value) });
 });
 const syncJobObj = computed(() => {
   if (syncJobId.value) {

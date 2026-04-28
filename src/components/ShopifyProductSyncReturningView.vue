@@ -19,8 +19,11 @@
       </ion-card-header>
       <ion-list lines="full">
         <ion-item>
-          <ion-label>{{ translate("Last sync") }}</ion-label>
-          <ion-note slot="end">{{ lastSyncLabel }}</ion-note>
+          <ion-label>
+            {{ translate("Last sync") }}
+            <p>{{ lastSyncLabel }}</p>
+          </ion-label>
+          <ion-note slot="end">{{ lastSyncRelativeLabel }}</ion-note>
         </ion-item>
         <ion-item button :detail="isSyncScheduled" @click="isSyncScheduled ? $emit('openSyncJobDetails') : undefined">
           <ion-label>{{ translate("Next sync time") }}
@@ -208,6 +211,7 @@ const props = defineProps<{
   isSyncScheduled?: boolean
   isSyncPaused?: boolean
   lastSyncLabel: string
+  lastSyncRelativeLabel: string
   nextSyncLabel: string
   nextSyncRelativeLabel: string
   summarySubtitle: string
