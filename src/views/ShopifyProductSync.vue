@@ -354,11 +354,11 @@
                   </ion-item>
                   <ion-item>
                     <ion-label>
-                      {{ translate("Remote ID") }}
+                      {{ translate("Bulk operation ID") }}
                       <p>{{ translate("Shopify returns this after it accepts the bulk operation.") }}</p>
                     </ion-label>
                     <ion-label slot="end">
-                      {{ latestSystemMessage?.remoteId || translate("Pending") }}
+                      {{ latestBulkOperationId || translate("Pending") }}
                     </ion-label>
                   </ion-item>
                 </ion-list>
@@ -508,6 +508,7 @@ import useServiceJob from "@/composables/useServiceJob";
 import { useDataManagerLog } from "@/composables/useDataManagerLog";
 import { useProductUpdateHistory } from "@/composables/useProductUpdateHistory";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
+import { getSystemMessageBulkOperationId } from "@/utils/shopifyBulkOperation";
 
 const props = defineProps(["id"]);
 const store = useStore();
@@ -615,6 +616,7 @@ let nextSyncRefreshPoll: number | undefined;
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
 const userProfile = computed(() => store.getters["user/getUserProfile"] || {});
 const statusItems = computed(() => store.state.util.statusItems || {});
+const latestBulkOperationId = computed(() => getSystemMessageBulkOperationId(latestSystemMessage.value));
 
 function getStatusDescription(statusId: string) {
   return statusItems.value[statusId]?.description || statusId;

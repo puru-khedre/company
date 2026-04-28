@@ -69,7 +69,10 @@
               </ion-label>
             </ion-item>
             <ion-label class="stat">
-              {{ run.totalRecordCount }}
+              <ion-chip outline :color="getDownloadChipColor(run)" :disabled="!canDownloadRawFile(run)" @click.stop="openDownloadPrompt(run)">
+                <ion-icon :icon="downloadOutline" />
+                <ion-label>{{ run.totalRecordCount }}</ion-label>
+              </ion-chip>
               <p>{{ translate("total record count") }}</p>
             </ion-label>
             <ion-label class="stat">
@@ -125,12 +128,21 @@
       </ion-list>
     </ion-content>
   </ion-modal>
+
+  <ion-alert
+    :is-open="isDownloadPromptOpen"
+    :header="translate('Download raw file')"
+    :message="getDownloadPromptMessage(selectedDownloadRun)"
+    :buttons="downloadPromptButtons"
+    @didDismiss="closeDownloadPrompt"
+  />
 </template>
 
 <script setup lang="ts">
 import {
   IonAccordion,
   IonAccordionGroup,
+  IonAlert,
   IonButtons,
   IonButton,
   IonCard,
@@ -149,35 +161,49 @@ import {
   IonToolbar
 } from "@ionic/vue";
 import { translate } from "@/i18n";
-import { computed, defineProps, ref } from "vue";
+import { computed, defineEmits, defineProps, ref } from "vue";
 import {
   alertCircleOutline,
   checkmarkCircleOutline,
   cloudDoneOutline,
   closeOutline,
   codeSlashOutline,
-  documentTextOutline,
+  downloadOutline,
   helpCircleOutline,
-  sendOutline,
   serverOutline,
   syncCircleOutline
 } from "ionicons/icons";
-import { DateTime } from "luxon";
+import { parseSystemMessageDateTime } from "@/utils/systemMessageHistory";
 
 defineProps<{
   runs: any[]
 }>();
+const emit = defineEmits<{
+  (event: "downloadRawFile", run: any): void
+}>();
 
 const isQueryModalOpen = ref(false);
 const selectedQueryRun = ref<any>(null);
+const isDownloadPromptOpen = ref(false);
+const selectedDownloadRun = ref<any>(null);
 
 const selectedQueryContent = computed(() => {
   return formatQueryContent(selectedQueryRun.value);
 });
+const downloadPromptButtons = computed(() => [
+  {
+    text: translate("Cancel"),
+    role: "cancel"
+  },
+  {
+    text: translate("Download raw file"),
+    handler: () => emitDownloadRawFile()
+  }
+]);
 
 function formatTime(time: any) {
-  if (!time) return "";
-  return DateTime.fromMillis(time).toFormat("LLL d, yyyy HH:mm");
+  const dateTime = parseSystemMessageDateTime(time);
+  return dateTime ? dateTime.toFormat("LLL d, yyyy HH:mm") : translate("Unavailable");
 }
 
 function openQueryModal(run: any) {
@@ -189,6 +215,36 @@ function openQueryModal(run: any) {
 function closeQueryModal() {
   isQueryModalOpen.value = false;
   selectedQueryRun.value = null;
+}
+
+function openDownloadPrompt(run: any) {
+  if (!canDownloadRawFile(run)) return;
+  selectedDownloadRun.value = run;
+  isDownloadPromptOpen.value = true;
+}
+
+function closeDownloadPrompt() {
+  isDownloadPromptOpen.value = false;
+  selectedDownloadRun.value = null;
+}
+
+function emitDownloadRawFile() {
+  if (!selectedDownloadRun.value) return;
+  emit("downloadRawFile", selectedDownloadRun.value);
+}
+
+function canDownloadRawFile(run: any) {
+  return !!run?.mdmLogConfigId && !!run?.mdmLogContentId;
+}
+
+function getDownloadChipColor(run: any) {
+  return canDownloadRawFile(run) ? "primary" : "medium";
+}
+
+function getDownloadPromptMessage(run: any) {
+  return translate("Download the Shopify file from Data Manager log {id}.", {
+    id: run?.mdmImportId || translate("Unavailable")
+  });
 }
 
 function formatQueryContent(run: any) {

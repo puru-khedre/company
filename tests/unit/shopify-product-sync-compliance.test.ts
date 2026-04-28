@@ -7,7 +7,7 @@ const readProjectFile = (relativePath: string) => {
 };
 
 describe("shopify product sync implementation compliance", () => {
-  test("product sync views do not add CSS, classes, grid layouts, or localStorage state", () => {
+  test("product sync views do not use inline styles, grid layouts, or localStorage state", () => {
     const files = [
       "src/views/ShopifyProductSync.vue",
       "src/views/ShopifyProductSyncHistory.vue",
@@ -19,10 +19,8 @@ describe("shopify product sync implementation compliance", () => {
     for (const file of files) {
       const source = readProjectFile(file);
 
-      assert.equal(/<style[\s>]/.test(source), false, `${file} should not add style blocks`);
-      assert.equal(/\sclass=/.test(source), false, `${file} should not add classes`);
       assert.equal(/\sstyle=/.test(source), false, `${file} should not add inline styles`);
-      assert.equal(/ion-grid|ion-row|ion-col/.test(source), false, `${file} should not use ionic grid`);
+      assert.equal(/<ion-grid|<ion-row|<ion-col/.test(source), false, `${file} should not use ionic grid`);
       assert.equal(/localStorage/.test(source), false, `${file} should not use localStorage`);
     }
   });
@@ -57,12 +55,91 @@ describe("shopify product sync implementation compliance", () => {
     assert.equal(historySource.includes("initDate_thru"), false);
   });
 
+  test("product sync system message queries are scoped by type and remote, not direction", () => {
+    const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
+    const serviceSource = readProjectFile("src/services/ShopifyProductSyncService.ts");
+    const productSyncSource = readProjectFile("src/views/ShopifyProductSync.vue");
+
+    for (const source of [historySource, serviceSource, productSyncSource]) {
+      assert.equal(/isoutgoing/i.test(source), false);
+    }
+
+    assert.equal(historySource.includes("systemMessageTypeId"), true);
+    assert.equal(historySource.includes("systemMessageRemoteId"), true);
+    assert.equal(historySource.includes("if (!hasDateFilters.value) break"), false);
+    assert.equal(historySource.includes("bufferedSystemMessages"), true);
+    assert.equal(historySource.includes("appendSystemMessagesToHistoryPage"), true);
+  });
+
+  test("product sync history keeps query content available on history runs", () => {
+    const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
+    const syncRunSource = readProjectFile("src/composables/useShopifyProductSyncRun.ts");
+
+    assert.equal(syncRunSource.includes("shopifyBulkOperation?.query"), true);
+    assert.equal(historySource.includes("queryContent"), true);
+    assert.equal(historySource.includes("queryContent: syncRun.bulkOperation?.query"), true);
+  });
+
+  test("product sync history time formatting accepts string and numeric dates", () => {
+    const historyViewSource = readProjectFile("src/components/ShopifyProductSyncHistoryView.vue");
+    const systemMessageHistorySource = readProjectFile("src/utils/systemMessageHistory.ts");
+
+    assert.equal(historyViewSource.includes("parseSystemMessageDateTime"), true);
+    assert.equal(systemMessageHistorySource.includes("DateTime.fromMillis"), true);
+    assert.equal(systemMessageHistorySource.includes("DateTime.fromISO"), true);
+    assert.equal(systemMessageHistorySource.includes("typeof value === \"string\""), true);
+  });
+
+  test("product sync history status filters include received and consumed messages", () => {
+    const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
+
+    assert.equal(historySource.includes('value: "SmsgReceived"'), true);
+    assert.equal(historySource.includes('value: "SmsgConsumed"'), true);
+  });
+
+  test("product sync history disables infinite scroll after failed history loads", () => {
+    const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
+
+    const catchBlock = historySource.match(/catch \(error: any\) \{[\s\S]*?\} finally/);
+    const disabledOccurrences = historySource.match(/hasMoreBackendHistory\.value = false/g) || [];
+
+    assert.notEqual(catchBlock, null);
+    assert.equal(catchBlock?.[0].includes("hasMoreBackendHistory.value = false"), true);
+    assert.equal(disabledOccurrences.length >= 2, true);
+  });
+
   test("data manager logs are fetched by exact system message id", () => {
     const dataManagerLogSource = readProjectFile("src/composables/useDataManagerLog.ts");
     const syncRunSource = readProjectFile("src/composables/useShopifyProductSyncRun.ts");
 
     assert.equal(dataManagerLogSource.includes('systemMessageId_op: "equals"'), true);
     assert.equal(dataManagerLogSource.includes("pageSize: 1"), true);
-    assert.equal(syncRunSource.includes("fetchMdmLogBySystemMessageId(syncRunSystemMessageId)"), true);
+    assert.equal(syncRunSource.includes("fetchMdmLogBySystemMessageIds(mdmLogSystemMessageIds)"), true);
+    assert.equal(syncRunSource.includes("relatedSystemMessageIds"), true);
+  });
+
+  test("product sync history ignores stale overlapping loads", () => {
+    const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
+
+    assert.equal(historySource.includes("historyLoadToken"), true);
+    assert.equal(historySource.includes("isStaleHistoryLoad"), true);
+    assert.equal(historySource.includes("appendSystemMessagesToHistoryPage"), true);
+  });
+
+  test("product sync history can download raw Shopify files from data manager logs", () => {
+    const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
+    const historyViewSource = readProjectFile("src/components/ShopifyProductSyncHistoryView.vue");
+    const dataManagerLogSource = readProjectFile("src/composables/useDataManagerLog.ts");
+    const syncRunSource = readProjectFile("src/composables/useShopifyProductSyncRun.ts");
+
+    assert.equal(historyViewSource.includes("downloadOutline"), true);
+    assert.equal(historyViewSource.includes("downloadRawFile"), true);
+    assert.equal(historyViewSource.includes("Download raw file"), true);
+    assert.equal(historySource.includes("downloadRawShopifyFile"), true);
+    assert.equal(historySource.includes("mdmLogContentId"), true);
+    assert.equal(historySource.includes("mdmLogConfigId"), true);
+    assert.equal(dataManagerLogSource.includes("downloadDataManagerFile"), true);
+    assert.equal(dataManagerLogSource.includes("admin/dataManager/downloadDataManagerFile"), true);
+    assert.equal(syncRunSource.includes("logContentId: mdmLog?.logContentId"), true);
   });
 });

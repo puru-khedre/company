@@ -200,6 +200,9 @@ export interface ShopifyProductSyncRun {
     totalRecordCount?: number;
     failedRecordCount?: number;
     successRecordCount?: number;
+    configId?: string;
+    logContentId?: string;
+    fileName?: string;
   };
   status: string;
   statusColor: string;
@@ -431,7 +434,8 @@ const fetchShopSystemMessageRemoteId = async (payload: any): Promise<string> => 
       params: {
         systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
         systemMessageRemoteId: candidate.systemMessageRemoteId,
-        pageSize: 1
+        pageSize: 1,
+        pageIndex: 0
       }
     });
 

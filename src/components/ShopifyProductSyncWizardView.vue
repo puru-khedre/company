@@ -231,7 +231,7 @@
       </ion-card-content>
     </ion-card>
 
-    <template class="step" v-if="currentStep === 'progress'">
+    <template v-if="currentStep === 'progress'">
       <ion-card>
         <ion-card-header>
           <ion-card-title>{{ translate("Track sync progress") }}</ion-card-title>
