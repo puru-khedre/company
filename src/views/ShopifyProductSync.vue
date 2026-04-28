@@ -31,7 +31,7 @@
           :last-sync-relative-label="lastSyncRelativeLabel"
           :next-sync-label="nextSyncLabel"
           :next-sync-relative-label="nextSyncRelativeLabel"
-          :progress-steps="returningProgressSteps"
+          :current-sync-run="currentSyncRun"
           :recent-sync-errors="recentSyncErrors"
           :recent-sync-updates="recentSyncUpdates"
           :selected-product-store-name="selectedProductStoreName"
@@ -73,7 +73,7 @@
           :progress-badge-color="progressBadgeColor"
           :progress-state="progressState"
           :progress-status="progressStatus"
-          :progress-steps="progressSteps"
+          :current-sync-run="currentSyncRun"
           :reconcile-available="reconcileAvailable"
           :recommended-identifier-enum-id="recommendedIdentifierEnumId"
           :related-shops="relatedShops"
@@ -457,6 +457,7 @@ import logger from "@/logger";
 import useServiceJob from "@/composables/useServiceJob";
 import { useDataManagerLog } from "@/composables/useDataManagerLog";
 import { useProductUpdateHistory } from "@/composables/useProductUpdateHistory";
+import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
 
 const props = defineProps(["id"]);
 const store = useStore();
@@ -473,6 +474,7 @@ const {
 } = useServiceJob();
 const { fetchMdmLogBySystemMessageId, fetchLogDetails, currentMdmLog, errorLogs } = useDataManagerLog();
 const { productUpdateHistories, fetchProductUpdateHistory } = useProductUpdateHistory();
+const { currentSyncRun, fetchSyncRun, loading: isSyncRunLoading } = useShopifyProductSyncRun();
 const PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID = "SYNC_SHPY_PRD_UPDS";
 
 const latestSystemMessage = ref<any>(null);
@@ -694,127 +696,6 @@ const progressBadgeColor = computed(() => {
   if (progressStatus.value === "running" || progressStatus.value === "sent") return "primary";
   return "medium";
 });
-const progressSteps = computed(() => {
-  const status = progressStatus.value;
-  const requestComplete = ["sent", "running", "waiting", "completed"].includes(status);
-  const shopifyComplete = ["running", "waiting", "completed"].includes(status);
-  const fileComplete = ["completed"].includes(status);
-
-  return [
-    {
-      name: translate("Request product export from Shopify"),
-      caption: progressState.value.systemMessageState,
-      status: requestComplete ? getStatusDescription(progressState.value.systemMessageState) : translate("Queued"),
-      color: requestComplete ? "primary" : "medium",
-      type: 'systemMessage',
-      id: progressState.value.systemMessageId,
-      statusId: progressState.value.systemMessageState
-    },
-    {
-      name: translate("Process export request in Shopify"),
-      caption: progressState.value.bulkOperationStatus || "",
-      status: shopifyComplete ? (progressState.value.bulkOperationStatus || translate("Running")) : translate("Pending"),
-      color: shopifyComplete ? "primary" : "medium",
-      type: 'bulkOperation',
-      id: progressState.value.bulkOperationId
-    },
-    {
-      name: translate("Process exported file from Shopify"),
-      caption: progressState.value.objectCount ? `${progressState.value.objectCount}` : "",
-      status: fileComplete ? translate("Complete") : (progressState.value.mdmLogId ? translate("Running") : translate("Pending")),
-      color: fileComplete ? "success" : "medium",
-      type: 'mdmLog',
-      id: progressState.value.mdmLogId
-    },
-    {
-      name: translate("Complete"),
-      caption: "",
-      status: fileComplete ? translate("Complete") : translate("Pending"),
-      color: fileComplete ? "success" : "medium",
-      type: 'summary'
-    }
-  ];
-});
-const returningProgressSteps = computed(() => {
-  if (syncJobId.value) {
-    return progressSteps.value;
-  }
-
-  const msg = latestSystemMessage.value;
-  let reqCaption = nextSyncLabel.value;
-  let reqStatus = translate("Sent");
-  let reqColor = "primary";
-
-  if (msg) {
-    reqCaption = msg.statusId;
-    if (msg.statusId === "SmsgError" || msg.statusId === "SmsgRejected") {
-      reqStatus = translate("Error");
-      reqColor = "danger";
-    } else if (msg.statusId === "SmsgConsumed") {
-      reqStatus = translate("Complete");
-      reqColor = "success";
-    } else {
-      reqStatus = getStatusDescription(msg.statusId);
-      reqColor = "primary";
-    }
-  } else {
-    reqStatus = translate("Pending");
-    reqColor = "medium";
-  }
-
-  let mdmCaption = currentMdmLog.value?.totalRecordCount ? `${currentMdmLog.value.totalRecordCount}` : "";
-  let mdmStatus = translate("Pending");
-  let mdmColor = "medium";
-
-  if (currentMdmLog.value?.statusId) {
-    if (currentMdmLog.value.statusId === "DmlSuccess") {
-      mdmStatus = translate("Complete");
-      mdmColor = "success";
-    } else if (currentMdmLog.value.statusId === "DmlError") {
-      mdmStatus = translate("Error");
-      mdmColor = "danger";
-    } else {
-      mdmStatus = getStatusDescription(currentMdmLog.value.statusId);
-      mdmColor = "primary";
-    }
-  }
-
-  return [
-    {
-      name: translate("Request product export from Shopify"),
-      caption: reqCaption,
-      status: reqStatus,
-      color: reqColor,
-      type: 'systemMessage',
-      id: msg?.systemMessageId,
-      statusId: msg?.statusId
-    },
-    {
-      name: translate("Process export request in Shopify"),
-      caption: progressState.value.bulkOperationStatus || "",
-      status: progressState.value.bulkOperationStatus || translate("Pending"),
-      color: (progressState.value.bulkOperationStatus === "completed" || mdmStatus === translate("Complete")) ? "success" : (progressState.value.bulkOperationStatus ? "primary" : "medium"),
-      type: 'bulkOperation',
-      id: progressState.value.bulkOperationId
-    },
-    {
-      name: translate("Process exported file from Shopify"),
-      caption: mdmCaption,
-      status: mdmStatus,
-      color: mdmColor,
-      type: 'mdmLog',
-      id: currentMdmLog.value?.logId,
-      statusId: currentMdmLog.value?.statusId
-    },
-    {
-      name: translate("Complete"),
-      caption: "",
-      status: mdmStatus === translate("Complete") ? translate("Complete") : translate("Pending"),
-      color: mdmStatus === translate("Complete") ? "success" : "medium",
-      type: 'summary'
-    }
-  ];
-});
 const recentSyncUpdates = computed(() => {
   return productUpdateHistories.value.map((history: any) => ({
     id: [history.shopId, history.productId, history.lastUpdatedStamp].filter(Boolean).join("-"),
@@ -1029,7 +910,7 @@ async function loadLatestSystemMessage() {
   lastProductUpdateSyncedAt.value = syncRunState.lastSyncedAt || "";
 
   if (latestSystemMessage.value?.systemMessageId) {
-    await fetchMdmLogBySystemMessageId(latestSystemMessage.value.systemMessageId);
+    await fetchSyncRun(latestSystemMessage.value.systemMessageId);
   }
 
   await fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 });
@@ -1362,6 +1243,9 @@ async function startProductSync() {
     if (shouldShowProductSyncProgress(result)) {
       syncJobId.value = result.syncJobId || result.progress?.syncJobId;
       progressState.value = result.progress || progressState.value;
+      if (progressState.value.systemMessageId) {
+        await fetchSyncRun(progressState.value.systemMessageId);
+      }
       draft.value.syncStarted = true;
       showStartSyncModal.value = false;
       currentStep.value = "progress";
@@ -1383,6 +1267,10 @@ async function loadProgress() {
     shopId: props.id,
     syncJobId: syncJobId.value
   });
+
+  if (progressState.value.systemMessageId) {
+    await fetchSyncRun(progressState.value.systemMessageId);
+  }
 
   if (reconcileAvailable.value) {
     stopProgressPolling();

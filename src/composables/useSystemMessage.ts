@@ -2,6 +2,23 @@ import { reactive, toRefs } from 'vue';
 import api from '@/api';
 import logger from '@/logger';
 
+const BULK_OPERATION_QUERY = `
+  query BulkOperation($id: ID!) {
+    node(id: $id) {
+      ... on BulkOperation {
+        id
+        status
+        errorCode
+        createdAt
+        completedAt
+        objectCount
+        fileSize
+        url
+      }
+    }
+  }
+`;
+
 export function useSystemMessage() {
   const state = reactive({
     currentSystemMessage: {} as Record<string, any>,
@@ -54,18 +71,26 @@ export function useSystemMessage() {
   };
 
 
-  const fetchShopifyBulkOperation = async (bulkOperationId: string) => {
+  const fetchShopifyBulkOperation = async (bulkOperationId: string, systemMessageRemoteId: string) => {
     state.loading = true;
     try {
-      // Placeholder: The Shopify GraphQL passthrough API is not yet available in Moqui.
-      // We mock the response for now.
-      logger.info(`Mock fetching Shopify Bulk Operation for ID: ${bulkOperationId}`);
-      state.currentShopifyBulkOperation = {
-        id: bulkOperationId,
-        status: "PENDING_API",
-        objectCount: 0
-      };
-      return state.currentShopifyBulkOperation;
+      const response = await api({
+        url: "shopify/graphql",
+        method: "post",
+        data: {
+          systemMessageRemoteId,
+          queryText: BULK_OPERATION_QUERY,
+          variables: {
+            id: bulkOperationId
+          }
+        }
+      }) as any;
+
+      const payload = response?.data?.node || response?.response?.data?.node;
+      if (payload) {
+        state.currentShopifyBulkOperation = payload;
+        return state.currentShopifyBulkOperation;
+      }
     } catch (err) {
       logger.error(`Failed to fetch Shopify Bulk Operation ${bulkOperationId}`, err);
     } finally {
@@ -74,16 +99,11 @@ export function useSystemMessage() {
     return null;
   };
 
-  const fetchRelatedRecords = async (systemMessageId: string) => {
+  const fetchShopifyBulkOperationBySystemMessageId = async (systemMessageId: string) => {
     const systemMessage = await fetchSystemMessageById(systemMessageId);
     
-    if (systemMessage) {
-      // Find related Shopify Bulk Operation via remoteMessageId
-      if (systemMessage.remoteMessageId) {
-        await fetchShopifyBulkOperation(systemMessage.remoteMessageId);
-      } else {
-        state.currentShopifyBulkOperation = {};
-      }
+    if (systemMessage && systemMessage.remoteMessageId && systemMessage.systemMessageRemoteId) {
+      await fetchShopifyBulkOperation(systemMessage.remoteMessageId, systemMessage.systemMessageRemoteId);
     } else {
       state.currentShopifyBulkOperation = {};
     }
@@ -98,7 +118,7 @@ export function useSystemMessage() {
     ...toRefs(state),
     fetchSystemMessageById,
     fetchShopifyBulkOperation,
-    fetchRelatedRecords,
+    fetchShopifyBulkOperationBySystemMessageId,
     fetchSystemMessages
   };
 }

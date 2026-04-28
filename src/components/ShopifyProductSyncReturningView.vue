@@ -55,13 +55,37 @@
         </ion-buttons>
       </ion-card-header>
       <ion-list lines="full">
-        <ion-item v-for="step in progressSteps" :key="step.name" button detail @click="$emit('openStepDetails', step)">
-          <ion-label>
-            {{ step.name }}
-            <p v-if="step.caption">{{ step.caption }}</p>
-            <p v-if="step.id">{{ translate("ID") }}: {{ step.id }}</p>
-          </ion-label>
-          <ion-badge v-if="step.status" slot="end" :color="step.color">{{ step.status }}</ion-badge>
+        <template v-if="currentSyncRun && currentSyncRun.systemMessageId">
+          <ion-item button detail @click="$emit('openStepDetails', { type: 'systemMessage', id: currentSyncRun.systemMessageId })">
+            <ion-label>
+              {{ translate("System message") }}
+              <p>{{ currentSyncRun.systemMessageId }}</p>
+            </ion-label>
+            <ion-badge slot="end" :color="currentSyncRun.systemMessage.statusColor">{{ currentSyncRun.systemMessage.statusLabel }}</ion-badge>
+          </ion-item>
+          <ion-item button detail @click="$emit('openStepDetails', { type: 'bulkOperation', id: currentSyncRun.bulkOperation.id })" :disabled="!currentSyncRun.bulkOperation?.id">
+            <ion-label>
+              {{ translate("Shopify bulk operation") }}
+              <p>{{ currentSyncRun.bulkOperation?.id || translate("Not started") }}</p>
+            </ion-label>
+            <ion-note slot="end" v-if="currentSyncRun.bulkOperation?.objectCount">
+              {{ currentSyncRun.bulkOperation.objectCount }} {{ translate("objects") }}
+            </ion-note>
+            <ion-badge slot="end" :color="currentSyncRun.bulkOperation?.statusColor || 'medium'">{{ currentSyncRun.bulkOperation?.statusLabel || translate("Pending") }}</ion-badge>
+          </ion-item>
+          <ion-item button detail @click="$emit('openStepDetails', { type: 'mdmLog', id: currentSyncRun.mdmLog.id })" :disabled="!currentSyncRun.mdmLog?.id">
+            <ion-label>
+              {{ translate("HotWax bulk import") }}
+              <p>{{ currentSyncRun.mdmLog?.id || translate("Not started") }}</p>
+            </ion-label>
+            <ion-note slot="end" v-if="currentSyncRun.mdmLog?.totalRecordCount">
+              {{ currentSyncRun.mdmLog.totalRecordCount }} {{ translate("records") }}
+            </ion-note>
+            <ion-badge slot="end" :color="currentSyncRun.mdmLog?.statusColor || 'medium'">{{ currentSyncRun.mdmLog?.statusLabel || translate("Pending") }}</ion-badge>
+          </ion-item>
+        </template>
+        <ion-item v-else>
+          <ion-label>{{ translate("No active sync run tracked") }}</ion-label>
         </ion-item>
       </ion-list>
     </ion-card>
@@ -205,6 +229,7 @@ import { ellipsisVerticalOutline, flashOutline, timeOutline } from "ionicons/ico
 import { modalController, popoverController } from "@ionic/vue";
 import ScheduleModal from "./ScheduleModal.vue";
 import ShopifyProductSyncActionsPopover from "./ShopifyProductSyncActionsPopover.vue";
+import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
 
 const props = defineProps<{
 
@@ -215,7 +240,7 @@ const props = defineProps<{
   nextSyncLabel: string
   nextSyncRelativeLabel: string
   summarySubtitle: string
-  progressSteps: Array<{ name: string, caption?: string, status?: string, color?: string, type?: string, id?: string }>
+  currentSyncRun?: ShopifyProductSyncRun
   recentSyncErrors: Array<{ id: string, internalName: string, shopifyId: string, updatedTime: string, errorContent: string }>
   recentSyncUpdates: Array<{
     id: string,

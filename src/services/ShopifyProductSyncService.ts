@@ -174,6 +174,35 @@ export interface ShopifyProductSyncHistoryRun {
   operations: ShopifyProductSyncHistoryOperation[];
 }
 
+export interface ShopifyProductSyncRun {
+  systemMessageId: string;
+  systemMessage: {
+    id?: string;
+    statusId?: string;
+    statusLabel?: string;
+    statusColor?: string;
+  };
+  bulkOperation: {
+    id?: string;
+    status?: string;
+    statusLabel?: string;
+    statusColor?: string;
+    objectCount?: number;
+  };
+  mdmLog: {
+    id?: string;
+    statusId?: string;
+    statusLabel?: string;
+    statusColor?: string;
+    totalRecordCount?: number;
+    failedRecordCount?: number;
+    successRecordCount?: number;
+  };
+  status: string;
+  statusColor: string;
+  completed: boolean;
+}
+
 export interface ShopifyProductSyncHistoryState {
   runs: ShopifyProductSyncHistoryRun[];
   backendAvailable?: boolean;
