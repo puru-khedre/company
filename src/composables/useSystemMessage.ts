@@ -28,6 +28,7 @@ export function useSystemMessage() {
 
   const fetchSystemMessageById = async (systemMessageId: string) => {
     state.loading = true;
+    state.currentSystemMessage = {};
     try {
       const response = await api({
         url: "admin/systemMessages",
@@ -73,6 +74,7 @@ export function useSystemMessage() {
 
   const fetchShopifyBulkOperation = async (bulkOperationId: string, systemMessageRemoteId: string) => {
     state.loading = true;
+    state.currentShopifyBulkOperation = {};
     try {
       const response = await api({
         url: "shopify/graphql",

@@ -47,6 +47,9 @@ export function useDataManagerLog() {
 
   const fetchMdmLogBySystemMessageId = async (systemMessageId: string) => {
     state.loading = true;
+    state.currentMdmLog = {};
+    state.errorLogs = [];
+    state.errorCsvRecords = null;
     try {
       const resp = await api({
         url: "admin/dataManager/details",
@@ -75,6 +78,9 @@ export function useDataManagerLog() {
 
   const fetchLogDetails = async (logId: string) => {
     state.loading = true;
+    state.currentMdmLog = {};
+    state.errorLogs = [];
+    state.errorCsvRecords = null;
     try {
       const resp = await api({
         url: "admin/dataManager/details",
