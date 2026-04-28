@@ -4,4 +4,8 @@ export default interface ShopifyState {
   shopifyTypeMappings: any;
   shopifyShopsCarrierShipments: any;
   shopifyShopsLocations: any;
+  fetchStatus: {
+    shops: string;
+    lastFetched: number;
+  };
 }

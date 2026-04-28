@@ -10,6 +10,7 @@ import store from "@/store"
 const actions: ActionTree<ProductStoreState, RootState> = {
 
   async fetchProductStores({ commit, dispatch }, payload = { fetchCounts: false }) {
+    commit(types.PRODUCT_STORE_FETCH_STATUS_UPDATED, { productStores: 'pending' })
     let productStores = [];
 
     try {
@@ -28,11 +29,13 @@ const actions: ActionTree<ProductStoreState, RootState> = {
             productStores.map((store: any) => store.shipmentMethodCount = productStoresShipmentMethodCount[store.productStoreId] ? productStoresShipmentMethodCount[store.productStoreId] : 0)
           }
         }
+        commit(types.PRODUCT_STORE_FETCH_STATUS_UPDATED, { productStores: 'success', lastFetched: Date.now() })
       } else {
         throw resp.data;
       }
     } catch(error: any) {
       logger.error(error);
+      commit(types.PRODUCT_STORE_FETCH_STATUS_UPDATED, { productStores: 'error' })
     }
     commit(types.PRODUCT_STORE_STORES_UPDATED, productStores);
   },

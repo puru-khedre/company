@@ -3,7 +3,7 @@
     <ion-card>
       <ion-card-header>
         <ion-card-title>{{ translate("Summary") }}</ion-card-title>
-        <ion-card-subtitle>{{ translate("Running every 15 min") }}</ion-card-subtitle>
+        <ion-card-subtitle>{{ summarySubtitle }}</ion-card-subtitle>
         <ion-buttons>
           <ion-button fill="clear" :disabled="!syncJobObj" @click="$emit('run-job', syncJobObj)">
 
@@ -19,21 +19,25 @@
       </ion-card-header>
       <ion-list lines="full">
         <ion-item>
-          <ion-label>{{ translate("Last sync") }}</ion-label>
-          <ion-note slot="end">{{ lastSyncLabel }}</ion-note>
+          <ion-label>
+            {{ translate("Last sync") }}
+            <p>{{ lastSyncLabel }}</p>
+          </ion-label>
+          <ion-note slot="end">{{ lastSyncRelativeLabel }}</ion-note>
         </ion-item>
-        <ion-item>
+        <ion-item button :detail="isSyncScheduled" @click="isSyncScheduled ? $emit('openSyncJobDetails') : undefined">
           <ion-label>{{ translate("Next sync time") }}
             <p v-if="isSyncScheduled">{{ nextSyncLabel }}</p>
           </ion-label>
-          <ion-note slot="end" v-if="isSyncScheduled">4 mins</ion-note>
-          <ion-button slot="end" fill="outline" color="primary" v-else @click="openScheduleModal()">{{ translate("Schedule") }}</ion-button>
+          <ion-badge slot="end" color="warning" v-if="isSyncPaused">{{ translate("Paused") }}</ion-badge>
+          <ion-note slot="end" v-else-if="isSyncScheduled">{{ nextSyncRelativeLabel }}</ion-note>
+          <ion-button slot="end" fill="outline" color="primary" v-else @click.stop="openScheduleModal()">{{ translate("Schedule") }}</ion-button>
         </ion-item>
         <ion-item>
           <ion-label>{{ translate("Product store") }}</ion-label>
           <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
         </ion-item>
-        <ion-item>
+        <ion-item button detail @click="$emit('openUnsyncedUpdates')">
           <ion-label>{{ translate("Un-synced updates") }}</ion-label>
           <ion-badge slot="end" color="medium">{{ unsyncedUpdatesCount }}</ion-badge>
         </ion-item>
@@ -51,12 +55,37 @@
         </ion-buttons>
       </ion-card-header>
       <ion-list lines="full">
-        <ion-item v-for="step in progressSteps" :key="step.name">
-          <ion-label>
-            {{ step.name }}
-            <p v-if="step.caption">{{ step.caption }}</p>
-          </ion-label>
-          <ion-badge v-if="step.status" slot="end" :color="step.color">{{ step.status }}</ion-badge>
+        <template v-if="currentSyncRun && currentSyncRun.systemMessageId">
+          <ion-item button detail @click="$emit('openStepDetails', { type: 'systemMessage', id: currentSyncRun.systemMessageId })">
+            <ion-label>
+              {{ translate("System message") }}
+              <p>{{ currentSyncRun.systemMessageId }}</p>
+            </ion-label>
+            <ion-badge slot="end" :color="currentSyncRun.systemMessage.statusColor">{{ currentSyncRun.systemMessage.statusLabel }}</ion-badge>
+          </ion-item>
+          <ion-item button detail @click="$emit('openStepDetails', { type: 'bulkOperation', id: currentSyncRun.bulkOperation.id })" :disabled="!currentSyncRun.bulkOperation?.id">
+            <ion-label>
+              {{ translate("Shopify bulk operation") }}
+              <p>{{ currentSyncRun.bulkOperation?.id || translate("Not started") }}</p>
+            </ion-label>
+            <ion-note slot="end" v-if="currentSyncRun.bulkOperation?.objectCount">
+              {{ currentSyncRun.bulkOperation.objectCount }} {{ translate("objects") }}
+            </ion-note>
+            <ion-badge slot="end" :color="currentSyncRun.bulkOperation?.statusColor || 'medium'">{{ currentSyncRun.bulkOperation?.statusLabel || translate("Pending") }}</ion-badge>
+          </ion-item>
+          <ion-item button detail @click="$emit('openStepDetails', { type: 'mdmLog', id: currentSyncRun.mdmLog.id })" :disabled="!currentSyncRun.mdmLog?.id">
+            <ion-label>
+              {{ translate("HotWax bulk import") }}
+              <p>{{ currentSyncRun.mdmLog?.id || translate("Not started") }}</p>
+            </ion-label>
+            <ion-note slot="end" v-if="currentSyncRun.mdmLog?.totalRecordCount">
+              {{ currentSyncRun.mdmLog.totalRecordCount }} {{ translate("records") }}
+            </ion-note>
+            <ion-badge slot="end" :color="currentSyncRun.mdmLog?.statusColor || 'medium'">{{ currentSyncRun.mdmLog?.statusLabel || translate("Pending") }}</ion-badge>
+          </ion-item>
+        </template>
+        <ion-item v-else>
+          <ion-label>{{ translate("No active sync run tracked") }}</ion-label>
         </ion-item>
       </ion-list>
     </ion-card>
@@ -76,26 +105,47 @@
       <ion-card v-for="item in filteredUpdates" :key="item.id">
         <ion-list lines="full">
           <ion-item>
-            <ion-label>
-              {{ item.internalName }}
+            <ion-label class="ion-text-wrap">
+              <h2>{{ item.internalName }}</h2>
               <p>{{ item.shopifyId }}</p>
             </ion-label>
             <ion-note slot="end">{{ item.updatedTime }}</ion-note>
           </ion-item>
-          <ion-item-divider color="light">
-            <ion-label>{{ translate("Changes") }}</ion-label>
-          </ion-item-divider>
-          <ion-item v-for="(detail, index) in item.details" :key="index">
-            <ion-label>
-              {{ detail.label }}
-              <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
-                {{ detail.type === 'added' ? translate('Added') : translate('Removed') }}
-              </p>
-            </ion-label>
-            <ion-label slot="end" class="ion-text-wrap ion-text-end">
-              {{ detail.value }}
-            </ion-label>
-          </ion-item>
+
+          <ion-card-content v-if="item.details.length">
+            <ion-chip v-for="label in getChangeSummary(item.details)" :key="label">
+              <ion-label>{{ label }}</ion-label>
+            </ion-chip>
+          </ion-card-content>
+
+          <ion-accordion-group>
+            <ion-accordion :value="item.id">
+              <ion-item slot="header">
+                <ion-label>
+                  {{ translate("Changes") }}
+                  <p>{{ translate("Review field-level updates") }}</p>
+                </ion-label>
+                <ion-badge slot="end" color="medium">{{ item.details.length }}</ion-badge>
+              </ion-item>
+              <ion-list slot="content" lines="full">
+                <ion-item v-for="(detail, index) in item.details" :key="index">
+                  <ion-label class="ion-text-wrap">
+                    <h3>{{ detail.label }}</h3>
+                    <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
+                      {{ getDetailActionLabel(detail.type) }}
+                    </p>
+                    <template v-if="detail.items?.length">
+                      <p v-for="(detailItem, detailItemIndex) in detail.items" :key="detailItemIndex">
+                        <template v-if="detailItem.label">{{ detailItem.label }}: </template>{{ detailItem.value }}
+                      </p>
+                    </template>
+                    <p v-else>{{ detail.value }}</p>
+                  </ion-label>
+                </ion-item>
+              </ion-list>
+            </ion-accordion>
+          </ion-accordion-group>
+
           <ion-item v-if="!item.details.length">
             <ion-label>{{ translate("No details found for this update") }}</ion-label>
           </ion-item>
@@ -155,6 +205,8 @@
 
 <script setup lang="ts">
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonBadge,
   IonButton,
   IonButtons,
@@ -165,7 +217,7 @@ import {
   IonCardTitle,
   IonIcon,
   IonItem,
-  IonItemDivider,
+  IonChip,
   IonLabel,
   IonList,
   IonNote,
@@ -177,27 +229,38 @@ import { ellipsisVerticalOutline, flashOutline, timeOutline } from "ionicons/ico
 import { modalController, popoverController } from "@ionic/vue";
 import ScheduleModal from "./ScheduleModal.vue";
 import ShopifyProductSyncActionsPopover from "./ShopifyProductSyncActionsPopover.vue";
+import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
 
 const props = defineProps<{
 
   isSyncScheduled?: boolean
+  isSyncPaused?: boolean
   lastSyncLabel: string
+  lastSyncRelativeLabel: string
   nextSyncLabel: string
-  progressSteps: Array<{ name: string, caption?: string, status?: string, color?: string }>
+  nextSyncRelativeLabel: string
+  summarySubtitle: string
+  currentSyncRun?: ShopifyProductSyncRun
   recentSyncErrors: Array<{ id: string, internalName: string, shopifyId: string, updatedTime: string, errorContent: string }>
-  recentSyncUpdates: Array<{ id: string, internalName: string, shopifyId: string, updatedTime: string, details: Array<{ type: string, label: string, value: string }> }>
+  recentSyncUpdates: Array<{
+    id: string,
+    internalName: string,
+    shopifyId: string,
+    updatedTime: string,
+    details: Array<{ type: string, label: string, value: string, items?: Array<{ label?: string, value: string }> }>
+  }>
   selectedProductStoreName: string
   unsyncedUpdatesCount: number | string
   syncJobObj?: any
 }>();
-const emit = defineEmits(["openHistory", "scheduleSync", "run-job"]);
+const emit = defineEmits(["openHistory", "scheduleSync", "run-job", "openUnsyncedUpdates", "openSyncJobDetails", "openStepDetails", "togglePauseSyncJob"]);
 
 
 
 async function openScheduleModal() {
   const scheduleModal = await modalController.create({
     component: ScheduleModal,
-    componentProps: { cronExpression: "0 0/15 * * *" },
+    componentProps: { cronExpression: props.syncJobObj?.cronExpression || "0 0/15 * * *" },
     showBackdrop: true,
     swipeToClose: true
   });
@@ -212,6 +275,9 @@ async function openScheduleModal() {
 async function openActionsPopover(event: Event) {
   const popover = await popoverController.create({
     component: ShopifyProductSyncActionsPopover,
+    componentProps: {
+      isPaused: props.isSyncPaused
+    },
     event,
     showBackdrop: false
   });
@@ -221,9 +287,9 @@ async function openActionsPopover(event: Event) {
   if (data?.action === 'reschedule') {
     openScheduleModal();
   } else if (data?.action === 'pause') {
-    // Handle pause
-    console.log("Pause sync requested");
-    // typically would call a service to unschedule/disable the job
+    emit("togglePauseSyncJob", true);
+  } else if (data?.action === 'resume') {
+    emit("togglePauseSyncJob", false);
   }
 }
 
@@ -231,6 +297,20 @@ async function openActionsPopover(event: Event) {
 
 const updatesQuery = ref("");
 const errorsQuery = ref("");
+const visibleChangeSummaryCount = 4;
+
+function getDetailActionLabel(type: string) {
+  return type === "added" ? translate("Added") : translate("Removed");
+}
+
+function getChangeSummary(details: Array<{ label: string }>) {
+  const labels = [...new Set(details.map((detail) => detail.label).filter(Boolean))];
+  if (labels.length <= visibleChangeSummaryCount) return labels;
+  return [
+    ...labels.slice(0, visibleChangeSummaryCount),
+    `+${labels.length - visibleChangeSummaryCount} more`
+  ];
+}
 
 const filteredUpdates = computed(() => {
   const query = updatesQuery.value.trim().toLowerCase();

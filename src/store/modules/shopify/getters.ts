@@ -20,6 +20,9 @@ const getters: GetterTree <ShopifyState, RootState> = {
   },
   getShopifyShopsLocations: (state) => {
     return state.shopifyShopsLocations;
+  },
+  getFetchStatus(state) {
+    return state.fetchStatus;
   }
 }
 export default getters;

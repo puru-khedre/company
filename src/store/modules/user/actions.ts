@@ -3,7 +3,7 @@ import { ActionTree } from "vuex"
 import RootState from "@/store/RootState"
 import UserState from "./UserState"
 import * as types from "./mutation-types"
-import { showToast } from "@/utils"
+import { hasError, showToast } from "@/utils"
 import { translate } from "@/i18n"
 import logger from "@/logger"
 import emitter from "@/event-bus"
@@ -19,7 +19,7 @@ const actions: ActionTree<UserState, RootState> = {
   /**
   * Login user and return token
   */
-  async login ({ commit, dispatch }, payload) {
+  async login ({ commit, dispatch, state }, payload) {
     try {
 
       // TODO: implement support for permission check
@@ -57,13 +57,12 @@ const actions: ActionTree<UserState, RootState> = {
       emitter.emit("presentLoader", { message: "Logging in..." })
       const api_key = await UserService.login(token)
 
-      const userProfile = await UserService.getUserProfile(api_key);
+      await Promise.all([
+        dispatch('fetchUserProfile', api_key),
+        dispatch('fetchPermissions', { params: { permissionIds: [...new Set(serverPermissionsFromRules)] }, url: omsRedirectionUrl, token })
+      ])
 
-      if (userProfile.timeZone) {
-        Settings.defaultZone = userProfile.timeZone;
-      }
-      
-      setPermissions(appPermissions);
+      setPermissions(state.permissions);
       if(omsRedirectionUrl && token) {
         dispatch("setOmsRedirectionInfo", { url: omsRedirectionUrl, token })
       }
@@ -71,9 +70,8 @@ const actions: ActionTree<UserState, RootState> = {
       updateToken(api_key);
 
       commit(types.USER_TOKEN_CHANGED, { newToken: api_key })
-      commit(types.USER_INFO_UPDATED, userProfile);
-      commit(types.USER_PERMISSIONS_UPDATED, appPermissions);
       this.dispatch('util/fetchOrganizationPartyId');
+      this.dispatch('util/fetchStatusItems');
       useServiceJob().fetchJobs();
       emitter.emit("dismissLoader")
 
@@ -86,6 +84,34 @@ const actions: ActionTree<UserState, RootState> = {
       showToast(translate(err));
       logger.error("error", err);
       return Promise.reject(new Error(err))
+    }
+  },
+
+  async fetchUserProfile({ commit }, api_key) {
+    commit(types.USER_FETCH_STATUS_UPDATED, { profile: 'pending' })
+    try {
+      const resp = await UserService.getUserProfile(api_key);
+      if (resp && resp.timeZone) {
+        Settings.defaultZone = resp.timeZone;
+      }
+      commit(types.USER_INFO_UPDATED, resp);
+      commit(types.USER_FETCH_STATUS_UPDATED, { profile: 'success', lastFetched: Date.now() })
+    } catch (error) {
+      logger.error(error)
+      commit(types.USER_FETCH_STATUS_UPDATED, { profile: 'error' })
+    }
+  },
+
+  async fetchPermissions({ commit }, payload) {
+    commit(types.USER_FETCH_STATUS_UPDATED, { permissions: 'pending' })
+    try {
+      const resp = await UserService.getUserPermissions(payload.params, payload.url, payload.token);
+      const appPermissions = prepareAppPermissions(resp);
+      commit(types.USER_PERMISSIONS_UPDATED, appPermissions);
+      commit(types.USER_FETCH_STATUS_UPDATED, { permissions: 'success', lastFetched: Date.now() })
+    } catch (error) {
+      logger.error(error)
+      commit(types.USER_FETCH_STATUS_UPDATED, { permissions: 'error' })
     }
   },
 

@@ -23,6 +23,12 @@ const getters: GetterTree <UtilState, RootState> = {
   },
   getOrganizationPartyId(state) {
     return state.organizationPartyId;
+  },
+  getStatusItems(state) {
+    return state.statusItems;
+  },
+  getFetchStatus(state) {
+    return state.fetchStatus;
   }
 }
 export default getters;
