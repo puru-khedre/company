@@ -188,6 +188,7 @@ export interface ShopifyProductSyncRun {
     statusLabel?: string;
     statusColor?: string;
     objectCount?: number;
+    query?: string;
   };
   mdmLog: {
     id?: string;

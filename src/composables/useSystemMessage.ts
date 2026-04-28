@@ -14,6 +14,7 @@ const BULK_OPERATION_QUERY = `
         objectCount
         fileSize
         url
+        query
       }
     }
   }
@@ -71,6 +72,17 @@ export function useSystemMessage() {
     return [];
   };
 
+  const getGraphqlPayload = (response: any) => {
+    const responseData = response?.data || response;
+    return responseData?.response?.data ||
+      responseData?.data ||
+      responseData?.response ||
+      responseData;
+  };
+
+  const getSystemMessageBulkOperationId = (systemMessage: any) => {
+    return systemMessage?.remoteId || systemMessage?.remoteMessageId || "";
+  };
 
   const fetchShopifyBulkOperation = async (bulkOperationId: string, systemMessageRemoteId: string) => {
     state.loading = true;
@@ -88,7 +100,8 @@ export function useSystemMessage() {
         }
       }) as any;
 
-      const payload = response?.data?.node || response?.response?.data?.node;
+      const graphQlPayload = getGraphqlPayload(response);
+      const payload = graphQlPayload?.node;
       if (payload) {
         state.currentShopifyBulkOperation = payload;
         return state.currentShopifyBulkOperation;
@@ -101,18 +114,22 @@ export function useSystemMessage() {
     return null;
   };
 
-  const fetchShopifyBulkOperationBySystemMessageId = async (systemMessageId: string) => {
-    const systemMessage = await fetchSystemMessageById(systemMessageId);
+  const fetchShopifyBulkOperationBySystemMessageId = async (systemMessageId: string, systemMessageData?: any) => {
+    const systemMessage = systemMessageData || await fetchSystemMessageById(systemMessageId);
     
-    if (systemMessage && systemMessage.remoteMessageId && systemMessage.systemMessageRemoteId) {
-      await fetchShopifyBulkOperation(systemMessage.remoteMessageId, systemMessage.systemMessageRemoteId);
+    if (systemMessageData) state.currentSystemMessage = systemMessageData;
+
+    let shopifyBulkOperation = {};
+    const bulkOperationId = getSystemMessageBulkOperationId(systemMessage);
+    if (systemMessage && bulkOperationId && systemMessage.systemMessageRemoteId) {
+      shopifyBulkOperation = await fetchShopifyBulkOperation(bulkOperationId, systemMessage.systemMessageRemoteId) || {};
     } else {
       state.currentShopifyBulkOperation = {};
     }
     
     return {
-      systemMessage: state.currentSystemMessage,
-      shopifyBulkOperation: state.currentShopifyBulkOperation
+      systemMessage: systemMessage || state.currentSystemMessage,
+      shopifyBulkOperation: shopifyBulkOperation || state.currentShopifyBulkOperation
     };
   };
 

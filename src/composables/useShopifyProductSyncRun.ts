@@ -40,47 +40,49 @@ export function useShopifyProductSyncRun() {
     return status;
   };
 
-  const fetchSyncRun = async (systemMessageId: string) => {
-    if (!systemMessageId) return null;
+  const fetchSyncRun = async (systemMessageId: string, systemMessageData?: any) => {
+    if (!systemMessageId && !systemMessageData) return null;
     
     state.loading = true;
     try {
       // Fetch System Message and related Shopify Bulk Operation
-      await fetchShopifyBulkOperationBySystemMessageId(systemMessageId);
+      const { systemMessage, shopifyBulkOperation } = await fetchShopifyBulkOperationBySystemMessageId(systemMessageId, systemMessageData);
       
       // Fetch MDM Log
-      await fetchMdmLogBySystemMessageId(systemMessageId);
+      const mdmLog = await fetchMdmLogBySystemMessageId(systemMessageId) || {};
 
       // Map to ShopifyProductSyncRun
-      state.currentSyncRun = {
-        systemMessageId,
+      const syncRun: ShopifyProductSyncRun = {
+        systemMessageId: systemMessageId || systemMessage?.systemMessageId,
         systemMessage: {
-          ...currentSystemMessage.value,
-          statusLabel: getStatusLabel(currentSystemMessage.value?.statusId),
-          statusColor: getStatusColor(currentSystemMessage.value?.statusId)
+          ...systemMessage,
+          statusLabel: getStatusLabel(systemMessage?.statusId),
+          statusColor: getStatusColor(systemMessage?.statusId)
         },
         bulkOperation: {
-          id: currentShopifyBulkOperation.value?.id,
-          status: currentShopifyBulkOperation.value?.status,
-          statusLabel: getStatusLabel(currentShopifyBulkOperation.value?.status),
-          statusColor: getStatusColor(currentShopifyBulkOperation.value?.status),
-          objectCount: currentShopifyBulkOperation.value?.objectCount
+          id: shopifyBulkOperation?.id,
+          status: shopifyBulkOperation?.status,
+          statusLabel: getStatusLabel(shopifyBulkOperation?.status),
+          statusColor: getStatusColor(shopifyBulkOperation?.status),
+          objectCount: shopifyBulkOperation?.objectCount,
+          query: shopifyBulkOperation?.query
         },
         mdmLog: {
-          id: currentMdmLog.value?.logId,
-          statusId: currentMdmLog.value?.statusId,
-          statusLabel: getStatusLabel(currentMdmLog.value?.statusId),
-          statusColor: getStatusColor(currentMdmLog.value?.statusId),
-          totalRecordCount: currentMdmLog.value?.totalRecordCount,
-          failedRecordCount: currentMdmLog.value?.failedRecordCount,
-          successRecordCount: currentMdmLog.value?.successRecordCount
+          id: mdmLog?.logId,
+          statusId: mdmLog?.statusId,
+          statusLabel: getStatusLabel(mdmLog?.statusId),
+          statusColor: getStatusColor(mdmLog?.statusId),
+          totalRecordCount: mdmLog?.totalRecordCount,
+          failedRecordCount: mdmLog?.failedRecordCount,
+          successRecordCount: mdmLog?.successRecordCount
         },
-        status: getStatusLabel(currentMdmLog.value?.statusId || currentShopifyBulkOperation.value?.status || currentSystemMessage.value?.statusId),
-        statusColor: getStatusColor(currentMdmLog.value?.statusId || currentShopifyBulkOperation.value?.status || currentSystemMessage.value?.statusId),
-        completed: currentMdmLog.value?.statusId === "DmlSuccess" || currentMdmLog.value?.statusId === "DmlError"
+        status: getStatusLabel(mdmLog?.statusId || shopifyBulkOperation?.status || systemMessage?.statusId),
+        statusColor: getStatusColor(mdmLog?.statusId || shopifyBulkOperation?.status || systemMessage?.statusId),
+        completed: mdmLog?.statusId === "DmlSuccess" || mdmLog?.statusId === "DmlError"
       };
 
-      return state.currentSyncRun;
+      state.currentSyncRun = syncRun;
+      return syncRun;
     } finally {
       state.loading = false;
     }
