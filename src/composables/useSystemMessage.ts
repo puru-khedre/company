@@ -1,6 +1,11 @@
 import { reactive, toRefs } from 'vue';
 import api from '@/api';
 import logger from '@/logger';
+import {
+  getReferencedBulkOperationSystemMessageIds,
+  getSystemMessageBulkOperationId,
+  getSystemMessageCandidateIds
+} from "@/utils/shopifyBulkOperation";
 
 const BULK_OPERATION_QUERY = `
   query BulkOperation($id: ID!) {
@@ -98,10 +103,6 @@ export function useSystemMessage() {
       responseData;
   };
 
-  const getSystemMessageBulkOperationId = (systemMessage: any) => {
-    return systemMessage?.remoteId || systemMessage?.remoteMessageId || "";
-  };
-
   const fetchShopifyBulkOperation = async (bulkOperationId: string, systemMessageRemoteId: string) => {
     state.loading = true;
     state.currentShopifyBulkOperation = {};
@@ -132,22 +133,78 @@ export function useSystemMessage() {
     return null;
   };
 
+  const getBulkOperationSource = async (systemMessage: any, visitedSystemMessageIds = new Set<string>()): Promise<{
+    bulkOperationId: string;
+    systemMessage: any;
+    relatedSystemMessages: any[];
+    relatedSystemMessageIds: string[];
+  }> => {
+    const systemMessageId = String(systemMessage?.systemMessageId || "");
+    if (systemMessageId) visitedSystemMessageIds.add(systemMessageId);
+
+    const bulkOperationId = getSystemMessageBulkOperationId(systemMessage);
+    if (bulkOperationId) {
+      return {
+        bulkOperationId,
+        systemMessage,
+        relatedSystemMessages: [],
+        relatedSystemMessageIds: getSystemMessageCandidateIds(systemMessage)
+      };
+    }
+
+    const referencedSystemMessageIds = getReferencedBulkOperationSystemMessageIds(systemMessage)
+      .filter((referencedSystemMessageId) => !visitedSystemMessageIds.has(referencedSystemMessageId));
+    if (!referencedSystemMessageIds.length) {
+      return {
+        bulkOperationId: "",
+        systemMessage,
+        relatedSystemMessages: [],
+        relatedSystemMessageIds: getSystemMessageCandidateIds(systemMessage)
+      };
+    }
+
+    for (const referencedSystemMessageId of referencedSystemMessageIds) {
+      const referencedSystemMessage = await fetchSystemMessageById(referencedSystemMessageId);
+      if (!referencedSystemMessage) continue;
+
+      const referencedSource = await getBulkOperationSource(referencedSystemMessage, visitedSystemMessageIds);
+      if (referencedSource.bulkOperationId) {
+        const relatedSystemMessages = [referencedSystemMessage, ...referencedSource.relatedSystemMessages];
+        return {
+          ...referencedSource,
+          relatedSystemMessages,
+          relatedSystemMessageIds: getSystemMessageCandidateIds(systemMessage, relatedSystemMessages)
+        };
+      }
+    }
+
+    return {
+      bulkOperationId: "",
+      systemMessage,
+      relatedSystemMessages: [],
+      relatedSystemMessageIds: getSystemMessageCandidateIds(systemMessage)
+    };
+  };
+
   const fetchShopifyBulkOperationBySystemMessageId = async (systemMessageId: string, systemMessageData?: any) => {
     const systemMessage = systemMessageData || await fetchSystemMessageById(systemMessageId);
     
     if (systemMessageData) state.currentSystemMessage = systemMessageData;
 
     let shopifyBulkOperation = {};
-    const bulkOperationId = getSystemMessageBulkOperationId(systemMessage);
-    if (systemMessage && bulkOperationId && systemMessage.systemMessageRemoteId) {
-      shopifyBulkOperation = await fetchShopifyBulkOperation(bulkOperationId, systemMessage.systemMessageRemoteId) || {};
+    const bulkOperationSource = await getBulkOperationSource(systemMessage);
+    const systemMessageRemoteId = bulkOperationSource.systemMessage?.systemMessageRemoteId || systemMessage?.systemMessageRemoteId;
+    if (systemMessage && bulkOperationSource.bulkOperationId && systemMessageRemoteId) {
+      shopifyBulkOperation = await fetchShopifyBulkOperation(bulkOperationSource.bulkOperationId, systemMessageRemoteId) || {};
     } else {
       state.currentShopifyBulkOperation = {};
     }
     
     return {
       systemMessage: systemMessage || state.currentSystemMessage,
-      shopifyBulkOperation: shopifyBulkOperation || state.currentShopifyBulkOperation
+      shopifyBulkOperation: shopifyBulkOperation || state.currentShopifyBulkOperation,
+      bulkOperationId: bulkOperationSource.bulkOperationId,
+      relatedSystemMessageIds: bulkOperationSource.relatedSystemMessageIds
     };
   };
 
