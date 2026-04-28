@@ -8,8 +8,8 @@ import { translate } from '@/i18n';
 export function useShopifyProductSyncRun() {
   const store = useStore();
   const statusItems = computed(() => store.getters['util/getStatusItems']);
-  const { currentSystemMessage, currentShopifyBulkOperation, fetchShopifyBulkOperationBySystemMessageId } = useSystemMessage();
-  const { currentMdmLog, fetchMdmLogBySystemMessageId } = useDataManagerLog();
+  const { fetchShopifyBulkOperationBySystemMessageId } = useSystemMessage();
+  const { fetchMdmLogBySystemMessageId } = useDataManagerLog();
 
   const state = reactive({
     currentSyncRun: {} as ShopifyProductSyncRun,
@@ -47,13 +47,14 @@ export function useShopifyProductSyncRun() {
     try {
       // Fetch System Message and related Shopify Bulk Operation
       const { systemMessage, shopifyBulkOperation } = await fetchShopifyBulkOperationBySystemMessageId(systemMessageId, systemMessageData);
+      const syncRunSystemMessageId = systemMessageId || systemMessage?.systemMessageId;
       
       // Fetch MDM Log
-      const mdmLog = await fetchMdmLogBySystemMessageId(systemMessageId) || {};
+      const mdmLog = await fetchMdmLogBySystemMessageId(syncRunSystemMessageId) || {};
 
       // Map to ShopifyProductSyncRun
       const syncRun: ShopifyProductSyncRun = {
-        systemMessageId: systemMessageId || systemMessage?.systemMessageId,
+        systemMessageId: syncRunSystemMessageId,
         systemMessage: {
           ...systemMessage,
           statusLabel: getStatusLabel(systemMessage?.statusId),

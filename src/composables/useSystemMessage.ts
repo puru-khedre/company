@@ -72,6 +72,24 @@ export function useSystemMessage() {
     return [];
   };
 
+  const fetchSystemMessagesPage = async (params: any) => {
+    state.loading = true;
+    try {
+      const response = await api({
+        url: "admin/systemMessages",
+        method: "GET",
+        params
+      }) as any;
+
+      return response?.data || { systemMessages: [], systemMessagesCount: 0 };
+    } catch (err) {
+      logger.error(`Failed to fetch system messages`, err);
+    } finally {
+      state.loading = false;
+    }
+    return { systemMessages: [], systemMessagesCount: 0 };
+  };
+
   const getGraphqlPayload = (response: any) => {
     const responseData = response?.data || response;
     return responseData?.response?.data ||
@@ -138,6 +156,7 @@ export function useSystemMessage() {
     fetchSystemMessageById,
     fetchShopifyBulkOperation,
     fetchShopifyBulkOperationBySystemMessageId,
-    fetchSystemMessages
+    fetchSystemMessages,
+    fetchSystemMessagesPage
   };
 }

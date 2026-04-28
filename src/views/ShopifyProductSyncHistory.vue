@@ -5,7 +5,7 @@
         <ion-buttons slot="start">
           <ion-back-button :default-href="'/shopify-connection-details/' + id + '/product-sync'" />
         </ion-buttons>
-        <ion-title>{{ translate("Product sync") }}</ion-title>
+        <ion-title>{{ translate("Product sync history") }}</ion-title>
       </ion-toolbar>
     </ion-header>
 
@@ -19,7 +19,14 @@
         </ion-card-content>
       </ion-card>
 
-      <shopify-product-sync-history-view v-else :runs="historyRuns" />
+      <shopify-product-sync-history-view
+        v-else
+        :runs="historyRuns"
+        :send-job-details="sendJobDetails"
+        :send-job-recent-runs="sendJobRecentRuns"
+        :poll-job-details="pollJobDetails"
+        :poll-job-recent-runs="pollJobRecentRuns"
+      />
     </ion-content>
   </ion-page>
 </template>
@@ -48,15 +55,23 @@ import ShopifyProductSyncHistoryView from "@/components/ShopifyProductSyncHistor
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
 import { useSystemMessage } from "@/composables/useSystemMessage";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
+import useServiceJob from "@/composables/useServiceJob";
 import { showToast } from "@/utils";
 
 const props = defineProps(["id"]);
 const store = useStore();
-const { fetchSystemMessages } = useSystemMessage();
+const { fetchSystemMessagesPage } = useSystemMessage();
 
 const { fetchSyncRun } = useShopifyProductSyncRun();
+const { fetchJobDetail, fetchJobRuns } = useServiceJob();
+const BULK_OPERATION_SEND_JOB_NAME = "send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery";
+const BULK_OPERATION_POLL_JOB_NAME = "poll_ShopifyBulkOperationResult";
 
 const isLoading = ref(true);
+const sendJobDetails = ref<any>({});
+const sendJobRecentRuns = ref<any[]>([]);
+const pollJobDetails = ref<any>({});
+const pollJobRecentRuns = ref<any[]>([]);
 interface ShopifyProductSyncHistoryRun {
   id: string;
   createdTime: any;
@@ -66,7 +81,6 @@ interface ShopifyProductSyncHistoryRun {
   bulkOperationStatus: string;
   bulkOperationStatusLabel: string;
   bulkOperationStatusColor: string;
-  queryContent: string;
   objectCount: number;
   mdmImportId: string;
   mdmStatus: string;
@@ -80,10 +94,6 @@ interface ShopifyProductSyncHistoryRun {
 const historyRuns = ref<ShopifyProductSyncHistoryRun[]>([]);
 
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
-
-function getSystemMessageBulkOperationId(systemMessage: any) {
-  return systemMessage?.remoteId || systemMessage?.remoteMessageId || "";
-}
 
 onIonViewWillEnter(async () => {
   await loadHistory();
@@ -105,14 +115,15 @@ async function loadHistory() {
       throw new Error("Could not resolve systemMessageRemoteId");
     }
 
-    // Fetch system messages for Shopify product sync
-    const systemMessages = (await fetchSystemMessages({
+    await loadBulkOperationJobState();
+
+    const systemMessageParams = {
       systemMessageTypeId: 'BulkQueryShopifyProductUpdates',
       systemMessageRemoteId,
       isOutgoing: 'Y', // Only fetch primary sync request messages
-      pageSize: 20,
-      orderByField: '-initDate'
-    })) || [];
+      orderByField: 'initDate DESC'
+    };
+    const systemMessages = await fetchAllSystemMessages(systemMessageParams);
 
     if (!systemMessages.length) {
       historyRuns.value = [];
@@ -120,9 +131,8 @@ async function loadHistory() {
     }
 
     // Step 1: Populate basic info immediately to make page interactable
-    // Filter in-memory to ensure only primary sync requests are shown
     historyRuns.value = systemMessages
-      .filter((msg: any) => msg.isOutgoing === 'Y' && getSystemMessageBulkOperationId(msg).startsWith('gid://shopify/BulkOperation/'))
+      .filter((msg: any) => msg.isOutgoing === 'Y')
       .map((msg: any) => ({
         id: msg.systemMessageId,
         createdTime: msg.initDate,
@@ -132,7 +142,6 @@ async function loadHistory() {
         bulkOperationStatus: "pending",
         bulkOperationStatusLabel: translate("Pending"),
         bulkOperationStatusColor: "medium",
-        queryContent: '',
         objectCount: 0,
         mdmImportId: '',
         mdmStatus: "pending",
@@ -141,7 +150,8 @@ async function loadHistory() {
         totalRecordCount: 0,
         failedRecordCount: 0,
         loading: true
-      }));
+      }))
+      .sort(sortRunsNewestFirst);
 
     // Hide global loader once we have the initial list
     isLoading.value = false;
@@ -168,7 +178,6 @@ async function loadHistory() {
                 bulkOperationStatus: syncRun.bulkOperation?.status || '',
                 bulkOperationStatusLabel: syncRun.bulkOperation?.statusLabel || translate("Pending"),
                 bulkOperationStatusColor: syncRun.bulkOperation?.statusColor || "medium",
-                queryContent: syncRun.bulkOperation?.query || '',
                 objectCount: syncRun.bulkOperation?.objectCount || 0,
                 mdmImportId: syncRun.mdmLog?.id || '',
                 mdmStatus: syncRun.mdmLog?.statusId || '',
@@ -194,5 +203,80 @@ async function loadHistory() {
   } finally {
     isLoading.value = false;
   }
+}
+
+async function loadBulkOperationJobState() {
+  const [sendJob, sendRuns, pollJob, pollRuns] = await Promise.all([
+    fetchJobDetail(BULK_OPERATION_SEND_JOB_NAME),
+    fetchAllJobRuns(BULK_OPERATION_SEND_JOB_NAME),
+    fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME),
+    fetchAllJobRuns(BULK_OPERATION_POLL_JOB_NAME)
+  ]);
+
+  sendJobDetails.value = sendJob || {};
+  sendJobRecentRuns.value = Array.isArray(sendRuns) ? sendRuns : [];
+  pollJobDetails.value = pollJob || {};
+  pollJobRecentRuns.value = Array.isArray(pollRuns) ? pollRuns : [];
+}
+
+async function fetchAllJobRuns(jobName: string) {
+  const pageSize = 250;
+  let pageIndex = 0;
+  let jobRuns: any[] = [];
+
+  while (pageIndex < 20) {
+    const page = await fetchJobRuns(jobName, {
+      pageSize,
+      pageIndex,
+      orderByField: "startDate DESC"
+    });
+    jobRuns = jobRuns.concat(page);
+    if (!page.length || page.length < pageSize) break;
+    pageIndex += 1;
+  }
+
+  return jobRuns.sort((firstRun: any, secondRun: any) => {
+    return getCreatedTimeMs(getJobRunStartedAt(secondRun)) - getCreatedTimeMs(getJobRunStartedAt(firstRun));
+  }).slice(0, 5);
+}
+
+function getJobRunStartedAt(run: any) {
+  return run.startDate || run.startTime || run.createdDate || run.createdStamp || run.lastUpdatedStamp || "";
+}
+
+function sortRunsNewestFirst(firstRun: ShopifyProductSyncHistoryRun, secondRun: ShopifyProductSyncHistoryRun) {
+  return getCreatedTimeMs(secondRun.createdTime) - getCreatedTimeMs(firstRun.createdTime);
+}
+
+function getCreatedTimeMs(createdTime: any) {
+  if (!createdTime) return 0;
+  if (typeof createdTime === "number") return createdTime;
+
+  const parsedTime = new Date(createdTime).getTime();
+  return Number.isNaN(parsedTime) ? 0 : parsedTime;
+}
+
+async function fetchAllSystemMessages(params: any) {
+  const pageSize = 1000;
+  let pageIndex = 0;
+  let totalCount = pageSize;
+  let systemMessages: any[] = [];
+
+  while (systemMessages.length < totalCount) {
+    const response = await fetchSystemMessagesPage({
+      ...params,
+      pageSize,
+      pageIndex
+    });
+    const page = response?.systemMessages || [];
+    systemMessages = systemMessages.concat(page);
+    totalCount = Number(response?.systemMessagesCount || systemMessages.length);
+    if (!page.length) break;
+    pageIndex += 1;
+  }
+
+  return systemMessages.sort((firstMessage: any, secondMessage: any) => {
+    return getCreatedTimeMs(secondMessage.initDate) - getCreatedTimeMs(firstMessage.initDate);
+  });
 }
 </script>

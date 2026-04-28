@@ -248,6 +248,9 @@ Implementation logic:
 - This screen should poll backend sync state and render backend status, not frontend-derived assumptions.
 - It should support queued, sent, running, waiting, completed, cancelled, and error conditions.
 - The screen should preserve traceability by surfacing identifiers such as bulk operation id where useful.
+- The tracker should show the next scheduled attempts for the two backend jobs that move Shopify bulk operations forward:
+  - `send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery` sends produced bulk-operation system messages to Shopify when Shopify has an open bulk-operation slot.
+  - `poll_ShopifyBulkOperationResult` checks Shopify for completed bulk operations so Moqui can continue into file processing and import.
 
 ### 7. Reconcile After Completion
 
@@ -273,8 +276,8 @@ The foundation PR documents the backend as a seven-stage flow. The wizard should
 | Backend stage | Backend meaning | Most relevant UI |
 | --- | --- | --- |
 | 1. Queuing the request | Create outgoing system message with filters and dates | Start import confirmation, early progress state |
-| 2. Sending to Shopify | Enforce single bulk operation lock and send GraphQL mutation | Progress tracker |
-| 3. Confirming bulk operation | Polling/webhook marks bulk op complete and stores result URL | Progress tracker |
+| 2. Sending to Shopify | Enforce single bulk operation lock and send GraphQL mutation through `send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery` | Progress tracker system-message row with next send attempt |
+| 3. Confirming bulk operation | `poll_ShopifyBulkOperationResult` marks bulk op complete and stores result URL | Progress tracker bulk-operation row with next poll attempt |
 | 4. Data preparation | Convert JSONL to nested JSON and upload to MDM | Progress tracker |
 | 5. Diff computation | Compare incoming data with ProductUpdateHistory | Mostly backend, implicit in progress |
 | 6. Database updates | Selectively create/update product data | Mostly backend, implicit in progress |
