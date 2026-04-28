@@ -46,8 +46,9 @@ export function useSystemMessage() {
       }) as any;
 
       if (response?.data?.systemMessages?.length) {
-        state.currentSystemMessage = response.data.systemMessages[0];
-        return state.currentSystemMessage;
+        const systemMessage = response.data.systemMessages[0];
+        state.currentSystemMessage = systemMessage;
+        return systemMessage;
       }
     } catch (err) {
       logger.error(`Failed to fetch system message ${systemMessageId}`, err);
@@ -123,7 +124,7 @@ export function useSystemMessage() {
       const payload = graphQlPayload?.node;
       if (payload) {
         state.currentShopifyBulkOperation = payload;
-        return state.currentShopifyBulkOperation;
+        return payload;
       }
     } catch (err) {
       logger.error(`Failed to fetch Shopify Bulk Operation ${bulkOperationId}`, err);
