@@ -861,13 +861,18 @@ async function openStepDetails(step: any) {
 }
 
 async function loadShopifyShopProductCount() {
-  const countState = await ShopifyProductSyncService.fetchShopifyShopProductCount({
-    shopId: props.id,
-    systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
-    lastSyncedAt: lastProductUpdateSyncedAt.value,
-    shop: shop.value
-  });
-  shopifyShopProductCount.value = Number(countState.count || 0);
+  try {
+    const countState = await ShopifyProductSyncService.fetchShopifyShopProductCount({
+      shopId: props.id,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      lastSyncedAt: lastProductUpdateSyncedAt.value,
+      shop: shop.value
+    });
+    shopifyShopProductCount.value = Number(countState.count || 0);
+  } catch (error: any) {
+    logger.error(error);
+    shopifyShopProductCount.value = 0;
+  }
 }
 
 async function loadUnsyncedProductUpdates() {
