@@ -14,9 +14,18 @@
     <ion-list>
       <ion-item>
         <ion-input label-placement="floating" :label="translate('Expression')" v-model="expression"></ion-input>
-        <ion-button slot="end" fill="clear" size="small" color="medium" href="https://www.freeformatter.com/cron-expression-generator-quartz.html" target="_blank">
+        <ion-button slot="end" fill="clear" size="small" color="medium"
+          href="https://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/crontrigger.html"
+          target="_blank" rel="noopener noreferrer">
           <ion-icon :icon="informationCircleOutline" slot="icon-only" />
         </ion-button>
+      </ion-item>
+      <ion-item>
+        <ion-icon slot="start" :icon="informationCircleOutline" />
+        <ion-label>
+          {{ translate("Quartz cron expression") }}
+          <p>{{ translate("Validated with cron-parser before saving.") }}</p>
+        </ion-label>
       </ion-item>
       <ion-item>
         <ion-icon slot="start" :icon="timerOutline"/>
@@ -70,24 +79,24 @@ import {
 import { closeOutline, informationCircleOutline, saveOutline, timeOutline, timerOutline } from "ionicons/icons";
 import { computed, defineProps, ref } from "vue";
 import cronstrue from "cronstrue";
-import cronParser from "cron-parser";
+import { CronExpressionParser } from "cron-parser";
 import { useStore } from "vuex";
 import { DateTime } from "luxon";
 
 const props = defineProps({
   cronExpression: {
     type: String,
-    default: "0 0/15 * * *"
+    default: "0 */15 * ? * *"
   }
 })
 
 let expression = ref(props.cronExpression)
 
 const cronExpressions = {
-  "Every 15 minutes": "0 0/15 * * *",
-  "Every 30 minutes": "0 0/30 * * *",
-  "Every hour": "0 0 * * *",
-  "Every day at midnight": "0 0 0 * * *"
+  "Every 15 minutes": "0 */15 * ? * *",
+  "Every 30 minutes": "0 */30 * ? * *",
+  "Every hour": "0 0 * ? * *",
+  "Every day at midnight": "0 0 0 ? * *"
 }
 
 const store = useStore()
@@ -95,7 +104,7 @@ const userProfile = computed(() => store.getters["user/getUserProfile"])
 
 const isExpressionValid = computed(() => {
   try {
-    cronParser.parseExpression(expression.value, { tz: userProfile.value?.timeZone || "UTC" })
+    CronExpressionParser.parse(expression.value, { tz: userProfile.value?.timeZone || "UTC" })
     return true
   } catch(e) {
     return false
@@ -112,8 +121,8 @@ const getCronString = computed(() => {
 
 const getNextExecutionTime = computed(() => {
   try {
-    const interval = cronParser.parseExpression(expression.value, { tz: userProfile.value?.timeZone || "UTC" })
-    return DateTime.fromMillis((interval.next() as any)["_date"].ts).toLocaleString(DateTime.DATETIME_MED)
+    const interval = CronExpressionParser.parse(expression.value, { tz: userProfile.value?.timeZone || "UTC" })
+    return DateTime.fromMillis(interval.next().getTime()).toLocaleString(DateTime.DATETIME_MED)
   } catch(e) {
     return ""
   }

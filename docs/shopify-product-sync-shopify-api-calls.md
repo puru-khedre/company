@@ -14,6 +14,11 @@ This file intentionally excludes the backend bulk sync lifecycle that Moqui alre
 - OMS ingestion
 - sync history persistence
 
+The app still surfaces the operational timing for the Moqui jobs that drive the Shopify bulk-operation lifecycle:
+
+- `send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery` sends produced system messages to Shopify when a bulk-operation slot is available.
+- `poll_ShopifyBulkOperationResult` checks Shopify for completed bulk operations and lets Moqui continue into file processing and import.
+
 The focus here is only the extra Shopify reads the app needs for UX, preflight, and live review states.
 
 ## Assumptions
@@ -337,6 +342,8 @@ That will produce a more accurate UI than polling Shopify in isolation.
 | Start sync modal | none | yes |
 | Progress tracker | `WizardBulkOperationById` using Moqui `remoteId`, and optionally `WizardRecentBulkQueryOperations`, plus Moqui aggregated status | yes |
 | Reconcile | `WizardLiveCatalogCounts` | yes |
+
+The progress tracker should combine these reads with ServiceJob next-run timing for `send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery` and `poll_ShopifyBulkOperationResult` so operators can see when Moqui will next attempt the send and poll steps.
 
 ## Implementation Recommendation
 

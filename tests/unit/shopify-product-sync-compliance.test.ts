@@ -41,4 +41,22 @@ describe("shopify product sync implementation compliance", () => {
     assert.equal(routerSource.includes("/shopify-connection-details/:id/product-sync/history"), true);
     assert.equal(routerSource.includes("name: 'ShopifyProductSyncHistory'"), true);
   });
+
+  test("product sync history fetches newest system messages first", () => {
+    const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
+
+    assert.equal(historySource.includes("orderByField: 'initDate DESC'"), true);
+    assert.equal(historySource.includes('translate("Product sync history")'), true);
+    assert.equal(historySource.includes("remoteMessageId?.startsWith"), false);
+    assert.equal(historySource.includes("fetchAllSystemMessages(systemMessageParams)"), true);
+  });
+
+  test("data manager logs are fetched by exact system message id", () => {
+    const dataManagerLogSource = readProjectFile("src/composables/useDataManagerLog.ts");
+    const syncRunSource = readProjectFile("src/composables/useShopifyProductSyncRun.ts");
+
+    assert.equal(dataManagerLogSource.includes('systemMessageId_op: "equals"'), true);
+    assert.equal(dataManagerLogSource.includes("pageSize: 1"), true);
+    assert.equal(syncRunSource.includes("fetchMdmLogBySystemMessageId(syncRunSystemMessageId)"), true);
+  });
 });

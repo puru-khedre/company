@@ -5,6 +5,7 @@ import logger from '@/logger';
 export function useDataManagerLog() {
   const state = reactive({
     currentMdmLog: {} as Record<string, any>,
+    recentMdmLogs: [] as any[],
     errorLogs: [] as any[],
     errorCsvRecords: null as any,
     loading: false
@@ -46,6 +47,8 @@ export function useDataManagerLog() {
   };
 
   const fetchMdmLogBySystemMessageId = async (systemMessageId: string) => {
+    if (!systemMessageId) return null;
+
     state.loading = true;
     state.currentMdmLog = {};
     state.errorLogs = [];
@@ -55,7 +58,9 @@ export function useDataManagerLog() {
         url: "admin/dataManager/details",
         method: "GET",
         params: {
-          systemMessageId
+          systemMessageId,
+          systemMessageId_op: "equals",
+          pageSize: 1
         }
       }) as any;
 
@@ -107,10 +112,37 @@ export function useDataManagerLog() {
     return null;
   };
 
+  const fetchRecentLogsByConfigId = async (configId: string, pageSize = 10) => {
+    if (!configId) return [];
+
+    state.loading = true;
+    try {
+      const resp = await api({
+        url: "admin/dataManager/details",
+        method: "GET",
+        params: {
+          configId,
+          pageSize,
+          pageIndex: 0
+        }
+      }) as any;
+
+      state.recentMdmLogs = resp?.data?.dataManagerLogs || [];
+      return state.recentMdmLogs;
+    } catch (err) {
+      logger.error(`Failed to fetch recent MDM logs for config ${configId}`, err);
+      state.recentMdmLogs = [];
+    } finally {
+      state.loading = false;
+    }
+    return [];
+  };
+
   return {
     ...toRefs(state),
     fetchFailedRecords,
     fetchMdmLogBySystemMessageId,
-    fetchLogDetails
+    fetchLogDetails,
+    fetchRecentLogsByConfigId
   };
 }
