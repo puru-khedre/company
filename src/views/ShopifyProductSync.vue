@@ -33,12 +33,6 @@
           :next-sync-relative-label="nextSyncRelativeLabel"
           :system-message-send-job-next-run-label="systemMessageSendJobNextRunLabel"
           :bulk-operation-poll-job-next-run-label="bulkOperationPollJobNextRunLabel"
-          :last-send-job-run-output="lastSendJobRunOutput"
-          :last-send-job-run-status="lastSendJobRunStatus"
-          :last-send-job-run-status-color="lastSendJobRunStatusColor"
-          :last-poll-job-run-output="lastPollJobRunOutput"
-          :last-poll-job-run-status="lastPollJobRunStatus"
-          :last-poll-job-run-status-color="lastPollJobRunStatusColor"
           :current-sync-run="currentSyncRun"
           :recent-sync-errors="recentSyncErrors"
           :recent-sync-updates="recentSyncUpdates"
@@ -528,7 +522,7 @@ const {
   updateJob,
   runNow
 } = useServiceJob();
-const { fetchLogDetails, fetchRecentLogsByConfigId, currentMdmLog, recentMdmLogs, errorLogs } = useDataManagerLog();
+const { fetchLogDetails, fetchMdmLogBySystemMessageId, fetchRecentLogsByConfigId, currentMdmLog, recentMdmLogs, errorLogs } = useDataManagerLog();
 const { productUpdateHistories, fetchProductUpdateHistory } = useProductUpdateHistory();
 const { currentSyncRun, fetchSyncRun } = useShopifyProductSyncRun();
 const PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID = "SYNC_SHPY_PRD_UPDS";
@@ -536,6 +530,24 @@ const BULK_OPERATION_SEND_JOB_NAME = "send_ProducedBulkOperationSystemMessage_Sh
 const BULK_OPERATION_POLL_JOB_NAME = "poll_ShopifyBulkOperationResult";
 const PRODUCT_SYNC_MDM_CONFIG_ID = "SYNC_SHOPIFY_PRODUCT";
 const PRODUCT_SYNC_ERROR_LOG_LIMIT = 10;
+const SYSTEM_MESSAGE_CONSUMED_STATUSES = ["smsgconsumed", "consumed"];
+const SYSTEM_MESSAGE_RECEIVED_STATUSES = ["smsgreceived", "received"];
+const SYSTEM_MESSAGE_SENT_STATUSES = ["smsgsent", "sent"];
+const SYSTEM_MESSAGE_PRODUCED_STATUSES = ["smsgproduced", "produced"];
+const TERMINAL_MDM_LOG_STATUSES = [
+  "dmlsuccess",
+  "dmlerror",
+  "success",
+  "succeeded",
+  "complete",
+  "completed",
+  "finished",
+  "error",
+  "failed",
+  "failure",
+  "cancelled",
+  "canceled"
+];
 
 const latestSystemMessage = ref<any>(null);
 const latestConfirmedSystemMessage = ref<any>(null);
@@ -556,8 +568,6 @@ const isStepDetailsLoading = ref(false);
 const currentStepDetail = ref<any>(null);
 const bulkOperationSendJob = ref<any>({});
 const bulkOperationPollJob = ref<any>({});
-const bulkOperationSendJobRuns = ref<any[]>([]);
-const bulkOperationPollJobRuns = ref<any[]>([]);
 const preflightLoaded = ref(false);
 const preflightAccepted = ref(false);
 const preflightWarningConfirmed = ref(false);
@@ -639,13 +649,19 @@ const selectedIdentifierLabel = computed(() => {
   const identifier = identifierOptions.value.find((option: any) => option.enumId === draft.value.selectedIdentifierEnumId);
   return identifier?.description || identifier?.enumId || translate("Setup");
 });
-const productStoreLocked = computed(() => !!setupState.value.productStoreLocked || !!setupState.value.hasLinkedOmsProducts);
-const identifierLocked = computed(() => !!setupState.value.identifierLocked || !!setupState.value.hasLinkedOmsProducts);
+const hasLinkedOmsProducts = computed(() => {
+  return !!setupState.value.hasLinkedOmsProducts || productUpdateHistories.value.length > 0;
+});
+const productStoreHasLinkedProducts = computed(() => {
+  return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);
+});
+const productStoreLocked = computed(() => !!setupState.value.productStoreLocked || hasLinkedOmsProducts.value);
+const identifierLocked = computed(() => !!setupState.value.identifierLocked || productStoreHasLinkedProducts.value);
 const hasRelatedShops = computed(() => {
   return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);
 });
 const activeExperienceMode = computed(() => {
-  return resolveProductSyncExperienceMode(experienceMode.value, shopifyShopProductCount.value);
+  return resolveProductSyncExperienceMode(experienceMode.value, hasLinkedOmsProducts.value);
 });
 const activeExperienceModeLabel = computed(() => {
   return activeExperienceMode.value === "returning" ? translate("Returning user") : translate("First-time setup");
@@ -703,14 +719,6 @@ const systemMessageSendJobNextRunLabel = computed(() => {
 const bulkOperationPollJobNextRunLabel = computed(() => {
   return getJobNextRunLabel(bulkOperationPollJob.value);
 });
-const lastSendJobRun = computed(() => bulkOperationSendJobRuns.value[0] || {});
-const lastPollJobRun = computed(() => bulkOperationPollJobRuns.value[0] || {});
-const lastSendJobRunOutput = computed(() => getSyncJobRunMessage(lastSendJobRun.value));
-const lastPollJobRunOutput = computed(() => getSyncJobRunMessage(lastPollJobRun.value));
-const lastSendJobRunStatus = computed(() => getSyncJobRunStatus(lastSendJobRun.value));
-const lastPollJobRunStatus = computed(() => getSyncJobRunStatus(lastPollJobRun.value));
-const lastSendJobRunStatusColor = computed(() => getSyncJobRunStatusColor(lastSendJobRun.value));
-const lastPollJobRunStatusColor = computed(() => getSyncJobRunStatusColor(lastPollJobRun.value));
 const stepDetailsTitle = computed(() => {
   if (currentStepDetail.value?.type === "systemMessage") return translate("System Message");
   if (currentStepDetail.value?.type === "bulkOperation") return translate("Bulk Operation");
@@ -943,17 +951,13 @@ async function loadWizard() {
 }
 
 async function loadBulkOperationMonitoringJobs() {
-  const [sendJob, sendRuns, pollJob, pollRuns] = await Promise.all([
+  const [sendJob, pollJob] = await Promise.all([
     fetchJobDetail(BULK_OPERATION_SEND_JOB_NAME),
-    fetchJobRuns(BULK_OPERATION_SEND_JOB_NAME, { pageSize: 1, pageIndex: 0, orderByField: "startDate DESC" }),
-    fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME),
-    fetchJobRuns(BULK_OPERATION_POLL_JOB_NAME, { pageSize: 1, pageIndex: 0, orderByField: "startDate DESC" })
+    fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME)
   ]);
 
   bulkOperationSendJob.value = sendJob || {};
   bulkOperationPollJob.value = pollJob || {};
-  bulkOperationSendJobRuns.value = Array.isArray(sendRuns) ? sendRuns : [];
-  bulkOperationPollJobRuns.value = Array.isArray(pollRuns) ? pollRuns : [];
 }
 
 async function loadSelectedShopSystemMessageRemoteId() {
@@ -1027,18 +1031,73 @@ async function loadLatestSystemMessage() {
     shop: shop.value
   });
 
-  latestSystemMessage.value = syncRunState.latestSystemMessage || null;
+  latestSystemMessage.value = await selectTrackProgressSystemMessage(syncRunState.systemMessages || []);
   latestConfirmedSystemMessage.value = syncRunState.latestConfirmedSystemMessage || null;
   lastProductUpdateSyncedAt.value = syncRunState.lastSyncedAt || "";
 
   if (latestSystemMessage.value?.systemMessageId) {
     await fetchSyncRun(latestSystemMessage.value.systemMessageId);
+  } else {
+    currentSyncRun.value = {} as any;
   }
 
   await Promise.all([
     fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 }),
     fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT)
   ]);
+}
+
+async function selectTrackProgressSystemMessage(systemMessages: any[]) {
+  if (!systemMessages.length) return null;
+
+  const consumedMessages = systemMessages.filter((message) => hasSystemMessageStatus(message, SYSTEM_MESSAGE_CONSUMED_STATUSES));
+  const oldestConsumedMessages = sortSystemMessagesOldestFirst(consumedMessages);
+
+  for (const message of oldestConsumedMessages) {
+    const mdmLog = await fetchMdmLogBySystemMessageId(message.systemMessageId);
+    if (mdmLog?.logId && !isTerminalMdmLogStatus(mdmLog.statusId)) {
+      return message;
+    }
+  }
+
+  return getOldestSystemMessageByStatus(systemMessages, SYSTEM_MESSAGE_RECEIVED_STATUSES) ||
+    getOldestSystemMessageByStatus(systemMessages, SYSTEM_MESSAGE_SENT_STATUSES) ||
+    getOldestSystemMessageByStatus(systemMessages, SYSTEM_MESSAGE_PRODUCED_STATUSES) ||
+    sortSystemMessagesNewestFirst(consumedMessages)[0] ||
+    null;
+}
+
+function getOldestSystemMessageByStatus(systemMessages: any[], statuses: string[]) {
+  return sortSystemMessagesOldestFirst(systemMessages.filter((message) => hasSystemMessageStatus(message, statuses)))[0];
+}
+
+function hasSystemMessageStatus(systemMessage: any, statuses: string[]) {
+  return statuses.includes(normalizeStatusValue(systemMessage?.statusId));
+}
+
+function isTerminalMdmLogStatus(statusId: string) {
+  return TERMINAL_MDM_LOG_STATUSES.includes(normalizeStatusValue(statusId));
+}
+
+function sortSystemMessagesOldestFirst(systemMessages: any[]) {
+  return [...systemMessages].sort((firstMessage, secondMessage) => {
+    return getSystemMessageTime(firstMessage) - getSystemMessageTime(secondMessage);
+  });
+}
+
+function sortSystemMessagesNewestFirst(systemMessages: any[]) {
+  return [...systemMessages].sort((firstMessage, secondMessage) => {
+    return getSystemMessageTime(secondMessage) - getSystemMessageTime(firstMessage);
+  });
+}
+
+function getSystemMessageTime(systemMessage: any) {
+  const value = systemMessage?.initDate || systemMessage?.lastUpdatedStamp || systemMessage?.processedDate;
+  return parseDateTimeValue(value)?.toMillis() || 0;
+}
+
+function normalizeStatusValue(statusId: string) {
+  return String(statusId || "").toLowerCase().replace(/[_\-\s]/g, "");
 }
 
 

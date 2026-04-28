@@ -1,55 +1,74 @@
 <template>
   <main class="setup-wizard">
-    <ion-card class="setup-tracker">
-      <ion-card-header>
-        <ion-card-title>{{ translate("Sync product catalog") }}</ion-card-title>
-      </ion-card-header>
 
-      <ion-card-content>
-        <p v-if="currentStep === 'home'">
-          {{ translate("Looks like you’re syncing products from this Shopify account to HotWax for the first time.") }}
-        </p>
-        <p v-if="currentStep === 'home'">
-          {{ translate("Before you start the import process, lets make sure everything is configured correctly.") }}
-        </p>
-      </ion-card-content>
+    <div class="setup-tracker">
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>{{ translate("Sync product catalog") }}</ion-card-title>
+        </ion-card-header>
 
-      <ion-list lines="full">
-        <ion-item>
-          <ion-label>{{ translate("Product store") }}</ion-label>
-          <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
-        </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("Internal name mapping") }}</ion-label>
-          <ion-note slot="end">{{ selectedIdentifierLabel }}</ion-note>
-        </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("Product types") }}</ion-label>
-          <ion-note slot="end">{{ productTypeMappingsLabel }}</ion-note>
-        </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("Start product import") }}</ion-label>
-          <ion-badge slot="end" :color="importStatusBadgeColor">{{ importStatusLabel }}</ion-badge>
-        </ion-item>
-      </ion-list>
-    </ion-card>
+        <ion-card-content>
+          <p v-if="currentStep === 'home'">
+            {{ translate("Looks like you’re syncing products from this Shopify account to HotWax for the first time.")
+            }}
+          </p>
+          <p v-if="currentStep === 'home'">
+            {{ translate("Before you start the import process, lets make sure everything is configured correctly.") }}
+          </p>
+        </ion-card-content>
 
-    <ion-button class="setup-tracker" v-if="currentStep === 'home'" expand="block" @click="$emit('goNext')"
-      data-testid="review-configurations">
-      {{ translate("Review configurations") }}
-    </ion-button>
+        <ion-list lines="full">
+          <ion-item>
+            <ion-label>{{ translate("Product store") }}</ion-label>
+            <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
+          </ion-item>
+          <ion-item>
+            <ion-label>{{ translate("Internal name mapping") }}</ion-label>
+            <ion-note slot="end">{{ selectedIdentifierLabel }}</ion-note>
+          </ion-item>
+          <ion-item>
+            <ion-label>{{ translate("Product types") }}</ion-label>
+            <ion-note slot="end">{{ productTypeMappingsLabel }}</ion-note>
+          </ion-item>
+          <ion-item>
+            <ion-label>{{ translate("Start product import") }}</ion-label>
+            <ion-badge slot="end" :color="importStatusBadgeColor">{{ importStatusLabel }}</ion-badge>
+          </ion-item>
+        </ion-list>
+      </ion-card>
 
+      <ion-button v-if="currentStep === 'home'" expand="block" @click="$emit('goNext')"
+        data-testid="review-configurations">
+        {{ translate("Review configurations") }}
+      </ion-button>
+    </div>
     <ion-card class="step" v-if="currentStep === 'product-store'">
       <ion-card-header>
         <ion-card-title>{{ translate("Confirm product store") }}</ion-card-title>
         <ion-card-subtitle>{{ translate("Only Shopify stores with the same catalog should share a Product Store.")
           }}</ion-card-subtitle>
       </ion-card-header>
-      <ion-list lines="full">
+      <ion-list v-if="productStoreLocked" lines="full">
+        <ion-item>
+          <ion-label>
+            {{ translate("Selected Product Store") }}
+            <p>{{ selectedProductStore ? selectedProductStore.productStoreId : draft.selectedProductStoreId }}</p>
+            <p>{{ getConnectedShopLabel(draft.selectedProductStoreId) }}</p>
+          </ion-label>
+          <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
+        </ion-item>
+        <ion-item>
+          <ion-label>
+            {{ translate("Product Store cannot be changed") }}
+            <p>{{ translate("This shop already has synced products, so the existing Product Store must stay selected.") }}</p>
+          </ion-label>
+        </ion-item>
+      </ion-list>
+      <ion-list v-else lines="full">
         <ion-radio-group :value="draft.selectedProductStoreId"
           @ionChange="$emit('productStoreChange', $event.detail.value)">
           <ion-item v-for="productStore in productStores" :key="productStore.productStoreId">
-            <ion-radio slot="start" :value="productStore.productStoreId" :disabled="productStoreLocked" />
+            <ion-radio slot="start" :value="productStore.productStoreId" />
             <ion-label>
               {{ getProductStoreName(productStore) }}
               <p>{{ productStore.productStoreId }}</p>
@@ -58,7 +77,7 @@
           </ion-item>
         </ion-radio-group>
       </ion-list>
-      <ion-list v-if="hasRelatedShops" lines="full">
+      <ion-list v-if="hasRelatedShops && !productStoreLocked" lines="full">
         <ion-item>
           <ion-label>
             {{ translate("Verify related Shopify stores") }}
@@ -73,10 +92,10 @@
           <ion-note slot="end">{{ relatedShop.createdDate || relatedShop.createdStamp || translate("Created date unavailable") }}</ion-note>
         </ion-item>
       </ion-list>
-      <ion-item lines="full" button :disabled="!draft.selectedProductStoreId || productStoreLocked"
+      <ion-item v-if="!productStoreLocked" lines="full" button :disabled="!draft.selectedProductStoreId"
         @click="$emit('toggleProductStoreVerification')">
         <ion-checkbox :checked="draft.productStoreVerified"
-          :disabled="!draft.selectedProductStoreId || productStoreLocked" data-testid="product-store-verification">
+          :disabled="!draft.selectedProductStoreId" data-testid="product-store-verification">
           {{ translate("I have verified that these Shopify stores are part of the selected Product Store.") }}
         </ion-checkbox>
       </ion-item>
@@ -98,15 +117,24 @@
       <ion-list v-if="identifierLocked" lines="full">
         <ion-item>
           <ion-label>
-            {{ translate("This setting cannot be changed because this Product Store already has synced products.") }}
+            {{ translate("Selected identifier") }}
+            <p>{{ selectedIdentifier ? selectedIdentifier.enumId : draft.selectedIdentifierEnumId }}</p>
+            <p v-if="selectedIdentifier?.enumId === recommendedIdentifierEnumId">{{ translate("Recommended") }}</p>
+          </ion-label>
+          <ion-note slot="end">{{ selectedIdentifierLabel }}</ion-note>
+        </ion-item>
+        <ion-item>
+          <ion-label>
+            {{ translate("Identifier cannot be changed") }}
+            <p>{{ translate("This Product Store is already linked to other Shopify shops, so the existing identifier must stay selected.") }}</p>
           </ion-label>
         </ion-item>
       </ion-list>
-      <ion-list lines="full">
+      <ion-list v-else lines="full">
         <ion-radio-group :value="draft.selectedIdentifierEnumId"
           @ionChange="$emit('identifierChange', $event.detail.value)">
           <ion-item v-for="identifier in identifierOptions" :key="identifier.enumId">
-            <ion-radio slot="start" :value="identifier.enumId" :disabled="identifierLocked" />
+            <ion-radio slot="start" :value="identifier.enumId" />
             <ion-label>
               {{ identifier.description || identifier.enumId }}
               <p v-if="identifier.enumId === recommendedIdentifierEnumId">{{ translate("Recommended") }}</p>
@@ -114,7 +142,7 @@
           </ion-item>
         </ion-radio-group>
       </ion-list>
-      <ion-list v-if="hasRelatedShops" lines="full">
+      <ion-list v-if="hasRelatedShops && !identifierLocked" lines="full">
         <ion-item v-for="relatedShop in relatedShops" :key="relatedShop.shopId">
           <ion-label>
             {{ relatedShop.name || relatedShop.shopId }}
@@ -159,7 +187,7 @@
       </ion-card-content>
     </ion-card>
 
-    <ion-card v-if="currentStep === 'review'">
+    <ion-card class="step" v-if="currentStep === 'review'">
       <ion-card-header>
         <ion-card-title>{{ translate("Review product import") }}</ion-card-title>
         <ion-card-subtitle>{{ translate("Compare Shopify and HotWax catalog state before starting the first import.")
@@ -203,7 +231,7 @@
       </ion-card-content>
     </ion-card>
 
-    <template v-if="currentStep === 'progress'">
+    <template class="step" v-if="currentStep === 'progress'">
       <ion-card>
         <ion-card-header>
           <ion-card-title>{{ translate("Track sync progress") }}</ion-card-title>
@@ -288,7 +316,7 @@
       </ion-card>
     </template>
 
-    <ion-card v-if="currentStep === 'reconcile'">
+    <ion-card class="step" v-if="currentStep === 'reconcile'">
       <ion-card-header>
         <ion-card-title>{{ translate("Product sync setup complete") }}</ion-card-title>
         <ion-card-subtitle>{{ translate("Shopify product sync now runs automatically every 15 minutes.")
@@ -416,10 +444,10 @@ import {
 } from "@ionic/vue";
 import { closeOutline } from "ionicons/icons";
 import { translate } from "@/i18n";
-import { defineEmits, defineProps } from "vue";
+import { computed, defineEmits, defineProps } from "vue";
 
 
-defineProps<{
+const props = defineProps<{
   currentStep: string
   draft: any
   getConnectedShopLabel: (productStoreId: string) => string
@@ -483,13 +511,21 @@ function getPreflightBadgeColor(status: string) {
   if (status === "missing" || status === "duplicate" || status === "conflicting" || status === "conflict") return "danger";
   return "warning";
 }
+
+const selectedProductStore = computed(() => {
+  return props.productStores.find((productStore: any) => productStore.productStoreId === props.draft.selectedProductStoreId);
+});
+
+const selectedIdentifier = computed(() => {
+  return props.identifierOptions.find((identifier: any) => identifier.enumId === props.draft.selectedIdentifierEnumId);
+});
 </script>
 
 <style scoped>
 
 .setup-wizard {
   display: grid;
-  grid-template-areas: "tracker current-step";
+  grid-template-areas: "tracker step";
 }
 
 .setup-tracker {
@@ -499,6 +535,8 @@ function getPreflightBadgeColor(status: string) {
 
 .step {
   grid-area: step;
+  max-width: 75ch;
+  justify-self: center;
 }
 
 </style>

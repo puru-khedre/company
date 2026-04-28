@@ -38,30 +38,6 @@
         <ion-list slot="content" lines="full">
           <ion-item v-if="isProducedSystemMessage(run)">
             <ion-label>
-              {{ translate("Send job") }}
-              <p>{{ getSendJobStatusLabel() }}</p>
-              <p>{{ getLastSendJobRunLabel() }}</p>
-              <p v-if="getLastSendJobRunMessage()">{{ getLastSendJobRunMessage() }}</p>
-            </ion-label>
-            <ion-chip slot="end" outline :color="getLastSendJobRunStatusColor()">
-              <ion-label>{{ getLastSendJobRunStatus() }}</ion-label>
-              <ion-icon :icon="getStatusIcon(getLastSendJobRunStatus())" />
-            </ion-chip>
-          </ion-item>
-          <ion-item v-if="isProducedSystemMessage(run) && getLastSendJobRunMessage()">
-            <ion-label>
-              {{ translate("Poll job") }}
-              <p>{{ getPollJobStatusLabel() }}</p>
-              <p>{{ getLastPollJobRunLabel() }}</p>
-              <p v-if="getLastPollJobRunMessage()">{{ getLastPollJobRunMessage() }}</p>
-            </ion-label>
-            <ion-chip slot="end" outline :color="getLastPollJobRunStatusColor()">
-              <ion-label>{{ getLastPollJobRunStatus() }}</ion-label>
-              <ion-icon :icon="getStatusIcon(getLastPollJobRunStatus())" />
-            </ion-chip>
-          </ion-item>
-          <ion-item v-if="isProducedSystemMessage(run)">
-            <ion-label>
               {{ translate("Waiting to be sent") }}
               <p>{{ translate("Produced messages wait for the send job to post them to Shopify. The Shopify bulk operation ID appears after Shopify accepts the request.") }}</p>
             </ion-label>
@@ -188,12 +164,8 @@ import {
 } from "ionicons/icons";
 import { DateTime } from "luxon";
 
-const props = defineProps<{
+defineProps<{
   runs: any[]
-  sendJobDetails?: any
-  sendJobRecentRuns?: any[]
-  pollJobDetails?: any
-  pollJobRecentRuns?: any[]
 }>();
 
 const isQueryModalOpen = ref(false);
@@ -250,11 +222,6 @@ function getRunIcon(run: any) {
   if (isCompleteStatus(run?.mdmStatus)) return serverOutline;
   if (isCompleteStatus(run?.bulkOperationStatus)) return cloudDoneOutline;
 
-  const systemMessageStatus = normalizeStatus(run?.systemMessageStatus);
-  if (["confirmed", "system-msg-confirmed"].includes(systemMessageStatus)) return checkmarkCircleOutline;
-  if (["sent", "system-msg-sent"].includes(systemMessageStatus)) return sendOutline;
-  if (["produced", "created", "system-msg-produced"].includes(systemMessageStatus)) return documentTextOutline;
-
   return helpCircleOutline;
 }
 
@@ -263,119 +230,11 @@ function getRunIconColor(run: any) {
   if (isCompleteStatus(run?.mdmStatus)) return "success";
   if (isCompleteStatus(run?.bulkOperationStatus)) return "success";
 
-  const systemMessageStatus = normalizeStatus(run?.systemMessageStatus);
-  if (["confirmed", "system-msg-confirmed"].includes(systemMessageStatus)) return "success";
-  if (["sent", "system-msg-sent"].includes(systemMessageStatus)) return "primary";
-  if (["produced", "created", "system-msg-produced"].includes(systemMessageStatus)) return "medium";
-
   return "medium";
 }
 
 function isProducedSystemMessage(run: any) {
   return ["produced", "system-msg-produced", "smsgproduced"].includes(normalizeStatus(run?.systemMessageStatus));
-}
-
-function getSendJobStatusLabel() {
-  if (!props.sendJobDetails?.jobName) return translate("Send job details unavailable");
-  if (isJobPaused(props.sendJobDetails)) return translate("Paused");
-  return translate("Active");
-}
-
-function getPollJobStatusLabel() {
-  if (!props.pollJobDetails?.jobName) return translate("Poll job details unavailable");
-  if (isJobPaused(props.pollJobDetails)) return translate("Paused");
-  return translate("Active");
-}
-
-function getLastSendJobRun() {
-  return getLastJobRun(props.sendJobRecentRuns);
-}
-
-function getLastPollJobRun() {
-  return getLastJobRun(props.pollJobRecentRuns);
-}
-
-function getLastJobRun(runs?: any[]) {
-  return runs?.[0] || {};
-}
-
-function getLastSendJobRunLabel() {
-  const run = getLastSendJobRun();
-  const startedAt = getJobRunStartedAt(run);
-  if (!startedAt) return translate("No recent runs");
-  return `${translate("Last run")}: ${formatTime(startedAt)}`;
-}
-
-function getLastSendJobRunStatus() {
-  const run = getLastSendJobRun();
-  if (!Object.keys(run || {}).length) return translate("Unknown");
-  if (run.hasError === "Y") return translate("Failed");
-  if (getJobRunCompletedAt(run)) return translate("Success");
-  if (getJobRunStartedAt(run)) return translate("Running");
-  return translate("Terminated");
-}
-
-function getLastSendJobRunStatusColor() {
-  const run = getLastSendJobRun();
-  if (!Object.keys(run || {}).length) return "medium";
-  if (run.hasError === "Y") return "danger";
-  if (getJobRunCompletedAt(run)) return "success";
-  if (getJobRunStartedAt(run)) return "primary";
-  return "warning";
-}
-
-function getLastSendJobRunMessage() {
-  const run = getLastSendJobRun();
-  return run.messages || run.message || run.errorMessage || run.reason || run.errors || "";
-}
-
-function getLastPollJobRunLabel() {
-  const run = getLastPollJobRun();
-  const startedAt = getJobRunStartedAt(run);
-  if (!startedAt) return translate("No recent runs");
-  return `${translate("Last run")}: ${formatTime(startedAt)}`;
-}
-
-function getLastPollJobRunStatus() {
-  return getJobRunStatus(getLastPollJobRun());
-}
-
-function getLastPollJobRunStatusColor() {
-  return getJobRunStatusColor(getLastPollJobRun());
-}
-
-function getLastPollJobRunMessage() {
-  const run = getLastPollJobRun();
-  return run.messages || run.message || run.errorMessage || run.reason || run.errors || "";
-}
-
-function getJobRunStatus(run: any) {
-  if (!Object.keys(run || {}).length) return translate("Unknown");
-  if (run.hasError === "Y") return translate("Failed");
-  if (getJobRunCompletedAt(run)) return translate("Success");
-  if (getJobRunStartedAt(run)) return translate("Running");
-  return translate("Terminated");
-}
-
-function getJobRunStatusColor(run: any) {
-  if (!Object.keys(run || {}).length) return "medium";
-  if (run.hasError === "Y") return "danger";
-  if (getJobRunCompletedAt(run)) return "success";
-  if (getJobRunStartedAt(run)) return "primary";
-  return "warning";
-}
-
-function getJobRunStartedAt(run: any) {
-  return run.startDate || run.startTime || run.createdDate || run.createdStamp || run.lastUpdatedStamp || "";
-}
-
-function getJobRunCompletedAt(run: any) {
-  return run.endDate || run.endTime || run.finishDateTime || "";
-}
-
-function isJobPaused(job: any) {
-  const status = String(job?.statusId || job?.status || "").toLowerCase();
-  return job?.paused === "Y" || job?.paused === true || job?.isPaused === true || status === "paused";
 }
 
 function hasRunError(run: any) {

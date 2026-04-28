@@ -45,10 +45,16 @@ describe("shopify product sync implementation compliance", () => {
   test("product sync history fetches newest system messages first", () => {
     const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
 
-    assert.equal(historySource.includes("orderByField: 'initDate DESC'"), true);
+    assert.equal(historySource.includes("orderBy: '-initDate'"), true);
+    assert.equal(historySource.includes("orderByField: '-initDate'"), false);
+    assert.equal(historySource.includes("orderByField: 'initDate DESC'"), false);
     assert.equal(historySource.includes('translate("Product sync history")'), true);
     assert.equal(historySource.includes("remoteMessageId?.startsWith"), false);
-    assert.equal(historySource.includes("fetchAllSystemMessages(systemMessageParams)"), true);
+    assert.equal(historySource.includes("const PAGE_SIZE = 25"), true);
+    assert.equal(historySource.includes("ion-infinite-scroll"), true);
+    assert.equal(historySource.includes("fetchSystemMessagesPage"), true);
+    assert.equal(historySource.includes("initDate_from"), false);
+    assert.equal(historySource.includes("initDate_thru"), false);
   });
 
   test("data manager logs are fetched by exact system message id", () => {

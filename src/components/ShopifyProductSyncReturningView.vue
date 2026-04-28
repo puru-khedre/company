@@ -87,33 +87,11 @@
           </ion-item>
         </template>
         <ion-item v-else>
-          <ion-label>{{ translate("No active sync run tracked") }}</ion-label>
+          <ion-label>{{ translate("No recent sync history, run your sync now to fetch latest updates") }}</ion-label>
         </ion-item>
       </ion-list>
     </ion-card>
 
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>{{ translate("Automation health") }}</ion-card-title>
-        <ion-card-subtitle>{{ translate("Last send and poll job output for Shopify bulk operations") }}</ion-card-subtitle>
-      </ion-card-header>
-      <ion-list lines="full">
-        <ion-item>
-          <ion-label>
-            {{ translate("Send job") }}
-            <p>{{ lastSendJobRunOutput || translate("No recent output") }}</p>
-          </ion-label>
-          <ion-badge slot="end" :color="lastSendJobRunStatusColor">{{ lastSendJobRunStatus }}</ion-badge>
-        </ion-item>
-        <ion-item>
-          <ion-label>
-            {{ translate("Poll job") }}
-            <p>{{ lastPollJobRunOutput || translate("No recent output") }}</p>
-          </ion-label>
-          <ion-badge slot="end" :color="lastPollJobRunStatusColor">{{ lastPollJobRunStatus }}</ion-badge>
-        </ion-item>
-      </ion-list>
-    </ion-card>
   </section>
 
   <section class="sync-stat">
@@ -269,12 +247,6 @@ const props = defineProps<{
   nextSyncRelativeLabel: string
   systemMessageSendJobNextRunLabel: string
   bulkOperationPollJobNextRunLabel: string
-  lastSendJobRunOutput: string
-  lastSendJobRunStatus: string
-  lastSendJobRunStatusColor: string
-  lastPollJobRunOutput: string
-  lastPollJobRunStatus: string
-  lastPollJobRunStatusColor: string
   summarySubtitle: string
   errorLookbackCount: number
   currentSyncRun?: ShopifyProductSyncRun

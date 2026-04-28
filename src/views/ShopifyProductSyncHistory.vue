@@ -10,6 +10,41 @@
     </ion-header>
 
     <ion-content>
+      <ion-list lines="full">
+        <ion-list-header>
+          <ion-label>{{ translate("Filters") }}</ion-label>
+        </ion-list-header>
+        <ion-item>
+          <ion-select
+            :label="translate('System message status')"
+            :value="filters.statusId"
+            interface="popover"
+            @ionChange="handleStatusFilterChange($event.detail.value)"
+          >
+            <ion-select-option value="">{{ translate("All statuses") }}</ion-select-option>
+            <ion-select-option v-for="status in statusFilterOptions" :key="status.value" :value="status.value">
+              {{ status.label }}
+            </ion-select-option>
+          </ion-select>
+        </ion-item>
+        <ion-item>
+          <ion-input
+            :label="translate('Created after')"
+            type="datetime-local"
+            :value="filters.createdAfter"
+            @ionChange="handleCreatedAfterFilterChange($event.detail.value)"
+          />
+        </ion-item>
+        <ion-item>
+          <ion-input
+            :label="translate('Created before')"
+            type="datetime-local"
+            :value="filters.createdBefore"
+            @ionChange="handleCreatedBeforeFilterChange($event.detail.value)"
+          />
+        </ion-item>
+      </ion-list>
+
       <ion-card v-if="isLoading">
         <ion-card-header>
           <ion-card-title>{{ translate("Loading product sync") }}</ion-card-title>
@@ -22,11 +57,17 @@
       <shopify-product-sync-history-view
         v-else
         :runs="historyRuns"
-        :send-job-details="sendJobDetails"
-        :send-job-recent-runs="sendJobRecentRuns"
-        :poll-job-details="pollJobDetails"
-        :poll-job-recent-runs="pollJobRecentRuns"
       />
+
+      <ion-infinite-scroll
+        :disabled="!hasMoreHistory || isLoadingMore"
+        @ionInfinite="loadMoreHistory"
+      >
+        <ion-infinite-scroll-content
+          loading-spinner="crescent"
+          :loading-text="translate('Loading more history')"
+        />
+      </ion-infinite-scroll>
     </ion-content>
   </ion-page>
 </template>
@@ -41,37 +82,53 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonInfiniteScroll,
+  IonInfiniteScrollContent,
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonListHeader,
   onIonViewWillEnter,
   IonPage,
+  IonSelect,
+  IonSelectOption,
   IonSpinner,
   IonTitle,
   IonToolbar
 } from "@ionic/vue";
 import { translate } from "@/i18n";
-import { computed, defineProps, ref } from "vue";
+import { computed, defineProps, reactive, ref } from "vue";
 import { useStore } from "vuex";
 import logger from "@/logger";
 import ShopifyProductSyncHistoryView from "@/components/ShopifyProductSyncHistoryView.vue";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
 import { useSystemMessage } from "@/composables/useSystemMessage";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
-import useServiceJob from "@/composables/useServiceJob";
 import { showToast } from "@/utils";
+import {
+  getSystemMessageTime,
+  shouldReadSystemMessagePagesBackwards,
+  sortSystemMessagesNewestFirst
+} from "@/utils/systemMessageHistory";
 
 const props = defineProps(["id"]);
 const store = useStore();
 const { fetchSystemMessagesPage } = useSystemMessage();
 
 const { fetchSyncRun } = useShopifyProductSyncRun();
-const { fetchJobDetail, fetchJobRuns } = useServiceJob();
-const BULK_OPERATION_SEND_JOB_NAME = "send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery";
-const BULK_OPERATION_POLL_JOB_NAME = "poll_ShopifyBulkOperationResult";
+
+const PAGE_SIZE = 25;
 
 const isLoading = ref(true);
-const sendJobDetails = ref<any>({});
-const sendJobRecentRuns = ref<any[]>([]);
-const pollJobDetails = ref<any>({});
-const pollJobRecentRuns = ref<any[]>([]);
+const isLoadingMore = ref(false);
+const pageIndex = ref(0);
+const reversePageIndex = ref(-1);
+const backendHistoryCount = ref(0);
+const hasMoreBackendHistory = ref(false);
+const historyPageMode = ref<"unknown" | "forward" | "reverse">("unknown");
+const systemMessageRemoteId = ref("");
+
 interface ShopifyProductSyncHistoryRun {
   id: string;
   createdTime: any;
@@ -92,8 +149,21 @@ interface ShopifyProductSyncHistoryRun {
 }
 
 const historyRuns = ref<ShopifyProductSyncHistoryRun[]>([]);
+const filters = reactive({
+  statusId: "",
+  createdAfter: "",
+  createdBefore: ""
+});
+const statusFilterOptions = [
+  { value: "SmsgProduced", label: translate("Produced") },
+  { value: "SmsgSent", label: translate("Sent") },
+  { value: "SmsgConfirmed", label: translate("Confirmed") },
+  { value: "SmsgError", label: translate("Error") }
+];
 
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
+const hasDateFilters = computed(() => !!filters.createdAfter || !!filters.createdBefore);
+const hasMoreHistory = computed(() => hasMoreBackendHistory.value);
 
 onIonViewWillEnter(async () => {
   await loadHistory();
@@ -106,96 +176,22 @@ async function loadHistory() {
       await store.dispatch("shopify/fetchShopifyShops");
     }
 
-    const systemMessageRemoteId = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
+    systemMessageRemoteId.value = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
       shopId: props.id,
       shopifyShopId: shop.value.shopifyShopId
     });
 
-    if (!systemMessageRemoteId) {
+    if (!systemMessageRemoteId.value) {
       throw new Error("Could not resolve systemMessageRemoteId");
     }
 
-    await loadBulkOperationJobState();
-
-    const systemMessageParams = {
-      systemMessageTypeId: 'BulkQueryShopifyProductUpdates',
-      systemMessageRemoteId,
-      isOutgoing: 'Y', // Only fetch primary sync request messages
-      orderByField: 'initDate DESC'
-    };
-    const systemMessages = await fetchAllSystemMessages(systemMessageParams);
-
-    if (!systemMessages.length) {
-      historyRuns.value = [];
-      return;
-    }
-
-    // Step 1: Populate basic info immediately to make page interactable
-    historyRuns.value = systemMessages
-      .filter((msg: any) => msg.isOutgoing === 'Y')
-      .map((msg: any) => ({
-        id: msg.systemMessageId,
-        createdTime: msg.initDate,
-        systemMessageStatus: msg.statusId,
-        systemMessageStatusColor: "primary",
-        bulkOperationId: '',
-        bulkOperationStatus: "pending",
-        bulkOperationStatusLabel: translate("Pending"),
-        bulkOperationStatusColor: "medium",
-        objectCount: 0,
-        mdmImportId: '',
-        mdmStatus: "pending",
-        mdmStatusLabel: translate("Pending"),
-        mdmStatusColor: "medium",
-        totalRecordCount: 0,
-        failedRecordCount: 0,
-        loading: true
-      }))
-      .sort(sortRunsNewestFirst);
-
-    // Hide global loader once we have the initial list
-    isLoading.value = false;
-
-    // Step 2: Load details in background (staggered)
-    const chunkSize = 3;
-    const currentMessages = [...systemMessages]; // Keep a local copy
-    for (let i = 0; i < historyRuns.value.length; i += chunkSize) {
-      const chunk = historyRuns.value.slice(i, i + chunkSize);
-      
-      await Promise.all(chunk.map(async (run) => {
-        const msg = currentMessages.find((m: any) => m.systemMessageId === run.id);
-        try {
-          const syncRun = await fetchSyncRun(run.id, msg);
-          
-          if (syncRun) {
-            const runIndex = historyRuns.value.findIndex(r => r.id === run.id);
-            if (runIndex !== -1) {
-              historyRuns.value[runIndex] = {
-                ...historyRuns.value[runIndex],
-                systemMessageStatus: syncRun.systemMessage.statusLabel,
-                systemMessageStatusColor: syncRun.systemMessage.statusColor,
-                bulkOperationId: syncRun.bulkOperation?.id || '',
-                bulkOperationStatus: syncRun.bulkOperation?.status || '',
-                bulkOperationStatusLabel: syncRun.bulkOperation?.statusLabel || translate("Pending"),
-                bulkOperationStatusColor: syncRun.bulkOperation?.statusColor || "medium",
-                objectCount: syncRun.bulkOperation?.objectCount || 0,
-                mdmImportId: syncRun.mdmLog?.id || '',
-                mdmStatus: syncRun.mdmLog?.statusId || '',
-                mdmStatusLabel: syncRun.mdmLog?.statusLabel || translate("Pending"),
-                mdmStatusColor: syncRun.mdmLog?.statusColor || "medium",
-                totalRecordCount: syncRun.mdmLog?.totalRecordCount || 0,
-                failedRecordCount: syncRun.mdmLog?.failedRecordCount || 0,
-                loading: false
-              };
-            }
-          }
-        } catch (runError) {
-          logger.error(`Failed to fetch sync run details for message ${run.id}`, runError);
-          const runIndex = historyRuns.value.findIndex(r => r.id === run.id);
-          if (runIndex !== -1) historyRuns.value[runIndex].loading = false;
-        }
-      }));
-    }
+    historyRuns.value = [];
+    pageIndex.value = 0;
+    reversePageIndex.value = -1;
+    backendHistoryCount.value = 0;
+    hasMoreBackendHistory.value = true;
+    historyPageMode.value = "unknown";
+    await fetchHistoryPage();
   } catch (error: any) {
     logger.error(error);
     showToast(translate("Failed to load product sync history"));
@@ -205,78 +201,212 @@ async function loadHistory() {
   }
 }
 
-async function loadBulkOperationJobState() {
-  const [sendJob, sendRuns, pollJob, pollRuns] = await Promise.all([
-    fetchJobDetail(BULK_OPERATION_SEND_JOB_NAME),
-    fetchAllJobRuns(BULK_OPERATION_SEND_JOB_NAME),
-    fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME),
-    fetchAllJobRuns(BULK_OPERATION_POLL_JOB_NAME)
-  ]);
+async function fetchHistoryPage() {
+  const systemMessages: any[] = [];
 
-  sendJobDetails.value = sendJob || {};
-  sendJobRecentRuns.value = Array.isArray(sendRuns) ? sendRuns : [];
-  pollJobDetails.value = pollJob || {};
-  pollJobRecentRuns.value = Array.isArray(pollRuns) ? pollRuns : [];
-}
+  while (systemMessages.length < PAGE_SIZE && hasMoreBackendHistory.value) {
+    const response = await fetchNextSystemMessagesResponse();
+    const page = getSystemMessagesPage(response);
 
-async function fetchAllJobRuns(jobName: string) {
-  const pageSize = 250;
-  let pageIndex = 0;
-  let jobRuns: any[] = [];
+    systemMessages.push(...page
+      .filter((msg: any) => msg.isOutgoing === 'Y')
+      .filter(matchesCreatedDateFilters));
 
-  while (pageIndex < 20) {
-    const page = await fetchJobRuns(jobName, {
-      pageSize,
-      pageIndex,
-      orderByField: "startDate DESC"
-    });
-    jobRuns = jobRuns.concat(page);
-    if (!page.length || page.length < pageSize) break;
-    pageIndex += 1;
+    if (!hasDateFilters.value) break;
   }
 
-  return jobRuns.sort((firstRun: any, secondRun: any) => {
-    return getCreatedTimeMs(getJobRunStartedAt(secondRun)) - getCreatedTimeMs(getJobRunStartedAt(firstRun));
-  }).slice(0, 5);
+  const nextRuns = systemMessages.map(getInitialHistoryRun);
+  historyRuns.value = historyRuns.value.concat(nextRuns);
+  await loadRunDetails(nextRuns, systemMessages);
 }
 
-function getJobRunStartedAt(run: any) {
-  return run.startDate || run.startTime || run.createdDate || run.createdStamp || run.lastUpdatedStamp || "";
-}
+async function fetchNextSystemMessagesResponse() {
+  if (historyPageMode.value === "reverse") return fetchReverseSystemMessagesResponse();
 
-function sortRunsNewestFirst(firstRun: ShopifyProductSyncHistoryRun, secondRun: ShopifyProductSyncHistoryRun) {
-  return getCreatedTimeMs(secondRun.createdTime) - getCreatedTimeMs(firstRun.createdTime);
-}
+  const response = await fetchSystemMessagesResponse(pageIndex.value);
+  const page = getSystemMessagesPage(response);
+  backendHistoryCount.value = getSystemMessagesCount(response, page);
 
-function getCreatedTimeMs(createdTime: any) {
-  if (!createdTime) return 0;
-  if (typeof createdTime === "number") return createdTime;
-
-  const parsedTime = new Date(createdTime).getTime();
-  return Number.isNaN(parsedTime) ? 0 : parsedTime;
-}
-
-async function fetchAllSystemMessages(params: any) {
-  const pageSize = 1000;
-  let pageIndex = 0;
-  let totalCount = pageSize;
-  let systemMessages: any[] = [];
-
-  while (systemMessages.length < totalCount) {
-    const response = await fetchSystemMessagesPage({
-      ...params,
-      pageSize,
-      pageIndex
-    });
-    const page = response?.systemMessages || [];
-    systemMessages = systemMessages.concat(page);
-    totalCount = Number(response?.systemMessagesCount || systemMessages.length);
-    if (!page.length) break;
-    pageIndex += 1;
+  if (historyPageMode.value === "unknown") {
+    historyPageMode.value = shouldReadPagesBackwards(page, backendHistoryCount.value) ? "reverse" : "forward";
+    if (historyPageMode.value === "reverse") {
+      reversePageIndex.value = Math.max(Math.ceil(backendHistoryCount.value / PAGE_SIZE) - 1, 0);
+      return fetchReverseSystemMessagesResponse();
+    }
   }
 
-  return systemMessages.sort((firstMessage: any, secondMessage: any) => {
-    return getCreatedTimeMs(secondMessage.initDate) - getCreatedTimeMs(firstMessage.initDate);
+  pageIndex.value += 1;
+  hasMoreBackendHistory.value = page.length > 0 && (pageIndex.value * PAGE_SIZE) < backendHistoryCount.value;
+
+  return {
+    ...response,
+    systemMessages: sortSystemMessagesNewestFirst(page)
+  };
+}
+
+async function fetchReverseSystemMessagesResponse() {
+  const response = await fetchSystemMessagesResponse(reversePageIndex.value);
+  const page = getSystemMessagesPage(response);
+  backendHistoryCount.value = getSystemMessagesCount(response, page);
+  reversePageIndex.value -= 1;
+  hasMoreBackendHistory.value = page.length > 0 && reversePageIndex.value >= 0;
+
+  return {
+    ...response,
+    systemMessages: sortSystemMessagesNewestFirst(page)
+  };
+}
+
+async function fetchSystemMessagesResponse(index: number) {
+  return fetchSystemMessagesPage({
+    ...getSystemMessageParams(),
+    pageSize: PAGE_SIZE,
+    pageIndex: Math.max(index, 0)
   });
+}
+
+function getSystemMessagesPage(response: any) {
+  return response?.systemMessages || [];
+}
+
+function getSystemMessagesCount(response: any, page: any[]) {
+  return Number(response?.systemMessagesCount || historyRuns.value.length + page.length);
+}
+
+function getSystemMessageParams() {
+  const params: any = {
+    systemMessageTypeId: 'BulkQueryShopifyProductUpdates',
+    systemMessageRemoteId: systemMessageRemoteId.value,
+    isOutgoing: 'Y',
+    orderBy: '-initDate'
+  };
+
+  if (filters.statusId) params.statusId = filters.statusId;
+
+  return params;
+}
+
+function shouldReadPagesBackwards(page: any[], totalCount: number) {
+  return shouldReadSystemMessagePagesBackwards(page, totalCount, PAGE_SIZE);
+}
+
+function matchesCreatedDateFilters(systemMessage: any) {
+  const createdTime = getSystemMessageTime(systemMessage);
+  const createdAfter = getFilterTimestamp(filters.createdAfter);
+  const createdBefore = getFilterTimestamp(filters.createdBefore);
+
+  if (createdAfter && createdTime < createdAfter) return false;
+  if (createdBefore && createdTime > createdBefore) return false;
+  return true;
+}
+
+function getFilterTimestamp(value: string) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getInitialHistoryRun(msg: any) {
+  return {
+    id: msg.systemMessageId,
+    createdTime: msg.initDate,
+    systemMessageStatus: msg.statusId,
+    systemMessageStatusColor: "primary",
+    bulkOperationId: '',
+    bulkOperationStatus: "pending",
+    bulkOperationStatusLabel: translate("Pending"),
+    bulkOperationStatusColor: "medium",
+    objectCount: 0,
+    mdmImportId: '',
+    mdmStatus: "pending",
+    mdmStatusLabel: translate("Pending"),
+    mdmStatusColor: "medium",
+    totalRecordCount: 0,
+    failedRecordCount: 0,
+    loading: true
+  };
+}
+
+async function loadRunDetails(runs: ShopifyProductSyncHistoryRun[], systemMessages: any[]) {
+  const chunkSize = 3;
+  const currentMessages = [...systemMessages];
+
+  for (let i = 0; i < runs.length; i += chunkSize) {
+    const chunk = runs.slice(i, i + chunkSize);
+
+    await Promise.all(chunk.map(async (run) => {
+      const msg = currentMessages.find((message: any) => message.systemMessageId === run.id);
+      try {
+        const syncRun = await fetchSyncRun(run.id, msg);
+
+        if (syncRun) updateHistoryRun(run.id, {
+          systemMessageStatus: syncRun.systemMessage.statusLabel,
+          systemMessageStatusColor: syncRun.systemMessage.statusColor,
+          bulkOperationId: syncRun.bulkOperation?.id || '',
+          bulkOperationStatus: syncRun.bulkOperation?.status || '',
+          bulkOperationStatusLabel: syncRun.bulkOperation?.statusLabel || translate("Pending"),
+          bulkOperationStatusColor: syncRun.bulkOperation?.statusColor || "medium",
+          objectCount: syncRun.bulkOperation?.objectCount || 0,
+          mdmImportId: syncRun.mdmLog?.id || '',
+          mdmStatus: syncRun.mdmLog?.statusId || '',
+          mdmStatusLabel: syncRun.mdmLog?.statusLabel || translate("Pending"),
+          mdmStatusColor: syncRun.mdmLog?.statusColor || "medium",
+          totalRecordCount: syncRun.mdmLog?.totalRecordCount || 0,
+          failedRecordCount: syncRun.mdmLog?.failedRecordCount || 0,
+          loading: false
+        });
+      } catch (runError) {
+        logger.error(`Failed to fetch sync run details for message ${run.id}`, runError);
+        updateHistoryRun(run.id, { loading: false });
+      }
+    }));
+  }
+}
+
+function updateHistoryRun(runId: string, updates: Partial<ShopifyProductSyncHistoryRun>) {
+  const runIndex = historyRuns.value.findIndex((run) => run.id === runId);
+  if (runIndex === -1) return;
+  historyRuns.value[runIndex] = {
+    ...historyRuns.value[runIndex],
+    ...updates
+  };
+}
+
+async function loadMoreHistory(event: CustomEvent) {
+  if (!hasMoreHistory.value || isLoadingMore.value) {
+    await completeInfiniteScroll(event);
+    return;
+  }
+
+  isLoadingMore.value = true;
+  try {
+    await fetchHistoryPage();
+  } catch (error: any) {
+    logger.error(error);
+    showToast(translate("Failed to load product sync history"));
+  } finally {
+    isLoadingMore.value = false;
+    await completeInfiniteScroll(event);
+  }
+}
+
+async function completeInfiniteScroll(event: CustomEvent) {
+  const target = event.target as any;
+  await target.complete();
+}
+
+async function handleStatusFilterChange(value: string) {
+  filters.statusId = value || "";
+  await loadHistory();
+}
+
+async function handleCreatedAfterFilterChange(value: any) {
+  filters.createdAfter = String(value || "");
+  await loadHistory();
+}
+
+async function handleCreatedBeforeFilterChange(value: any) {
+  filters.createdBefore = String(value || "");
+  await loadHistory();
 }
 </script>

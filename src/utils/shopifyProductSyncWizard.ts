@@ -179,11 +179,11 @@ export function requiresPreflightConfirmation(summary: ProductSyncPreflightSumma
 
 export function resolveProductSyncExperienceMode(
   mode: ProductSyncExperienceMode,
-  shopifyShopProductCount = 0
+  hasLinkedOmsProducts = false
 ): ProductSyncExperienceView {
   if (mode === "first-time" || mode === "returning") {
     return mode;
   }
 
-  return shopifyShopProductCount > 0 ? "returning" : "first-time";
+  return hasLinkedOmsProducts ? "returning" : "first-time";
 }

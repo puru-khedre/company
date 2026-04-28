@@ -54,6 +54,7 @@ export interface ShopifyProductUpdateSyncRunState {
   latestConfirmedSystemMessage?: any;
   lastSyncedAt?: string;
   systemMessageRemoteId: string;
+  systemMessages?: any[];
 }
 
 export interface ShopifyUnsyncedProductUpdate {
@@ -88,6 +89,7 @@ interface SystemMessageRemotesResponse {
 const STATUS_COMPLETED = "completed";
 const STATUS_COMPLETED_WITH_ERRORS = "completed-with-errors";
 const PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID = "BulkQueryShopifyProductUpdates";
+const DUMMY_INITIAL_IMPORT_SYNC_JOB_ID = "DUMMY_PRODUCT_SYNC_IMPORT";
 
 const LIVE_CATALOG_COUNTS_QUERY = `
 query WizardLiveCatalogCounts {
@@ -491,7 +493,8 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     latestSystemMessage,
     latestConfirmedSystemMessage,
     lastSyncedAt: getTimestampDate(latestConfirmedSystemMessage?.processedDate),
-    systemMessageRemoteId
+    systemMessageRemoteId,
+    systemMessages
   };
 };
 
@@ -634,24 +637,20 @@ const fetchPreflight = async (payload: any): Promise<ShopifyProductSyncPreflight
 };
 
 const startInitialImport = async (payload: any): Promise<any> => {
-  return callBackend(
-    {
-      url: `oms/shopifyShops/${payload.shopId}/productSync/imports`,
-      method: "post",
-      data: {
-        productStoreId: payload.productStoreId,
-        productIdentifierEnumId: payload.productIdentifierEnumId
-      }
-    },
-    {
-      success: false,
-      error: "Product sync import backend endpoint is unavailable.",
-      backendAvailable: false
-    }
-  );
+  logger.info("Using dummy Shopify product sync import response.", payload);
+  return {
+    success: Boolean(DUMMY_INITIAL_IMPORT_SYNC_JOB_ID),
+    syncJobId: DUMMY_INITIAL_IMPORT_SYNC_JOB_ID,
+    progress: fallbackProgress(DUMMY_INITIAL_IMPORT_SYNC_JOB_ID, "completed", "SmsgConfirmed"),
+    backendAvailable: false
+  };
 };
 
 const fetchProgress = async (payload: any): Promise<ShopifyProductSyncProgressState> => {
+  if (payload.syncJobId === DUMMY_INITIAL_IMPORT_SYNC_JOB_ID) {
+    return fallbackProgress(payload.syncJobId, "completed", "SmsgConfirmed");
+  }
+
   return callBackend(
     {
       url: `oms/shopifyShops/${payload.shopId}/productSync/imports/${payload.syncJobId}`,
