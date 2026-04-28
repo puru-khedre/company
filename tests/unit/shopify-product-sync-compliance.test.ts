@@ -126,6 +126,17 @@ describe("shopify product sync implementation compliance", () => {
     assert.equal(historySource.includes("appendSystemMessagesToHistoryPage"), true);
   });
 
+  test("product sync run details return local response data instead of shared composable state", () => {
+    const dataManagerLogSource = readProjectFile("src/composables/useDataManagerLog.ts");
+    const systemMessageSource = readProjectFile("src/composables/useSystemMessage.ts");
+
+    assert.equal(dataManagerLogSource.includes("const mdmLogDetails ="), true);
+    assert.equal(dataManagerLogSource.includes("return mdmLogDetails"), true);
+    assert.equal(systemMessageSource.includes("const systemMessage = response.data.systemMessages[0]"), true);
+    assert.equal(systemMessageSource.includes("return systemMessage"), true);
+    assert.equal(systemMessageSource.includes("return payload"), true);
+  });
+
   test("product sync history can download raw Shopify files from data manager logs", () => {
     const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
     const historyViewSource = readProjectFile("src/components/ShopifyProductSyncHistoryView.vue");

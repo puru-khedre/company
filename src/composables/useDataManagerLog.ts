@@ -53,14 +53,18 @@ export function useDataManagerLog() {
   };
 
   const applyMdmLogDetails = async (mdmLog: any) => {
-    state.currentMdmLog = mdmLog;
-    state.currentMdmLog["successRecordCount"] = (Number(state.currentMdmLog.totalRecordCount) || 0) - (Number(state.currentMdmLog.failedRecordCount) || 0);
+    const mdmLogDetails = {
+      ...mdmLog,
+      successRecordCount: (Number(mdmLog?.totalRecordCount) || 0) - (Number(mdmLog?.failedRecordCount) || 0)
+    };
 
-    if (state.currentMdmLog.errorLogContentId) {
-      await fetchFailedRecords(state.currentMdmLog.configId, state.currentMdmLog.errorLogContentId);
+    state.currentMdmLog = mdmLogDetails;
+
+    if (mdmLogDetails.errorLogContentId) {
+      await fetchFailedRecords(mdmLogDetails.configId, mdmLogDetails.errorLogContentId);
     }
 
-    return state.currentMdmLog;
+    return mdmLogDetails;
   };
 
   const getFirstMdmLog = (responseData: any) => {
