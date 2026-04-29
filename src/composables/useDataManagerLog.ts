@@ -20,16 +20,22 @@ export function useDataManagerLog() {
     }
   };
 
+  const downloadDataManagerFile = async (configId: string, logContentId: string) => {
+    if (!configId || !logContentId) return null;
+
+    return api({
+      url: "admin/dataManager/downloadDataManagerFile",
+      method: "GET",
+      params: {
+        configId,
+        logContentId
+      }
+    }) as any;
+  };
+
   const fetchFailedRecords = async (configId: string, errorLogContentId: string) => {
     try {
-      const resp = await api({
-        url: "admin/dataManager/downloadDataManagerFile",
-        method: "GET",
-        params: {
-          configId,
-          logContentId: errorLogContentId
-        }
-      }) as any;
+      const resp = await downloadDataManagerFile(configId, errorLogContentId);
 
       state.errorCsvRecords = resp?.data?.csvData || resp?.data;
       if (isValidJSON(state.errorCsvRecords)) {
@@ -43,7 +49,27 @@ export function useDataManagerLog() {
       }
     } catch (err) {
       logger.error("Failed to download the error records", err);
+      throw err;
     }
+  };
+
+  const applyMdmLogDetails = async (mdmLog: any) => {
+    const mdmLogDetails = {
+      ...mdmLog,
+      successRecordCount: (Number(mdmLog?.totalRecordCount) || 0) - (Number(mdmLog?.failedRecordCount) || 0)
+    };
+
+    state.currentMdmLog = mdmLogDetails;
+
+    if (mdmLogDetails.errorLogContentId) {
+      await fetchFailedRecords(mdmLogDetails.configId, mdmLogDetails.errorLogContentId);
+    }
+
+    return mdmLogDetails;
+  };
+
+  const getFirstMdmLog = (responseData: any) => {
+    return responseData?.dataManagerLogs?.length ? responseData.dataManagerLogs[0] : null;
   };
 
   const fetchMdmLogBySystemMessageId = async (systemMessageId: string) => {
@@ -64,20 +90,27 @@ export function useDataManagerLog() {
         }
       }) as any;
 
-      if (resp?.data?.dataManagerLogsCount) {
-        state.currentMdmLog = resp.data.dataManagerLogs[0];
-        state.currentMdmLog["successRecordCount"] = (Number(state.currentMdmLog.totalRecordCount) || 0) - (Number(state.currentMdmLog.failedRecordCount) || 0);
-
-        if (state.currentMdmLog.errorLogContentId) {
-          await fetchFailedRecords(state.currentMdmLog.configId, state.currentMdmLog.errorLogContentId);
-        }
-        return state.currentMdmLog;
-      }
+      const mdmLog = getFirstMdmLog(resp?.data);
+      if (mdmLog) return applyMdmLogDetails(mdmLog);
     } catch (err) {
       logger.error(`Failed to fetch MDM log for system message ${systemMessageId}`, err);
+      throw err;
     } finally {
       state.loading = false;
     }
+    return null;
+  };
+
+  const fetchMdmLogBySystemMessageIds = async (systemMessageIds: string[]) => {
+    const candidateSystemMessageIds = systemMessageIds
+      .map((systemMessageId) => String(systemMessageId || "").trim())
+      .filter((systemMessageId, index, list) => systemMessageId && list.indexOf(systemMessageId) === index);
+
+    for (const systemMessageId of candidateSystemMessageIds) {
+      const mdmLog = await fetchMdmLogBySystemMessageId(systemMessageId);
+      if (mdmLog) return mdmLog;
+    }
+
     return null;
   };
 
@@ -95,17 +128,11 @@ export function useDataManagerLog() {
         }
       }) as any;
 
-      if(resp?.data?.dataManagerLogsCount) {
-        state.currentMdmLog = resp.data.dataManagerLogs[0];
-        state.currentMdmLog["successRecordCount"] = (Number(state.currentMdmLog.totalRecordCount) || 0) - (Number(state.currentMdmLog.failedRecordCount) || 0);
-
-        if(state.currentMdmLog.errorLogContentId) {
-          await fetchFailedRecords(state.currentMdmLog.configId, state.currentMdmLog.errorLogContentId);
-        }
-        return state.currentMdmLog;
-      }
+      const mdmLog = getFirstMdmLog(resp?.data);
+      if (mdmLog) return applyMdmLogDetails(mdmLog);
     } catch(err) {
       logger.error(`Failed to fetch log with id ${logId}`, err);
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -132,6 +159,7 @@ export function useDataManagerLog() {
     } catch (err) {
       logger.error(`Failed to fetch recent MDM logs for config ${configId}`, err);
       state.recentMdmLogs = [];
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -140,8 +168,10 @@ export function useDataManagerLog() {
 
   return {
     ...toRefs(state),
+    downloadDataManagerFile,
     fetchFailedRecords,
     fetchMdmLogBySystemMessageId,
+    fetchMdmLogBySystemMessageIds,
     fetchLogDetails,
     fetchRecentLogsByConfigId
   };

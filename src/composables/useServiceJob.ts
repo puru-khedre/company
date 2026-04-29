@@ -19,9 +19,8 @@ const getNormalizedJob = (job: any = {}) => ({
   ...job
 });
 
-export const getJobDetailWithFallback = (jobDetail: any = {}, fallbackJob: any = {}) => {
-  const resolvedJob = Object.keys(jobDetail || {}).length ? jobDetail : fallbackJob;
-  return getNormalizedJob(resolvedJob);
+export const getNormalizedJobDetail = (jobDetail: any = {}) => {
+  return getNormalizedJob(jobDetail);
 };
 
 const state = reactive({
@@ -63,6 +62,7 @@ export default function useServiceJob() {
       state.jobs = allJobs;
     } catch(err) {
       logger.error("Failed to fetch jobs", err);
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -82,6 +82,7 @@ export default function useServiceJob() {
       parameters = resp?.data?.serviceInParameters || [];
     } catch(err) {
       logger.error("Failed to fetch service parameters", err);
+      throw err;
     }
     return parameters;
   };
@@ -97,6 +98,7 @@ export default function useServiceJob() {
       }
     } catch(err) {
       logger.error("Failed to fetch product detail", err);
+      throw err;
     }
   };
 
@@ -129,18 +131,16 @@ export default function useServiceJob() {
       }
     } catch(err) {
       logger.error("Failed to fetch job details", err);
+      throw err;
     }
 
-    let fallbackJob = state.jobs.find((job: any) => job.jobName === jobName) || {};
-
-    if (!Object.keys(fallbackJob).length && !Object.keys(jobDetails || {}).length) {
-      await fetchJobs();
-      fallbackJob = state.jobs.find((job: any) => job.jobName === jobName) || {};
+    if (!Object.keys(jobDetails || {}).length) {
+      throw new Error(`Service job detail is unavailable for ${jobName}.`);
     }
 
-    const job = getJobDetailWithFallback(jobDetails, fallbackJob);
+    const job = getNormalizedJobDetail(jobDetails);
     if (job.instanceOfProductId && !state.products[job.instanceOfProductId]) {
-      fetchProductDetail(job.instanceOfProductId);
+      await fetchProductDetail(job.instanceOfProductId);
     }
     return job;
   };
@@ -158,6 +158,7 @@ export default function useServiceJob() {
       jobRuns = resp?.data || [];
     } catch(err) {
       logger.error("Failed to fetch job runs", err);
+      throw err;
     }
     return Array.isArray(jobRuns) ? jobRuns : [];
   };

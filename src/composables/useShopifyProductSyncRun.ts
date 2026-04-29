@@ -9,7 +9,7 @@ export function useShopifyProductSyncRun() {
   const store = useStore();
   const statusItems = computed(() => store.getters['util/getStatusItems']);
   const { fetchShopifyBulkOperationBySystemMessageId } = useSystemMessage();
-  const { fetchMdmLogBySystemMessageId } = useDataManagerLog();
+  const { fetchMdmLogBySystemMessageIds } = useDataManagerLog();
 
   const state = reactive({
     currentSyncRun: {} as ShopifyProductSyncRun,
@@ -46,11 +46,17 @@ export function useShopifyProductSyncRun() {
     state.loading = true;
     try {
       // Fetch System Message and related Shopify Bulk Operation
-      const { systemMessage, shopifyBulkOperation } = await fetchShopifyBulkOperationBySystemMessageId(systemMessageId, systemMessageData);
+      const {
+        systemMessage,
+        shopifyBulkOperation,
+        bulkOperationId,
+        relatedSystemMessageIds = []
+      } = await fetchShopifyBulkOperationBySystemMessageId(systemMessageId, systemMessageData);
       const syncRunSystemMessageId = systemMessageId || systemMessage?.systemMessageId;
       
       // Fetch MDM Log
-      const mdmLog = await fetchMdmLogBySystemMessageId(syncRunSystemMessageId) || {};
+      const mdmLogSystemMessageIds = relatedSystemMessageIds.length ? relatedSystemMessageIds : [syncRunSystemMessageId];
+      const mdmLog = await fetchMdmLogBySystemMessageIds(mdmLogSystemMessageIds) || {};
 
       // Map to ShopifyProductSyncRun
       const syncRun: ShopifyProductSyncRun = {
@@ -61,7 +67,7 @@ export function useShopifyProductSyncRun() {
           statusColor: getStatusColor(systemMessage?.statusId)
         },
         bulkOperation: {
-          id: shopifyBulkOperation?.id,
+          id: shopifyBulkOperation?.id || bulkOperationId,
           status: shopifyBulkOperation?.status,
           statusLabel: getStatusLabel(shopifyBulkOperation?.status),
           statusColor: getStatusColor(shopifyBulkOperation?.status),
@@ -75,7 +81,10 @@ export function useShopifyProductSyncRun() {
           statusColor: getStatusColor(mdmLog?.statusId),
           totalRecordCount: mdmLog?.totalRecordCount,
           failedRecordCount: mdmLog?.failedRecordCount,
-          successRecordCount: mdmLog?.successRecordCount
+          successRecordCount: mdmLog?.successRecordCount,
+          configId: mdmLog?.configId,
+          logContentId: mdmLog?.logContentId,
+          fileName: mdmLog?.fileName
         },
         status: getStatusLabel(mdmLog?.statusId || shopifyBulkOperation?.status || systemMessage?.statusId),
         statusColor: getStatusColor(mdmLog?.statusId || shopifyBulkOperation?.status || systemMessage?.statusId),
