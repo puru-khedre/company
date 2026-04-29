@@ -137,6 +137,24 @@ describe("shopify product sync implementation compliance", () => {
     assert.equal(systemMessageSource.includes("return payload"), true);
   });
 
+  test("first-time wizard progress owns the Figma sync progress experience", () => {
+    const productSyncSource = readProjectFile("src/views/ShopifyProductSync.vue");
+    const wizardSource = readProjectFile("src/components/ShopifyProductSyncWizardView.vue");
+    const historyViewSource = readProjectFile("src/components/ShopifyProductSyncHistoryView.vue");
+
+    assert.equal(wizardSource.includes('currentStep === \'progress\''), true);
+    assert.equal(wizardSource.includes("Product export request payload"), true);
+    assert.equal(wizardSource.includes("Pending bulk operations"), true);
+    assert.equal(wizardSource.includes("Bulk file process"), true);
+    assert.equal(wizardSource.includes("getProductSyncBulkOperationProgress"), true);
+    assert.equal(wizardSource.includes("reviewStats?.shopifyProductCount"), true);
+    assert.equal(wizardSource.includes("currentSyncRun?.bulkOperation?.objectCount"), true);
+    assert.equal(wizardSource.includes("queuedJobsAhead"), true);
+    assert.equal(productSyncSource.includes("await loadReviewStats();"), true);
+    assert.equal(historyViewSource.includes("Product export request payload"), false);
+    assert.equal(historyViewSource.includes("getProductSyncBulkOperationProgress"), false);
+  });
+
   test("product sync history can download raw Shopify files from data manager logs", () => {
     const historySource = readProjectFile("src/views/ShopifyProductSyncHistory.vue");
     const historyViewSource = readProjectFile("src/components/ShopifyProductSyncHistoryView.vue");

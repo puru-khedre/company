@@ -4,6 +4,7 @@ import {
   canShowProductSyncReconcile,
   canStartProductSync,
   createProductSyncWizardDraft,
+  getProductSyncBulkOperationProgress,
   getReviewImportAction,
   requiresPreflightConfirmation,
   resolveProductSyncExperienceMode,
@@ -150,6 +151,21 @@ describe("shopify product sync wizard state", () => {
     assert.equal(canShowProductSyncReconcile({ systemMessageState: "SmsgError" }), false);
     assert.equal(canShowProductSyncReconcile({ systemMessageState: "SmsgConfirmed" }), true);
     assert.equal(canShowProductSyncReconcile({ status: "completed" }), true);
+  });
+
+  test("bulk operation progress uses object count against the review product count", () => {
+    assert.deepEqual(
+      getProductSyncBulkOperationProgress(25, 100),
+      { processedCount: 25, totalCount: 100, value: 0.25, hasTotalCount: true }
+    );
+    assert.deepEqual(
+      getProductSyncBulkOperationProgress(125, 100),
+      { processedCount: 125, totalCount: 100, value: 1, hasTotalCount: true }
+    );
+    assert.deepEqual(
+      getProductSyncBulkOperationProgress(25, 0),
+      { processedCount: 25, totalCount: 0, value: 0, hasTotalCount: false }
+    );
   });
 
   test("preflight warning thresholds require confirmation below seven of ten", () => {
