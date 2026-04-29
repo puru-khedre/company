@@ -44,6 +44,13 @@ export interface ProductSyncProgressSnapshot {
   completed?: boolean;
 }
 
+export interface ProductSyncBulkOperationProgress {
+  processedCount: number;
+  totalCount: number;
+  value: number;
+  hasTotalCount: boolean;
+}
+
 export const productSyncWizardSteps: ProductSyncWizardStep[] = [
   "home",
   "product-store",
@@ -159,6 +166,19 @@ export function normalizeProductSyncStatus(progress: ProductSyncProgressSnapshot
     default:
       return "queued";
   }
+}
+
+export function getProductSyncBulkOperationProgress(objectCount?: number | string, totalProductCount?: number | string): ProductSyncBulkOperationProgress {
+  const processedCount = Math.max(Number(objectCount || 0), 0);
+  const totalCount = Math.max(Number(totalProductCount || 0), 0);
+  const value = totalCount > 0 ? Math.min(processedCount / totalCount, 1) : 0;
+
+  return {
+    processedCount,
+    totalCount,
+    value,
+    hasTotalCount: totalCount > 0
+  };
 }
 
 export function canShowProductSyncReconcile(progress: ProductSyncProgressSnapshot = {}): boolean {
