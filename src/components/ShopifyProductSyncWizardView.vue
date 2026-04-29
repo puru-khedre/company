@@ -231,7 +231,7 @@
       </ion-card-content>
     </ion-card>
 
-    <template class="step" v-if="currentStep === 'progress'">
+    <template v-if="currentStep === 'progress'">
       <ion-card>
         <ion-card-header>
           <ion-card-title>{{ translate("Track sync progress") }}</ion-card-title>
@@ -358,8 +358,8 @@
           <ion-list lines="full">
             <ion-item v-for="item in preflightResult.items" :key="item.label || item.id">
               <ion-label>
-                {{ item.label || item.name || item.identifier }}
-                <p>{{ item.detail || item.identifier || item.status }}</p>
+                {{ item.label }}
+                <p>{{ item.detail }}</p>
               </ion-label>
               <ion-badge slot="end" :color="getPreflightBadgeColor(item.status)">{{ item.status }}</ion-badge>
             </ion-item>
@@ -393,6 +393,36 @@
         </ion-toolbar>
       </ion-header>
       <ion-content>
+        <ion-card>
+          <ion-card-header>
+            <ion-card-title>{{ translate("Background sync") }}</ion-card-title>
+            <ion-card-subtitle>{{ translate("Manage background synchronization for this shop.") }}</ion-card-subtitle>
+          </ion-card-header>
+          <ion-card-content>
+            <ion-list v-if="!isSyncJobConfigLoaded">
+              <ion-item lines="none">
+                <ion-spinner name="crescent" slot="start" />
+                <ion-label>{{ translate("Checking job status...") }}</ion-label>
+              </ion-item>
+            </ion-list>
+            <div v-else-if="syncJobConfigured">
+              <ion-item lines="none">
+                <ion-icon color="success" slot="start" :icon="checkmarkCircleOutline" />
+                <ion-label color="success" class="ion-text-wrap">{{ translate("Product sync job is scheduled.") }}</ion-label>
+              </ion-item>
+            </div>
+            <div v-else>
+              <ion-item lines="none">
+                <ion-label color="warning" class="ion-text-wrap">{{ translate("Product sync job not configured for this shop.") }}</ion-label>
+              </ion-item>
+              <ion-button fill="outline" expand="block" :disabled="isSyncJobConfiguring" @click="$emit('configureSyncJob')">
+                <ion-spinner v-if="isSyncJobConfiguring" slot="start" name="crescent" />
+                {{ translate("Schedule Job") }}
+              </ion-button>
+            </div>
+          </ion-card-content>
+        </ion-card>
+
         <ion-card>
           <ion-card-header>
             <ion-card-title>{{ translate("First product sync cannot be cancelled") }}</ion-card-title>
@@ -442,7 +472,7 @@ import {
   IonTitle,
   IonToolbar
 } from "@ionic/vue";
-import { closeOutline } from "ionicons/icons";
+import { closeOutline, checkmarkCircleOutline } from "ionicons/icons";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps } from "vue";
 
@@ -486,12 +516,16 @@ const props = defineProps<{
   showMistakeModal: boolean
   showStartSyncModal: boolean
   startSyncDisabled: boolean
+  isSyncJobConfigLoaded: boolean
+  isSyncJobConfiguring: boolean
+  syncJobConfigured: boolean
 }>();
 
 defineEmits([
   "acceptPreflightAndOpenStartSync",
   "closeMistakeModal",
   "closeStartSyncModal",
+  "configureSyncJob",
   "goBack",
   "goNext",
   "identifierChange",
@@ -507,9 +541,12 @@ defineEmits([
 ]);
 
 function getPreflightBadgeColor(status: string) {
-  if (status === "matched") return "success";
-  if (status === "missing" || status === "duplicate" || status === "conflicting" || status === "conflict") return "danger";
-  return "warning";
+  switch (status) {
+    case "Matched": return "success";
+    case "Conflict": return "danger";
+    case "Not found": return "warning";
+    default: return "medium";
+  }
 }
 
 const selectedProductStore = computed(() => {
