@@ -281,28 +281,81 @@
           </ion-item>
         </ion-list>
       </ion-card>
+
       <ion-card>
         <ion-card-header>
-          <ion-card-title>{{ translate("Bulk operation") }}</ion-card-title>
-          <ion-card-subtitle>{{ translate("Status from the backend sync lifecycle") }}</ion-card-subtitle>
+          <ion-card-title>{{ translate("Product export request payload") }}</ion-card-title>
+          <ion-card-subtitle>{{ translate("Using Shopify's bulk query API to export all products in the catalog.") }}</ion-card-subtitle>
         </ion-card-header>
-        <ion-progress-bar v-if="progressStatus === 'running'" type="indeterminate" />
         <ion-list lines="full">
-          <ion-item>
-            <ion-label>{{ translate("System message") }}</ion-label>
-            <ion-note slot="end">{{ progressState.systemMessageState }}</ion-note>
+          <ion-item button detail
+            @click="$emit('openStepDetails', { type: 'systemMessage', id: systemMessageId })"
+            :disabled="!systemMessageId">
+            <ion-icon slot="start" :icon="documentTextOutline" />
+            <ion-label>
+              {{ translate("System message") }}
+              <p>{{ systemMessageId || translate("Not available") }}</p>
+            </ion-label>
+            <ion-badge slot="end" :color="systemMessageStatusColor">{{ systemMessageStatusLabel }}</ion-badge>
           </ion-item>
-          <ion-item>
-            <ion-label>{{ translate("Sync status") }}</ion-label>
-            <ion-badge slot="end" :color="progressBadgeColor">{{ progressStatus }}</ion-badge>
+          <ion-item button detail
+            @click="$emit('openStepDetails', { type: 'bulkOperation', id: bulkOperationId })"
+            :disabled="!bulkOperationId">
+            <ion-icon slot="start" :icon="pulseOutline" />
+            <ion-label>
+              {{ translate("Shopify bulk operation") }}
+              <p>{{ translate("Shopify might take some time to process bulk operation requests.") }}</p>
+              <p>{{ bulkOperationProgressLabel }}</p>
+              <p>{{ translate("Next poll attempt") }}: {{ bulkOperationPollJobNextRunLabel }}</p>
+            </ion-label>
+            <ion-badge slot="end" :color="bulkOperationStatusColor">{{ bulkOperationStatusLabel }}</ion-badge>
           </ion-item>
+          <ion-progress-bar v-if="hasBulkOperationProgress" :value="bulkOperationProgressValue" />
           <ion-item>
-            <ion-label>{{ translate("Bulk operation id") }}</ion-label>
-            <ion-note slot="end">{{ progressState.bulkOperationId || translate("Not available") }}</ion-note>
+            <ion-label>{{ translate("Products and variants processed / Total product count") }}</ion-label>
+            <ion-note slot="end">{{ bulkOperationProgressLabel }}</ion-note>
           </ion-item>
-          <ion-item>
+        </ion-list>
+      </ion-card>
+
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>{{ translate("Pending bulk operations") }}</ion-card-title>
+          <ion-card-subtitle>{{ translate("Shopify might take some time to process bulk operation requests.") }}</ion-card-subtitle>
+        </ion-card-header>
+        <ion-list lines="full">
+          <ion-item v-if="queuedJobsAhead">
             <ion-label>{{ translate("Queued jobs ahead") }}</ion-label>
-            <ion-note slot="end">{{ progressState.queuedJobsAhead || 0 }}</ion-note>
+            <ion-note slot="end">{{ queuedJobsAhead }}</ion-note>
+          </ion-item>
+          <ion-item>
+            <ion-icon slot="start" :icon="sendOutline" />
+            <ion-label>
+              {{ translate("Your request") }}
+              <p>{{ bulkOperationId || systemMessageId || translate("Not available") }}</p>
+            </ion-label>
+            <ion-badge slot="end" :color="bulkOperationStatusColor">{{ bulkOperationStatusLabel }}</ion-badge>
+          </ion-item>
+        </ion-list>
+      </ion-card>
+
+      <ion-card>
+        <ion-card-header>
+          <ion-card-title>{{ translate("Bulk file process") }}</ion-card-title>
+          <ion-card-subtitle>{{ bulkFileProcessDescription }}</ion-card-subtitle>
+        </ion-card-header>
+        <ion-list lines="full">
+          <ion-item button detail @click="$emit('openStepDetails', { type: 'mdmLog', id: mdmLogId })"
+            :disabled="!mdmLogId">
+            <ion-icon slot="start" :icon="serverOutline" />
+            <ion-label>
+              {{ translate("HotWax bulk import") }}
+              <p>{{ mdmLogId || translate("Not started") }}</p>
+            </ion-label>
+            <ion-note slot="end" v-if="mdmRecordCount">
+              {{ mdmRecordCount }} {{ translate("records") }}
+            </ion-note>
+            <ion-badge slot="end" :color="mdmLogStatusColor">{{ mdmLogStatusLabel }}</ion-badge>
           </ion-item>
         </ion-list>
         <ion-card-content>
@@ -442,9 +495,17 @@ import {
   IonTitle,
   IonToolbar
 } from "@ionic/vue";
-import { closeOutline } from "ionicons/icons";
+import {
+  closeOutline,
+  documentTextOutline,
+  pulseOutline,
+  sendOutline,
+  serverOutline,
+  syncCircleOutline
+} from "ionicons/icons";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps } from "vue";
+import { getProductSyncBulkOperationProgress } from "@/utils/shopifyProductSyncWizard";
 
 
 const props = defineProps<{
@@ -519,6 +580,95 @@ const selectedProductStore = computed(() => {
 const selectedIdentifier = computed(() => {
   return props.identifierOptions.find((identifier: any) => identifier.enumId === props.draft.selectedIdentifierEnumId);
 });
+
+const systemMessageId = computed(() => {
+  return props.currentSyncRun?.systemMessageId || props.progressState?.systemMessageId || "";
+});
+
+const systemMessageStatusLabel = computed(() => {
+  return props.currentSyncRun?.systemMessage?.statusLabel || props.progressState?.systemMessageState || translate("Pending");
+});
+
+const systemMessageStatusColor = computed(() => {
+  return props.currentSyncRun?.systemMessage?.statusColor || props.progressBadgeColor || "medium";
+});
+
+const bulkOperationId = computed(() => {
+  return props.currentSyncRun?.bulkOperation?.id || props.progressState?.bulkOperationId || "";
+});
+
+const bulkOperationStatusLabel = computed(() => {
+  return props.currentSyncRun?.bulkOperation?.statusLabel || props.progressState?.bulkOperationStatus || translate("Pending");
+});
+
+const bulkOperationStatusColor = computed(() => {
+  return props.currentSyncRun?.bulkOperation?.statusColor || props.progressBadgeColor || "medium";
+});
+
+const bulkOperationObjectCount = computed(() => {
+  return Number(props.currentSyncRun?.bulkOperation?.objectCount ?? props.progressState?.objectCount ?? 0);
+});
+
+const bulkOperationProgress = computed(() => {
+  return getProductSyncBulkOperationProgress(bulkOperationObjectCount.value, props.reviewStats?.shopifyProductCount);
+});
+
+const hasBulkOperationProgress = computed(() => {
+  return bulkOperationProgress.value.hasTotalCount;
+});
+
+const bulkOperationProgressValue = computed(() => {
+  return bulkOperationProgress.value.value;
+});
+
+const bulkOperationProgressLabel = computed(() => {
+  if (!bulkOperationProgress.value.hasTotalCount) {
+    return translate("{count} objects processed", { count: formatCount(bulkOperationProgress.value.processedCount) });
+  }
+
+  return translate("{processed} objects processed / {total} products requested", {
+    processed: formatCount(bulkOperationProgress.value.processedCount),
+    total: formatCount(bulkOperationProgress.value.totalCount)
+  });
+});
+
+const queuedJobsAhead = computed(() => {
+  return Math.max(Number(props.progressState?.queuedJobsAhead || 0), 0);
+});
+
+const mdmLogId = computed(() => {
+  return props.currentSyncRun?.mdmLog?.id || "";
+});
+
+const mdmLogStatusLabel = computed(() => {
+  return props.currentSyncRun?.mdmLog?.statusLabel || translate("Pending");
+});
+
+const mdmLogStatusColor = computed(() => {
+  return props.currentSyncRun?.mdmLog?.statusColor || "medium";
+});
+
+const mdmRecordCount = computed(() => {
+  return Number(props.currentSyncRun?.mdmLog?.totalRecordCount || 0);
+});
+
+const bulkFileProcessDescription = computed(() => {
+  if (!bulkOperationId.value) return translate("Waiting for Shopify to accept the product export request.");
+  if (!isCompleteStatus(props.currentSyncRun?.bulkOperation?.status || props.progressState?.bulkOperationStatus)) {
+    return translate("Waiting for Shopify to generate product export");
+  }
+  if (!mdmLogId.value) return translate("Waiting for HotWax to import the Shopify export file.");
+  if (props.reconcileAvailable || props.currentSyncRun?.completed) return translate("Product sync request completed.");
+  return translate("HotWax is processing the exported Shopify product file.");
+});
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat().format(value);
+}
+
+function isCompleteStatus(status = "") {
+  return ["completed", "finished", "success", "complete"].includes(String(status).toLowerCase());
+}
 </script>
 
 <style scoped>

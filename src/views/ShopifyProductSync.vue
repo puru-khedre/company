@@ -949,6 +949,9 @@ async function loadWizard() {
       currentStep.value = "reconcile";
     } else if (syncJobId.value) {
       currentStep.value = "progress";
+      if (!reviewStats.value.loaded) {
+        await loadReviewStats();
+      }
       const loadedProgress = await loadProgress();
       if (loadedProgress) startProgressPolling();
     } else {
