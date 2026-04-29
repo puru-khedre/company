@@ -5,7 +5,7 @@
         <ion-card-title>{{ translate("Summary") }}</ion-card-title>
         <ion-card-subtitle>{{ summarySubtitle }}</ion-card-subtitle>
         <ion-buttons>
-          <ion-button fill="clear" :disabled="!syncJobObj" @click="$emit('run-job', syncJobObj)">
+          <ion-button fill="clear" :disabled="!syncJobObj" @click="emit('run-job', syncJobObj)">
 
             <ion-icon slot="icon-only" :icon="flashOutline" />
           </ion-button>
@@ -25,7 +25,7 @@
           </ion-label>
           <ion-note slot="end">{{ lastSyncRelativeLabel }}</ion-note>
         </ion-item>
-        <ion-item button :detail="isSyncScheduled" @click="isSyncScheduled ? $emit('openSyncJobDetails') : undefined">
+        <ion-item button :detail="isSyncScheduled" @click="isSyncScheduled ? emit('open-sync-job-details') : undefined">
           <ion-label>{{ translate("Next sync time") }}
             <p v-if="isSyncScheduled">{{ nextSyncLabel }}</p>
           </ion-label>
@@ -37,7 +37,7 @@
           <ion-label>{{ translate("Product store") }}</ion-label>
           <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
         </ion-item>
-        <ion-item button detail @click="$emit('openUnsyncedUpdates')">
+        <ion-item button detail @click="emit('open-unsynced-updates')">
           <ion-label>{{ translate("Un-synced updates") }}</ion-label>
           <ion-badge slot="end" color="medium">{{ unsyncedUpdatesCount }}</ion-badge>
         </ion-item>
@@ -49,14 +49,14 @@
         <ion-card-title>{{ translate("Track sync progress") }}</ion-card-title>
         <ion-card-subtitle>{{ translate("Monitor each step as products get imported from Shopify") }}</ion-card-subtitle>
         <ion-buttons>
-          <ion-button fill="clear" @click="$emit('openHistory')">
+          <ion-button fill="clear" @click="emit('open-history')">
             <ion-icon slot="icon-only" :icon="timeOutline" />
           </ion-button>
         </ion-buttons>
       </ion-card-header>
       <ion-list lines="full">
         <template v-if="currentSyncRun && currentSyncRun.systemMessageId">
-          <ion-item button detail @click="$emit('openStepDetails', { type: 'systemMessage', id: currentSyncRun.systemMessageId })">
+          <ion-item button detail @click="emit('open-step-details', { type: 'systemMessage', id: currentSyncRun.systemMessageId })">
             <ion-label>
               {{ translate("System message") }}
               <p>{{ currentSyncRun.systemMessageId }}</p>
@@ -64,7 +64,7 @@
             </ion-label>
             <ion-badge slot="end" :color="currentSyncRun.systemMessage.statusColor">{{ currentSyncRun.systemMessage.statusLabel }}</ion-badge>
           </ion-item>
-          <ion-item button detail @click="$emit('openStepDetails', { type: 'bulkOperation', id: currentSyncRun.bulkOperation.id })" :disabled="!currentSyncRun.bulkOperation?.id">
+          <ion-item button detail @click="emit('open-step-details', { type: 'bulkOperation', id: currentSyncRun.bulkOperation.id })" :disabled="!currentSyncRun.bulkOperation?.id">
             <ion-label>
               {{ translate("Shopify bulk operation") }}
               <p>{{ currentSyncRun.bulkOperation?.id || translate("Not started") }}</p>
@@ -75,7 +75,7 @@
             </ion-note>
             <ion-badge slot="end" :color="currentSyncRun.bulkOperation?.statusColor || 'medium'">{{ currentSyncRun.bulkOperation?.statusLabel || translate("Pending") }}</ion-badge>
           </ion-item>
-          <ion-item button detail @click="$emit('openStepDetails', { type: 'mdmLog', id: currentSyncRun.mdmLog.id })" :disabled="!currentSyncRun.mdmLog?.id">
+          <ion-item button detail @click="emit('open-step-details', { type: 'mdmLog', id: currentSyncRun.mdmLog.id })" :disabled="!currentSyncRun.mdmLog?.id">
             <ion-label>
               {{ translate("HotWax bulk import") }}
               <p>{{ currentSyncRun.mdmLog?.id || translate("Not started") }}</p>
@@ -262,7 +262,7 @@ const props = defineProps<{
   unsyncedUpdatesCount: number | string
   syncJobObj?: any
 }>();
-const emit = defineEmits(["openHistory", "scheduleSync", "run-job", "openUnsyncedUpdates", "openSyncJobDetails", "openStepDetails", "togglePauseSyncJob"]);
+const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job"]);
 
 
 
@@ -275,7 +275,7 @@ async function openScheduleModal() {
   });
   scheduleModal.onDidDismiss().then((result) => {
     if (result.data && result.data.expression) {
-      emit("scheduleSync", result.data.expression);
+      emit("schedule-sync", result.data.expression);
     }
   });
   await scheduleModal.present();
@@ -296,9 +296,9 @@ async function openActionsPopover(event: Event) {
   if (data?.action === 'reschedule') {
     openScheduleModal();
   } else if (data?.action === 'pause') {
-    emit("togglePauseSyncJob", true);
+    emit("toggle-pause-sync-job", true);
   } else if (data?.action === 'resume') {
-    emit("togglePauseSyncJob", false);
+    emit("toggle-pause-sync-job", false);
   }
 }
 

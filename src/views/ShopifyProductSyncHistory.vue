@@ -53,6 +53,16 @@
         </ion-card-content>
       </ion-card>
 
+      <ion-card v-else-if="loadErrorMessage">
+        <ion-card-header>
+          <ion-card-title>{{ translate("Product sync history could not load") }}</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>{{ loadErrorMessage }}</p>
+          <ion-button fill="outline" @click="loadHistory">{{ translate("Retry") }}</ion-button>
+        </ion-card-content>
+      </ion-card>
+
       <shopify-product-sync-history-view
         v-else
         :runs="historyRuns"
@@ -75,6 +85,7 @@
 <script setup lang="ts">
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
@@ -125,6 +136,7 @@ const PAGE_SIZE = 25;
 
 const isLoading = ref(true);
 const isLoadingMore = ref(false);
+const loadErrorMessage = ref("");
 const pageIndex = ref(0);
 const reversePageIndex = ref(-1);
 const backendHistoryCount = ref(0);
@@ -182,6 +194,7 @@ onIonViewWillEnter(async () => {
 async function loadHistory() {
   const loadToken = ++historyLoadToken;
   isLoading.value = true;
+  loadErrorMessage.value = "";
   try {
     if (!shop.value.shopId) {
       await store.dispatch("shopify/fetchShopifyShops");
@@ -213,6 +226,7 @@ async function loadHistory() {
   } catch (error: any) {
     if (isStaleHistoryLoad(loadToken)) return;
     logger.error(error);
+    loadErrorMessage.value = getErrorMessage(error, translate("Failed to load product sync history"));
     showToast(translate("Failed to load product sync history"));
     historyRuns.value = [];
     hasMoreBackendHistory.value = false;
@@ -396,34 +410,28 @@ async function loadRunDetails(runs: ShopifyProductSyncHistoryRun[], systemMessag
 
     await Promise.all(chunk.map(async (run) => {
       const msg = currentMessages.find((message: any) => message.systemMessageId === run.id);
-      try {
-        const syncRun = await fetchSyncRun(run.id, msg);
+      const syncRun = await fetchSyncRun(run.id, msg);
 
-        if (syncRun && !isStaleHistoryLoad(loadToken)) updateHistoryRun(run.id, {
-          systemMessageStatus: syncRun.systemMessage.statusLabel,
-          systemMessageStatusColor: syncRun.systemMessage.statusColor,
-          bulkOperationId: syncRun.bulkOperation?.id || '',
-          bulkOperationStatus: syncRun.bulkOperation?.status || '',
-          bulkOperationStatusLabel: syncRun.bulkOperation?.statusLabel || translate("Pending"),
-          bulkOperationStatusColor: syncRun.bulkOperation?.statusColor || "medium",
-          queryContent: syncRun.bulkOperation?.query || "",
-          objectCount: syncRun.bulkOperation?.objectCount || 0,
-          mdmImportId: syncRun.mdmLog?.id || '',
-          mdmStatus: syncRun.mdmLog?.statusId || '',
-          mdmStatusLabel: syncRun.mdmLog?.statusLabel || translate("Pending"),
-          mdmStatusColor: syncRun.mdmLog?.statusColor || "medium",
-          totalRecordCount: syncRun.mdmLog?.totalRecordCount || 0,
-          failedRecordCount: syncRun.mdmLog?.failedRecordCount || 0,
-          mdmLogContentId: syncRun.mdmLog?.logContentId || "",
-          mdmLogConfigId: syncRun.mdmLog?.configId || "",
-          mdmLogFileName: syncRun.mdmLog?.fileName || "",
-          loading: false
-        });
-      } catch (runError) {
-        if (isStaleHistoryLoad(loadToken)) return;
-        logger.error(`Failed to fetch sync run details for message ${run.id}`, runError);
-        updateHistoryRun(run.id, { loading: false });
-      }
+      if (syncRun && !isStaleHistoryLoad(loadToken)) updateHistoryRun(run.id, {
+        systemMessageStatus: syncRun.systemMessage.statusLabel,
+        systemMessageStatusColor: syncRun.systemMessage.statusColor,
+        bulkOperationId: syncRun.bulkOperation?.id || '',
+        bulkOperationStatus: syncRun.bulkOperation?.status || '',
+        bulkOperationStatusLabel: syncRun.bulkOperation?.statusLabel || translate("Pending"),
+        bulkOperationStatusColor: syncRun.bulkOperation?.statusColor || "medium",
+        queryContent: syncRun.bulkOperation?.query || "",
+        objectCount: syncRun.bulkOperation?.objectCount || 0,
+        mdmImportId: syncRun.mdmLog?.id || '',
+        mdmStatus: syncRun.mdmLog?.statusId || '',
+        mdmStatusLabel: syncRun.mdmLog?.statusLabel || translate("Pending"),
+        mdmStatusColor: syncRun.mdmLog?.statusColor || "medium",
+        totalRecordCount: syncRun.mdmLog?.totalRecordCount || 0,
+        failedRecordCount: syncRun.mdmLog?.failedRecordCount || 0,
+        mdmLogContentId: syncRun.mdmLog?.logContentId || "",
+        mdmLogConfigId: syncRun.mdmLog?.configId || "",
+        mdmLogFileName: syncRun.mdmLog?.fileName || "",
+        loading: false
+      });
     }));
   }
 }
@@ -445,11 +453,13 @@ async function loadMoreHistory(event: CustomEvent) {
 
   isLoadingMore.value = true;
   const loadToken = historyLoadToken;
+  const previousRunCount = historyRuns.value.length;
   try {
     await fetchHistoryPage(loadToken);
   } catch (error: any) {
     if (isStaleHistoryLoad(loadToken)) return;
     logger.error(error);
+    historyRuns.value = historyRuns.value.slice(0, previousRunCount);
     showToast(translate("Failed to load product sync history"));
     hasMoreBackendHistory.value = false;
   } finally {
@@ -507,6 +517,15 @@ function downloadTextFile(content: string, fileName: string) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function getErrorMessage(error: any, defaultMessage: string) {
+  const message = error?.response?.data?.error ||
+    error?.response?.data?.errors ||
+    error?.data?.error ||
+    error?.message ||
+    defaultMessage;
+  return typeof message === "string" ? message : JSON.stringify(message);
 }
 
 async function handleStatusFilterChange(value: string) {
