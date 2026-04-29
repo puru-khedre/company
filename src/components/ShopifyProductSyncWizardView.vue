@@ -531,7 +531,8 @@ import {
   pulseOutline,
   sendOutline,
   serverOutline,
-  syncCircleOutline
+  syncCircleOutline,
+  checkmarkCircleOutline
 } from "ionicons/icons";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps } from "vue";
