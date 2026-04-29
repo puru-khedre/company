@@ -52,6 +52,7 @@ export function useSystemMessage() {
       }
     } catch (err) {
       logger.error(`Failed to fetch system message ${systemMessageId}`, err);
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -72,6 +73,7 @@ export function useSystemMessage() {
       }
     } catch (err) {
       logger.error(`Failed to fetch system messages`, err);
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -90,6 +92,7 @@ export function useSystemMessage() {
       return response?.data || { systemMessages: [], systemMessagesCount: 0 };
     } catch (err) {
       logger.error(`Failed to fetch system messages`, err);
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -128,6 +131,7 @@ export function useSystemMessage() {
       }
     } catch (err) {
       logger.error(`Failed to fetch Shopify Bulk Operation ${bulkOperationId}`, err);
+      throw err;
     } finally {
       state.loading = false;
     }

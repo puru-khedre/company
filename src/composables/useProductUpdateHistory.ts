@@ -8,14 +8,14 @@ const state = reactive({
   loading: false
 });
 
-function parseJson(value: any, fallback: any) {
-  if (!value) return fallback;
+function parseJson(value: any, defaultValue: any) {
+  if (!value) return defaultValue;
   if (typeof value !== "string") return value;
   try {
     return JSON.parse(value);
   } catch (err) {
     logger.error("Failed to parse product update history JSON", err);
-    return fallback;
+    return defaultValue;
   }
 }
 
@@ -153,7 +153,7 @@ export function useProductUpdateHistory() {
     } catch (err) {
       logger.error("Failed to fetch product update history", err);
       state.productUpdateHistories = [];
-      return state.productUpdateHistories;
+      throw err;
     } finally {
       state.loading = false;
     }

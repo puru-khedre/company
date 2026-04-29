@@ -6,6 +6,21 @@ const readProjectFile = (relativePath: string) => {
   return fs.readFileSync(path.resolve(__dirname, "../..", relativePath), "utf8");
 };
 
+const collectProjectFiles = (relativeDirectory: string): string[] => {
+  const directory = path.resolve(__dirname, "../..", relativeDirectory);
+
+  return fs.readdirSync(directory).flatMap((entry) => {
+    const absolutePath = path.join(directory, entry);
+    const stat = fs.statSync(absolutePath);
+
+    if (stat.isDirectory()) {
+      return collectProjectFiles(path.join(relativeDirectory, entry));
+    }
+
+    return /\.(js|ts|vue)$/.test(entry) ? [path.relative(path.resolve(__dirname, "../.."), absolutePath)] : [];
+  });
+};
+
 describe("shopify product sync implementation compliance", () => {
   test("product sync views do not use inline styles, grid layouts, or localStorage state", () => {
     const files = [
@@ -25,12 +40,62 @@ describe("shopify product sync implementation compliance", () => {
     }
   });
 
+  test("product sync child components emit kebab-case events that match parent listeners", () => {
+    const productSyncSource = readProjectFile("src/views/ShopifyProductSync.vue");
+    const wizardSource = readProjectFile("src/components/ShopifyProductSyncWizardView.vue");
+    const returningSource = readProjectFile("src/components/ShopifyProductSyncReturningView.vue");
+    const requiredEvents = [
+      "go-next",
+      "go-back",
+      "product-store-change",
+      "identifier-change",
+      "open-history",
+      "open-unsynced-updates",
+      "open-step-details",
+      "open-sync-job-details",
+      "start-product-sync"
+    ];
+
+    for (const eventName of requiredEvents) {
+      assert.equal(productSyncSource.includes(`@${eventName}`), true, `parent should listen for ${eventName}`);
+      assert.equal(
+        wizardSource.includes(`'${eventName}'`) || wizardSource.includes(`"${eventName}"`) ||
+          returningSource.includes(`'${eventName}'`) || returningSource.includes(`"${eventName}"`),
+        true,
+        `child should emit ${eventName}`
+      );
+    }
+
+    assert.equal(/\$emit\('(goNext|goBack|openHistory|openUnsyncedUpdates|openSyncJobDetails|openStepDetails|productStoreChange|identifierChange|startProductSync)'/.test(wizardSource + returningSource), false);
+  });
+
   test("product sync service does not call Shopify directly or fake import success", () => {
     const service = readProjectFile("src/services/ShopifyProductSyncService.ts");
 
     assert.equal(/myshopify|admin\/api|bulkOperationRunQuery|client\(/.test(service), false);
-    assert.equal(/success:\s*true/.test(service), false);
-    assert.equal(/status:\s*"completed"/.test(service), false);
+    assert.equal(/DUMMY_/.test(service), false);
+    assert.equal(service.includes("productSync/setup"), false);
+    assert.equal(service.includes("productSync/productStores"), false);
+    assert.equal(service.includes("oms/productUpdateHistory"), true);
+  });
+
+  test("production source does not contain dummy or product sync fallback implementations", () => {
+    const forbiddenPatterns = [
+      /\bDUMMY_[A-Z0-9_]*\b/,
+      /\bfallbackHistory\b/,
+      /\bfallbackProgress\b/,
+      /\bfallbackPreflight\b/,
+      /\bfallbackSetupState\b/
+    ];
+
+    const matches = collectProjectFiles("src").flatMap((file) => {
+      const source = readProjectFile(file);
+      return forbiddenPatterns
+        .filter((pattern) => pattern.test(source))
+        .map((pattern) => `${file}: ${pattern.source}`);
+    });
+
+    assert.deepEqual(matches, []);
   });
 
   test("returning history uses a dedicated vue router route", () => {
