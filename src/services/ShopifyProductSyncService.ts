@@ -763,7 +763,8 @@ const startInitialImport = async (payload: any): Promise<any> => {
       error: "Product sync import backend endpoint is unavailable.",
       backendAvailable: false
     }
-  );
+  }, "Shopify product sync reconcile endpoint");
+  return validateReconcile(response);
 };
 
 const fetchProgress = async (payload: any): Promise<ShopifyProductSyncProgressState> => {

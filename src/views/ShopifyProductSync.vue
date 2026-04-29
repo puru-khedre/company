@@ -1477,7 +1477,7 @@ async function openStartSyncModal() {
       return;
     }
 
-  const action = getReviewImportAction();
+const action = getReviewImportAction();
   if (action.opensStartConfirmation) {
     draft.value.startConfirmed = false;
     showStartSyncModal.value = true;
