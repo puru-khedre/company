@@ -49,6 +49,7 @@ export function useDataManagerLog() {
       }
     } catch (err) {
       logger.error("Failed to download the error records", err);
+      throw err;
     }
   };
 
@@ -93,6 +94,7 @@ export function useDataManagerLog() {
       if (mdmLog) return applyMdmLogDetails(mdmLog);
     } catch (err) {
       logger.error(`Failed to fetch MDM log for system message ${systemMessageId}`, err);
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -130,6 +132,7 @@ export function useDataManagerLog() {
       if (mdmLog) return applyMdmLogDetails(mdmLog);
     } catch(err) {
       logger.error(`Failed to fetch log with id ${logId}`, err);
+      throw err;
     } finally {
       state.loading = false;
     }
@@ -156,6 +159,7 @@ export function useDataManagerLog() {
     } catch (err) {
       logger.error(`Failed to fetch recent MDM logs for config ${configId}`, err);
       state.recentMdmLogs = [];
+      throw err;
     } finally {
       state.loading = false;
     }

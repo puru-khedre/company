@@ -1,8 +1,34 @@
 const fs = require("fs");
+const Module = require("module");
 const path = require("path");
 const ts = require("typescript");
 
 const tests = [];
+const projectRoot = path.resolve(__dirname, "..");
+const unitMocks = new Map();
+const originalResolveFilename = Module._resolveFilename;
+const originalLoad = Module._load;
+
+function resolveSourceAlias(request) {
+  if (!request.startsWith("@/")) return request;
+  return path.resolve(projectRoot, "src", request.slice(2));
+}
+
+Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
+  if (unitMocks.has(request)) {
+    return `unit-mock:${request}`;
+  }
+
+  return originalResolveFilename.call(this, resolveSourceAlias(request), parent, isMain, options);
+};
+
+Module._load = function loadModule(request, parent, isMain) {
+  if (unitMocks.has(request)) {
+    return unitMocks.get(request);
+  }
+
+  return originalLoad.call(this, request, parent, isMain);
+};
 
 require.extensions[".ts"] = (module, filename) => {
   const source = fs.readFileSync(filename, "utf8");
@@ -24,6 +50,14 @@ global.describe = (name, fn) => {
 
 global.test = (name, fn) => {
   tests.push({ name, fn });
+};
+
+global.__setUnitMock = (request, exports) => {
+  unitMocks.set(request, exports);
+};
+
+global.__clearUnitMocks = () => {
+  unitMocks.clear();
 };
 
 function collectTests(directory) {

@@ -22,6 +22,16 @@
         </ion-card-content>
       </ion-card>
 
+      <ion-card v-else-if="loadErrorMessage">
+        <ion-card-header>
+          <ion-card-title>{{ translate("Product sync could not load") }}</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          <p>{{ loadErrorMessage }}</p>
+          <ion-button fill="outline" @click="loadWizard">{{ translate("Retry") }}</ion-button>
+        </ion-card-content>
+      </ion-card>
+
       <template v-else>
         <shopify-product-sync-returning-view
           v-if="activeExperienceMode === 'returning'"
@@ -559,6 +569,7 @@ const latestConfirmedSystemMessage = ref<any>(null);
 const lastProductUpdateSyncedAt = ref("");
 const currentTimeMs = ref(Date.now());
 const isLoading = ref(true);
+const loadErrorMessage = ref("");
 const isSaving = ref(false);
 const isReviewLoading = ref(false);
 const showModeModal = ref(false);
@@ -580,6 +591,7 @@ const bulkOperationPollJob = ref<any>({});
 const preflightLoaded = ref(false);
 const preflightAccepted = ref(false);
 const preflightWarningConfirmed = ref(false);
+const productStoreContextError = ref("");
 const experienceMode = ref<ProductSyncExperienceMode>("auto");
 const currentStep = ref<ProductSyncWizardStep>("home");
 const draft = ref(createProductSyncWizardDraft());
@@ -775,6 +787,7 @@ const reviewReady = computed(() => {
   return !!reviewStats.value.loaded && !isReviewLoading.value;
 });
 const nextDisabled = computed(() => {
+  if (productStoreContextError.value) return true;
   return !canAdvanceProductSyncStep(currentStep.value, {
     draft: draft.value,
     productStoreLocked: productStoreLocked.value,
@@ -883,6 +896,7 @@ watch(() => draft.value.selectedProductStoreId, async (productStoreId) => {
     await loadProductStoreContext(productStoreId);
   } else {
     relatedShops.value = [];
+    productStoreContextError.value = "";
   }
 });
 
@@ -893,10 +907,10 @@ onBeforeUnmount(() => {
 
 async function loadWizard() {
   isLoading.value = true;
+  loadErrorMessage.value = "";
   try {
-    if (!shop.value.shopId) {
-      await store.dispatch("shopify/fetchShopifyShops");
-    }
+    await store.dispatch("shopify/fetchShopifyShops");
+    assertShopifyShopsLoaded();
 
     await Promise.all([
       store.dispatch("productStore/fetchProductStores"),
@@ -928,6 +942,7 @@ async function loadWizard() {
       shop: shop.value,
       productStore: selectedProductStore.value
     });
+    assertBackendDataAvailable(setupState.value, translate("Product sync setup is unavailable."));
 
     draft.value = createProductSyncWizardDraft({
       selectedProductStoreId: setupState.value.selectedProductStoreId || shop.value.productStoreId || "",
@@ -945,8 +960,8 @@ async function loadWizard() {
       if (!reviewStats.value.loaded) {
         await loadReviewStats();
       }
-      await loadProgress();
-      startProgressPolling();
+      const loadedProgress = await loadProgress();
+      if (loadedProgress) startProgressPolling();
     } else {
       currentStep.value = "home";
     }
@@ -956,8 +971,9 @@ async function loadWizard() {
     }
   } catch (error: any) {
     logger.error(error);
+    loadErrorMessage.value = getErrorMessage(error, translate("Failed to load product sync"));
     showToast(translate("Failed to load product sync"));
-    currentStep.value = "home";
+    stopProgressPolling();
   } finally {
     isLoading.value = false;
   }
@@ -988,6 +1004,9 @@ async function openStepDetails(step: any) {
     isStepDetailsLoading.value = true;
     try {
       await fetchLogDetails(step.id);
+    } catch (error: any) {
+      logger.error(error);
+      showToast(translate("Failed to load sync step details."));
     } finally {
       isStepDetailsLoading.value = false;
     }
@@ -1005,7 +1024,7 @@ async function loadShopifyShopProductCount() {
     shopifyShopProductCount.value = Number(countState.count || 0);
   } catch (error: any) {
     logger.error(error);
-    shopifyShopProductCount.value = 0;
+    throw error;
   }
 }
 
@@ -1115,17 +1134,34 @@ function normalizeStatusValue(statusId: string) {
 
 
 async function loadProductStoreContext(productStoreId: string) {
-  const context = await ShopifyProductSyncService.fetchProductStoreContext({
-    shopId: props.id,
-    productStoreId,
-    shops: store.getters["shopify/getShops"] || []
-  });
-  relatedShops.value = context.relatedShops || [];
+  try {
+    assertShopifyShopsLoaded();
+    const context = await ShopifyProductSyncService.fetchProductStoreContext({
+      shopId: props.id,
+      productStoreId,
+      shops: store.getters["shopify/getShops"] || []
+    });
+    assertBackendDataAvailable(context, translate("Product store sync context is unavailable."));
+    relatedShops.value = context.relatedShops || [];
+    productStoreContextError.value = "";
+  } catch (error: any) {
+    logger.error(error);
+    relatedShops.value = [];
+    productStoreContextError.value = getErrorMessage(error, translate("Failed to load product store sync context."));
+    showToast(translate("Failed to load product store sync context."));
+  }
 }
 
 function getProductStoreName(productStore: any) {
   if (!productStore?.productStoreId) return "";
   return productStore.storeName || productStore.productStoreId;
+}
+
+function assertShopifyShopsLoaded() {
+  const status = store.getters["shopify/getFetchStatus"];
+  if (status?.shops !== "success") {
+    throw new Error(translate("Shopify shop list is unavailable."));
+  }
 }
 
 function getConnectedShopLabel(productStoreId: string) {
@@ -1284,15 +1320,23 @@ async function goNext() {
     if (!saved) return;
   }
 
-  currentStep.value = nextProductSyncStep(currentStep.value);
+  const nextStep = nextProductSyncStep(currentStep.value);
 
-  if (currentStep.value === "review") {
+  if (nextStep === "review") {
+    currentStep.value = nextStep;
     await loadReviewStats();
+    return;
   }
 
-  if (currentStep.value === "reconcile") {
-    await loadReconcile();
+  if (nextStep === "reconcile") {
+    const loaded = await loadReconcile();
+    if (loaded) {
+      currentStep.value = nextStep;
+    }
+    return;
   }
+
+  currentStep.value = nextStep;
 }
 
 function goBack() {
@@ -1360,6 +1404,7 @@ async function loadReviewStats() {
       systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
       shop: shop.value
     });
+    return true;
   } catch (error: any) {
     logger.error(error);
     reviewStats.value = {
@@ -1371,8 +1416,10 @@ async function loadReviewStats() {
       loaded: false
     };
     showToast(translate("Failed to load Shopify product counts."));
+    return false;
+  } finally {
+    isReviewLoading.value = false;
   }
-  isReviewLoading.value = false;
 }
 
 function toggleProductStoreVerification() {
@@ -1410,19 +1457,25 @@ async function loadPreflight() {
 }
 
 async function openMistakeModal() {
-  await loadPreflight();
-  showMistakeModal.value = true;
+  try {
+    await loadPreflight();
+    showMistakeModal.value = true;
+  } catch (error: any) {
+    logger.error(error);
+    showToast(translate("Failed to load preflight review."));
+  }
 }
 
 async function openStartSyncModal() {
-  if (!preflightLoaded.value) {
-    await loadPreflight();
-  }
+  try {
+    if (!preflightLoaded.value) {
+      await loadPreflight();
+    }
 
-  if (preflightRequiresConfirmation.value && !preflightAccepted.value) {
-    showMistakeModal.value = true;
-    return;
-  }
+    if (preflightRequiresConfirmation.value && !preflightAccepted.value) {
+      showMistakeModal.value = true;
+      return;
+    }
 
   const action = getReviewImportAction();
   if (action.opensStartConfirmation) {
@@ -1479,6 +1532,7 @@ async function startProductSync() {
     const result = await ShopifyProductSyncService.startInitialImport({
       shopId: props.id
     });
+    assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
 
     if (shouldShowProductSyncProgress(result)) {
       syncJobId.value = result.syncJobId || result.progress?.syncJobId;
@@ -1489,8 +1543,8 @@ async function startProductSync() {
       draft.value.syncStarted = true;
       showStartSyncModal.value = false;
       currentStep.value = "progress";
-      await loadProgress();
-      startProgressPolling();
+      const loadedProgress = await loadProgress();
+      if (loadedProgress) startProgressPolling();
     } else {
       showToast(result.error || translate("Product sync could not be started."));
     }
@@ -1502,18 +1556,33 @@ async function startProductSync() {
 }
 
 async function loadProgress() {
-  if (!syncJobId.value) return;
-  progressState.value = await ShopifyProductSyncService.fetchProgress({
-    shopId: props.id,
-    syncJobId: syncJobId.value
-  });
+  if (!syncJobId.value) return false;
+  try {
+    const progress = await ShopifyProductSyncService.fetchProgress({
+      shopId: props.id,
+      syncJobId: syncJobId.value
+    });
+    assertBackendDataAvailable(progress, translate("Product sync progress is unavailable."));
+    progressState.value = progress;
 
-  if (progressState.value.systemMessageId) {
-    await fetchSyncRun(progressState.value.systemMessageId);
-  }
+    if (progressState.value.systemMessageId) {
+      await fetchSyncRun(progressState.value.systemMessageId);
+    }
 
-  if (reconcileAvailable.value) {
+    if (reconcileAvailable.value) {
+      stopProgressPolling();
+    }
+    return true;
+  } catch (error: any) {
+    logger.error(error);
     stopProgressPolling();
+    progressState.value = {
+      ...progressState.value,
+      status: "error",
+      error: getErrorMessage(error, translate("Failed to load product sync progress"))
+    };
+    showToast(translate("Failed to load product sync progress"));
+    return false;
   }
 }
 
@@ -1545,13 +1614,23 @@ function stopNextSyncRefreshPolling() {
 }
 
 async function loadReconcile() {
-  reconcileState.value = await ShopifyProductSyncService.fetchReconcile({
-    shopId: props.id,
-    productStoreId: draft.value.selectedProductStoreId,
-    syncJobId: syncJobId.value
-  });
-  if (!reviewStats.value.loaded) {
-    await loadReviewStats();
+  try {
+    const reconcile = await ShopifyProductSyncService.fetchReconcile({
+      shopId: props.id,
+      productStoreId: draft.value.selectedProductStoreId,
+      syncJobId: syncJobId.value
+    });
+    assertBackendDataAvailable(reconcile, translate("Product sync reconciliation is unavailable."));
+    reconcileState.value = reconcile;
+    if (!reviewStats.value.loaded) {
+      const loadedReviewStats = await loadReviewStats();
+      if (!loadedReviewStats) return false;
+    }
+    return true;
+  } catch (error: any) {
+    logger.error(error);
+    showToast(translate("Failed to load product sync reconciliation."));
+    return false;
   }
 }
 
@@ -1588,8 +1667,8 @@ function getNextRunDateTime(job: any) {
   if (nextExecutionDateTime) {
     const parsed = DateTime.fromISO(nextExecutionDateTime);
     if (parsed.isValid) return parsed;
-    const fallbackParsed = DateTime.fromJSDate(new Date(nextExecutionDateTime));
-    if (fallbackParsed.isValid) return fallbackParsed;
+    const parsedJsDate = DateTime.fromJSDate(new Date(nextExecutionDateTime));
+    if (parsedJsDate.isValid) return parsedJsDate;
   }
 
   if (!job?.cronExpression) return null;
@@ -1719,6 +1798,21 @@ function parseDateTimeValue(value: string | number) {
   ];
 
   return candidates.find((candidate) => candidate.isValid) || null;
+}
+
+function getErrorMessage(error: any, defaultMessage: string) {
+  const message = error?.response?.data?.error ||
+    error?.response?.data?.errors ||
+    error?.data?.error ||
+    error?.message ||
+    defaultMessage;
+  return typeof message === "string" ? message : JSON.stringify(message);
+}
+
+function assertBackendDataAvailable(payload: any, message: string) {
+  if (payload?.backendAvailable === false) {
+    throw new Error(message);
+  }
 }
 
 </script>
