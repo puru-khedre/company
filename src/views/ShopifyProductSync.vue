@@ -264,8 +264,13 @@
                     </ion-label>
                   </ion-item>
                   <ion-item>
-                    <ion-label>{{ translate("Status") }}</ion-label>
-                    <ion-label slot="end">{{ getSyncJobStatusLabel(syncJobDetails) }}</ion-label>
+                    <ion-label>{{ translate("Active") }}</ion-label>
+                    <ion-toggle
+                      slot="end"
+                      :checked="syncJobDraftActive"
+                      :disabled="isSyncJobDetailsSaving"
+                      @ionChange="handleSyncJobActiveChange($event.detail.checked)"
+                    />
                   </ion-item>
                   <ion-item>
                     <ion-label>{{ translate("Last run") }}</ion-label>
@@ -274,14 +279,6 @@
                   <ion-item>
                     <ion-label>{{ translate("Instance of product") }}</ion-label>
                     <ion-label slot="end">{{ syncJobProductLabel }}</ion-label>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label>{{ translate("Created") }}</ion-label>
-                    <ion-label slot="end">{{ formatDateTime(syncJobDetails.createdDate || syncJobDetails.createdStamp) }}</ion-label>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label>{{ translate("Updated") }}</ion-label>
-                    <ion-label slot="end">{{ formatDateTime(syncJobDetails.lastUpdatedStamp || syncJobDetails.lastModifiedDate) }}</ion-label>
                   </ion-item>
                 </ion-list>
 
@@ -362,6 +359,41 @@
                       <ion-item v-if="!syncJobDetailsRecentRuns.length">
                         <ion-label>{{ translate("No recent runs found") }}</ion-label>
                       </ion-item>
+                    </ion-list>
+                  </ion-accordion>
+                  <ion-accordion value="edit-history">
+                    <ion-item slot="header">
+                      <ion-label>
+                        {{ translate("Edit history") }}
+                        <p>{{ translate("User changes recorded in EntityAuditLog.") }}</p>
+                      </ion-label>
+                      <ion-spinner v-if="isSyncJobAuditHistoryLoading" slot="end" name="crescent" />
+                      <ion-note v-else-if="syncJobAuditHistoryError" slot="end">{{ translate("Unavailable") }}</ion-note>
+                      <ion-note v-else slot="end">{{ syncJobAuditHistory.length }}</ion-note>
+                    </ion-item>
+                    <ion-list slot="content" lines="full">
+                      <ion-item v-if="isSyncJobAuditHistoryLoading">
+                        <ion-spinner name="crescent" />
+                      </ion-item>
+                      <ion-item v-else-if="syncJobAuditHistoryError">
+                        <ion-label>
+                          {{ translate("Edit history unavailable") }}
+                          <p>{{ syncJobAuditHistoryError }}</p>
+                        </ion-label>
+                      </ion-item>
+                      <ion-item v-else-if="!syncJobAuditHistory.length">
+                        <ion-label>{{ translate("No edit history found") }}</ion-label>
+                      </ion-item>
+                      <template v-else>
+                        <ion-item v-for="auditLog in syncJobAuditHistory" :key="getSyncJobAuditHistoryKey(auditLog)">
+                          <ion-label>
+                            {{ getSyncJobAuditFieldLabel(auditLog) }}
+                            <p>{{ formatDateTime(getSyncJobAuditChangedAt(auditLog)) }}</p>
+                            <p v-if="getSyncJobAuditChangedBy(auditLog)">{{ translate("Changed by") }}: {{ getSyncJobAuditChangedBy(auditLog) }}</p>
+                            <p>{{ getSyncJobAuditChangeLabel(auditLog) }}</p>
+                          </ion-label>
+                        </ion-item>
+                      </template>
                     </ion-list>
                   </ion-accordion>
                 </ion-accordion-group>
@@ -544,6 +576,7 @@ import {
   IonSegmentButton,
   IonSpinner,
   IonTitle,
+  IonToggle,
   IonToolbar,
   alertController,
   modalController
@@ -594,6 +627,7 @@ const {
   fetchJobs,
   fetchJobDetail,
   fetchJobRuns,
+  fetchJobAuditHistory,
   fetchProductDetail,
   updateJob,
   runNow
@@ -668,7 +702,11 @@ const pendingUpdateRequestsCount = ref(0);
 const pendingUpdateRequestsLastCreatedAt = ref("");
 const syncJobDetails = ref<any>({});
 const syncJobDraftCronExpression = ref("");
+const syncJobDraftActive = ref(true);
 const syncJobDetailsRecentRuns = ref<any[]>([]);
+const syncJobAuditHistory = ref<any[]>([]);
+const isSyncJobAuditHistoryLoading = ref(false);
+const syncJobAuditHistoryError = ref("");
 const syncJobRecentRuns = ref<any[]>([]);
 const selectedSyncJobDetailsJob = ref<any>(null);
 const syncJobId = ref("");
@@ -783,14 +821,14 @@ const lastSyncLabel = computed(() => {
   const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConsumedSystemMessage.value?.initDate;
   return lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleString()
-    : translate("Sync time");
+    : translate("No completed sync recorded");
 });
 const lastSyncRelativeLabel = computed(() => {
   const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConsumedSystemMessage.value?.initDate;
-  if (!lastSyncedAt) return translate("Sync time");
+  if (!lastSyncedAt) return translate("Not synced yet");
 
   const dateTime = parseDateTimeValue(lastSyncedAt);
-  if (!dateTime || !dateTime.isValid) return translate("Sync time");
+  if (!dateTime || !dateTime.isValid) return translate("Not synced yet");
 
   return dateTime.toRelative({ base: DateTime.fromMillis(currentTimeMs.value) });
 });
@@ -869,7 +907,8 @@ const syncJobDetailsLastRunLabel = computed(() => {
   return translate("No recent runs");
 });
 const syncJobDetailsDirty = computed(() => {
-  return syncJobDraftCronExpression.value !== getSyncJobOriginalCronExpression();
+  return syncJobDraftCronExpression.value !== getSyncJobOriginalCronExpression() ||
+    syncJobDraftActive.value !== getSyncJobOriginalActive();
 });
 const isSyncJobDraftScheduleValid = computed(() => {
   if (!syncJobDraftCronExpression.value) return false;
@@ -1604,6 +1643,9 @@ function handleSyncJobDetailsDidDismiss() {
   selectedSyncJobDetailsJob.value = null;
   syncJobDetails.value = {};
   syncJobDetailsRecentRuns.value = [];
+  syncJobAuditHistory.value = [];
+  syncJobAuditHistoryError.value = "";
+  isSyncJobAuditHistoryLoading.value = false;
 }
 
 async function canDismissSyncJobDetailsModal() {
@@ -1628,7 +1670,7 @@ async function saveSyncJobDetails() {
     await updateSyncJob({
       jobName: selectedSyncJobDetailsJob.value.jobName,
       cronExpression: syncJobDraftCronExpression.value,
-      paused: isJobPaused(syncJobDetails.value) ? "Y" : "N"
+      paused: syncJobDraftActive.value ? "N" : "Y"
     }, translate("Sync job updated successfully."));
   } finally {
     isSyncJobDetailsSaving.value = false;
@@ -1639,6 +1681,8 @@ async function refreshSyncJobDetails() {
   if (!selectedSyncJobDetailsJob.value?.jobName) return;
 
   isSyncJobDetailsLoading.value = true;
+  syncJobAuditHistory.value = [];
+  syncJobAuditHistoryError.value = "";
   try {
     const [jobDetails, jobRuns] = await Promise.all([
       fetchJobDetail(selectedSyncJobDetailsJob.value.jobName),
@@ -1652,10 +1696,13 @@ async function refreshSyncJobDetails() {
     if (jobDetails?.instanceOfProductId && !products.value?.[jobDetails.instanceOfProductId]) {
       await fetchProductDetail(jobDetails.instanceOfProductId);
     }
+    void loadSyncJobAuditHistory(selectedSyncJobDetailsJob.value.jobName);
   } catch (error: any) {
     logger.error(error);
     syncJobDetails.value = {};
     syncJobDetailsRecentRuns.value = [];
+    syncJobAuditHistory.value = [];
+    syncJobAuditHistoryError.value = "";
     resetSyncJobDetailsDraft();
     showToast(translate("Failed to load sync job details."));
   } finally {
@@ -1663,16 +1710,43 @@ async function refreshSyncJobDetails() {
   }
 }
 
+async function loadSyncJobAuditHistory(jobName: string) {
+  if (!jobName) return;
+
+  isSyncJobAuditHistoryLoading.value = true;
+  syncJobAuditHistoryError.value = "";
+  try {
+    syncJobAuditHistory.value = await fetchJobAuditHistory(jobName, { pageSize: 10, pageIndex: 0 });
+  } catch (error: any) {
+    logger.warn("Failed to load service job audit history", error);
+    syncJobAuditHistory.value = [];
+    syncJobAuditHistoryError.value = translate("EntityAuditLog is not exposed through an API yet.");
+  } finally {
+    isSyncJobAuditHistoryLoading.value = false;
+  }
+}
+
 function getSyncJobOriginalCronExpression() {
   return syncJobDetails.value?.cronExpression || selectedSyncJobDetailsJob.value?.cronExpression || "";
 }
 
+function getSyncJobOriginalActive() {
+  const job = syncJobDetails.value?.jobName ? syncJobDetails.value : selectedSyncJobDetailsJob.value;
+  return !isJobPaused(job);
+}
+
 function setSyncJobDetailsDraft(jobDetails: any = {}) {
   syncJobDraftCronExpression.value = jobDetails?.cronExpression || selectedSyncJobDetailsJob.value?.cronExpression || "";
+  syncJobDraftActive.value = !isJobPaused(jobDetails?.jobName ? jobDetails : selectedSyncJobDetailsJob.value);
 }
 
 function resetSyncJobDetailsDraft() {
   syncJobDraftCronExpression.value = getSyncJobOriginalCronExpression();
+  syncJobDraftActive.value = getSyncJobOriginalActive();
+}
+
+function handleSyncJobActiveChange(isActive: boolean) {
+  syncJobDraftActive.value = isActive;
 }
 
 async function confirmDiscardSyncJobDetailsChanges() {
@@ -1681,7 +1755,7 @@ async function confirmDiscardSyncJobDetailsChanges() {
   return new Promise<boolean>((resolve) => {
     alertController.create({
       header: translate("Unsaved changes"),
-      message: translate("You have unsaved schedule changes. Discard them?"),
+      message: translate("You have unsaved job changes. Discard them?"),
       backdropDismiss: false,
       buttons: [
         {
@@ -2190,8 +2264,46 @@ function formatParameterValue(value: unknown) {
   return String(value);
 }
 
-function getSyncJobStatusLabel(job: any) {
-  return job?.statusId || job?.status || (isJobPaused(job) ? translate("Paused") : translate("Active"));
+function getSyncJobAuditHistoryKey(auditLog: any) {
+  return auditLog.auditHistorySeqId ||
+    [auditLog.changedEntityName, auditLog.pkPrimaryValue, auditLog.changedFieldName, auditLog.changedDate].filter(Boolean).join("-");
+}
+
+function getSyncJobAuditFieldLabel(auditLog: any) {
+  return formatAuditFieldName(auditLog.changedFieldName || translate("Field"));
+}
+
+function getSyncJobAuditChangedAt(auditLog: any) {
+  return auditLog.changedDate || auditLog.lastUpdatedStamp || auditLog.createdStamp || "";
+}
+
+function getSyncJobAuditChangedBy(auditLog: any) {
+  return auditLog.changedByUserId || auditLog.userId || auditLog.lastUpdatedByUserId || "";
+}
+
+function getSyncJobAuditChangeLabel(auditLog: any) {
+  const oldValue = auditLog.oldValueText ?? auditLog.oldValue ?? "";
+  const newValue = auditLog.newValueText ?? auditLog.newValue ?? "";
+
+  if (oldValue !== "" && newValue !== "") {
+    return `${translate("Previous value")}: ${formatParameterValue(oldValue)} · ${translate("New value")}: ${formatParameterValue(newValue)}`;
+  }
+  if (newValue !== "") {
+    return `${translate("New value")}: ${formatParameterValue(newValue)}`;
+  }
+  if (oldValue !== "") {
+    return `${translate("Previous value")}: ${formatParameterValue(oldValue)}`;
+  }
+  return translate("Value unavailable");
+}
+
+function formatAuditFieldName(fieldName: string) {
+  if (!fieldName) return translate("Field");
+  const spaced = String(fieldName)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function getSyncJobRunKey(run: any) {
@@ -2327,6 +2439,7 @@ function parseDateTimeValue(value: string | number) {
   }
 
   const candidates = [
+    DateTime.fromFormat(value, "yyyy-MM-dd'T'HH:mm:ssZZ"),
     DateTime.fromFormat(value, "yyyy-MM-dd HH:mm:ss.SSS"),
     DateTime.fromSQL(value),
     DateTime.fromISO(value),
