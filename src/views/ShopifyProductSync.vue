@@ -50,6 +50,19 @@
           :summary-subtitle="syncSummarySubtitle"
           :error-lookback-count="PRODUCT_SYNC_ERROR_LOG_LIMIT"
           :unsynced-updates-count="unsyncedUpdatesCountLabel"
+          :pending-update-requests-count="pendingUpdateRequestsCount"
+          :pending-update-requests-subtitle="pendingUpdateRequestsSubtitle"
+          :queue-update-requests-last-run-label="syncJobLastRunLabel"
+          :send-update-request-last-run-label="bulkOperationSendJobLastRunLabel"
+          :send-update-request-paused="isBulkOperationSendJobPaused"
+          :send-update-request-job-obj="bulkOperationSendJob"
+          :import-completed-requests-last-run-label="bulkOperationPollJobLastRunLabel"
+          :import-completed-requests-paused="isBulkOperationPollJobPaused"
+          :import-completed-requests-job-obj="bulkOperationPollJob"
+          :current-shopify-request-subtitle="currentShopifyRequestSubtitle"
+          :current-shopify-request-status-label="currentShopifyRequestStatusLabel"
+          :current-shopify-request-status-color="currentShopifyRequestStatusColor"
+          :has-current-shopify-request="hasRunningShopifyBulkOperation"
           :sync-job-obj="syncJobObj"
           @open-history="openHistory"
           @open-sync-job-details="openSyncJobDetailsModal"
@@ -121,7 +134,7 @@
           @open-step-details="openStepDetails"
         />
 
-        <ion-modal :is-open="showModeModal" @didDismiss="showModeModal = false">
+        <ion-modal :is-open="showModeModal" :backdrop-dismiss="false" @didDismiss="showModeModal = false">
           <ion-header>
             <ion-toolbar>
               <ion-buttons slot="start">
@@ -164,7 +177,7 @@
           </ion-content>
         </ion-modal>
 
-        <ion-modal :is-open="showUnsyncedUpdatesModal" @didDismiss="showUnsyncedUpdatesModal = false">
+        <ion-modal :is-open="showUnsyncedUpdatesModal" :backdrop-dismiss="false" @didDismiss="showUnsyncedUpdatesModal = false">
           <ion-header>
             <ion-toolbar>
               <ion-buttons slot="start">
@@ -214,63 +227,50 @@
           </ion-content>
         </ion-modal>
 
-        <ion-modal :is-open="showSyncJobDetailsModal" @didDismiss="closeSyncJobDetailsModal">
+        <ion-modal :is-open="showSyncJobDetailsModal" :backdrop-dismiss="false" :can-dismiss="canDismissSyncJobDetailsModal" @didDismiss="handleSyncJobDetailsDidDismiss">
           <ion-header>
             <ion-toolbar>
               <ion-buttons slot="start">
-                <ion-button @click="closeSyncJobDetailsModal" :aria-label="translate('Close')">
+                <ion-button @click="requestCloseSyncJobDetailsModal" :aria-label="translate('Close')">
                   <ion-icon slot="icon-only" :icon="closeOutline" />
                 </ion-button>
               </ion-buttons>
-              <ion-title>{{ translate("Sync job details") }}</ion-title>
+              <ion-title>{{ syncJobDetailsTitle }}</ion-title>
               <ion-buttons slot="end">
-                <ion-button @click="refreshSyncJobDetails" :disabled="isSyncJobDetailsLoading || !syncJobObj" :aria-label="translate('Refresh')">
+                <ion-button @click="requestRefreshSyncJobDetails" :disabled="isSyncJobDetailsLoading || isSyncJobDetailsSaving || !selectedSyncJobDetailsJob?.jobName" :aria-label="translate('Refresh')">
                   <ion-icon slot="icon-only" :icon="refreshOutline" />
                 </ion-button>
               </ion-buttons>
             </ion-toolbar>
           </ion-header>
           <ion-content>
-            <ion-card v-if="isSyncJobDetailsLoading">
-              <ion-card-content>
+            <ion-list v-if="isSyncJobDetailsLoading" lines="none">
+              <ion-item>
                 <ion-spinner name="crescent" />
-              </ion-card-content>
-            </ion-card>
+              </ion-item>
+            </ion-list>
 
             <template v-else>
-              <ion-card v-if="syncJobDetails.jobName">
+              <template v-if="syncJobDetails.jobName">
                 <ion-list lines="full">
                   <ion-item>
-                    <ion-label>{{ translate("Name") }}</ion-label>
-                    <ion-label slot="end">{{ syncJobDetails.jobName }}</ion-label>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label>{{ translate("Service") }}</ion-label>
-                    <ion-label slot="end">{{ syncJobDetails.serviceName || translate("Unavailable") }}</ion-label>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label>{{ translate("Instance of product") }}</ion-label>
-                    <ion-label slot="end">{{ syncJobProductLabel }}</ion-label>
+                    <ion-label>
+                      {{ syncJobDetailsTitle }}
+                      <p>{{ syncJobDetails.jobName }}</p>
+                      <p>{{ syncJobDetails.serviceName || translate("Unavailable") }}</p>
+                    </ion-label>
                   </ion-item>
                   <ion-item>
                     <ion-label>{{ translate("Status") }}</ion-label>
                     <ion-label slot="end">{{ getSyncJobStatusLabel(syncJobDetails) }}</ion-label>
                   </ion-item>
-                  <ion-item v-if="syncJobDetailsPaused">
-                    <ion-icon slot="start" :icon="playOutline" />
-                    <ion-label>
-                      {{ translate("Resume sync job") }}
-                      <p>{{ translate("This job is paused. Resume it to keep scheduled product sync running.") }}</p>
-                    </ion-label>
-                    <ion-button slot="end" fill="outline" @click="togglePauseSyncJob(false)">{{ translate("Resume") }}</ion-button>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label>{{ translate("Schedule") }}</ion-label>
-                    <ion-label slot="end">{{ syncJobDetails.cronString || syncJobDetails.cronExpression || translate("Not scheduled") }}</ion-label>
-                  </ion-item>
                   <ion-item>
                     <ion-label>{{ translate("Last run") }}</ion-label>
-                    <ion-label slot="end">{{ syncJobLastRunLabel }}</ion-label>
+                    <ion-label slot="end">{{ syncJobDetailsLastRunLabel }}</ion-label>
+                  </ion-item>
+                  <ion-item>
+                    <ion-label>{{ translate("Instance of product") }}</ion-label>
+                    <ion-label slot="end">{{ syncJobProductLabel }}</ion-label>
                   </ion-item>
                   <ion-item>
                     <ion-label>{{ translate("Created") }}</ion-label>
@@ -281,55 +281,106 @@
                     <ion-label slot="end">{{ formatDateTime(syncJobDetails.lastUpdatedStamp || syncJobDetails.lastModifiedDate) }}</ion-label>
                   </ion-item>
                 </ion-list>
-              </ion-card>
 
-              <ion-card v-if="syncJobParameters.length">
-                <ion-list lines="full">
-                  <ion-item>
-                    <ion-label>
-                      <h2>{{ translate("Parameters") }}</h2>
-                      <p>{{ translate("Job and service parameters used for this Shopify product sync.") }}</p>
-                    </ion-label>
-                  </ion-item>
-                  <ion-item v-for="parameter in syncJobParameters" :key="parameter.key">
-                    <ion-label>
-                      {{ parameter.label }}
-                      <p>{{ parameter.source }}</p>
-                    </ion-label>
-                    <ion-label slot="end">{{ parameter.value }}</ion-label>
-                  </ion-item>
-                </ion-list>
-              </ion-card>
+                <ion-accordion-group>
+                  <ion-accordion value="schedule">
+                    <ion-item slot="header">
+                      <ion-label>
+                        {{ translate("Schedule") }}
+                        <p>{{ syncJobDraftScheduleDescription || translate("Not scheduled") }}</p>
+                      </ion-label>
+                      <ion-note slot="end">{{ syncJobDraftNextRunLabel }}</ion-note>
+                    </ion-item>
+                    <ion-list slot="content" lines="full">
+                      <ion-item>
+                        <ion-input
+                          label-placement="stacked"
+                          :label="translate('Quartz cron expression')"
+                          v-model="syncJobDraftCronExpression"
+                        />
+                      </ion-item>
+                      <ion-item>
+                        <ion-label>
+                          {{ translate("Schedule preview") }}
+                          <p>{{ isSyncJobDraftScheduleValid ? syncJobDraftScheduleDescription : translate("Provide a valid cron expression") }}</p>
+                        </ion-label>
+                        <ion-note slot="end">{{ isSyncJobDraftScheduleValid ? syncJobDraftNextRunLabel : translate("Invalid") }}</ion-note>
+                      </ion-item>
+                      <ion-list-header>{{ translate("Schedule Options") }}</ion-list-header>
+                      <ion-radio-group v-model="syncJobDraftCronExpression">
+                        <ion-item v-for="option in syncJobScheduleOptions" :key="option.expression">
+                          <ion-radio label-placement="end" justify="start" :value="option.expression">{{ translate(option.label) }}</ion-radio>
+                        </ion-item>
+                      </ion-radio-group>
+                    </ion-list>
+                  </ion-accordion>
+                  <ion-accordion value="parameters">
+                    <ion-item slot="header">
+                      <ion-label>
+                        {{ translate("Parameters") }}
+                        <p>{{ translate("Job and service parameters used for this Shopify product sync.") }}</p>
+                      </ion-label>
+                      <ion-note slot="end">{{ syncJobParameters.length }}</ion-note>
+                    </ion-item>
+                    <ion-list slot="content" lines="full">
+                      <ion-item v-for="parameter in syncJobParameters" :key="parameter.key">
+                        <ion-label>
+                          {{ parameter.label }}
+                          <p>{{ parameter.source }}</p>
+                        </ion-label>
+                        <ion-label slot="end">{{ parameter.value }}</ion-label>
+                      </ion-item>
+                      <ion-item v-if="!syncJobParameters.length">
+                        <ion-label>{{ translate("No parameters found") }}</ion-label>
+                      </ion-item>
+                    </ion-list>
+                  </ion-accordion>
+                  <ion-accordion value="recent-runs">
+                    <ion-item slot="header">
+                      <ion-label>
+                        {{ translate("Recent runs") }}
+                        <p>{{ translate("Last 5 executions for this service job.") }}</p>
+                      </ion-label>
+                      <ion-note slot="end">{{ syncJobDetailsRecentRuns.length }}</ion-note>
+                    </ion-item>
+                    <ion-list slot="content" lines="full">
+                      <ion-item v-for="run in syncJobDetailsRecentRuns" :key="getSyncJobRunKey(run)">
+                        <ion-label>
+                          {{ getSyncJobRunTitle(run) }}
+                          <p>{{ formatDateTime(getSyncJobRunStartedAt(run)) }}</p>
+                          <p v-if="getSyncJobRunCompletedAt(run)">{{ translate("Completed") }} {{ formatDateTime(getSyncJobRunCompletedAt(run)) }}</p>
+                          <p v-if="getSyncJobRunDuration(run)">{{ translate("Duration") }} {{ getSyncJobRunDuration(run) }}</p>
+                          <p v-if="getSyncJobRunUser(run)">{{ translate("User") }} {{ getSyncJobRunUser(run) }}</p>
+                          <p v-if="getSyncJobRunCount(run)">{{ getSyncJobRunCount(run) }}</p>
+                          <p>{{ translate("Output") }}: {{ getSyncJobRunMessage(run) || translate("No output message") }}</p>
+                        </ion-label>
+                        <ion-badge slot="end" :color="getSyncJobRunStatusColor(run)">{{ getSyncJobRunStatus(run) }}</ion-badge>
+                      </ion-item>
+                      <ion-item v-if="!syncJobDetailsRecentRuns.length">
+                        <ion-label>{{ translate("No recent runs found") }}</ion-label>
+                      </ion-item>
+                    </ion-list>
+                  </ion-accordion>
+                </ion-accordion-group>
+              </template>
 
-              <ion-card>
-                <ion-list lines="full">
-                  <ion-item>
-                    <ion-label>
-                      <h2>{{ translate("Recent runs") }}</h2>
-                      <p>{{ translate("Last 5 executions for this service job.") }}</p>
-                    </ion-label>
-                  </ion-item>
-                  <ion-item v-for="run in syncJobRecentRuns" :key="getSyncJobRunKey(run)">
-                    <ion-label>
-                      {{ getSyncJobRunTitle(run) }}
-                      <p>{{ formatDateTime(getSyncJobRunStartedAt(run)) }}</p>
-                      <p v-if="getSyncJobRunCompletedAt(run)">{{ translate("Completed") }} {{ formatDateTime(getSyncJobRunCompletedAt(run)) }}</p>
-                      <p v-if="getSyncJobRunDuration(run)">{{ translate("Duration") }} {{ getSyncJobRunDuration(run) }}</p>
-                      <p v-if="getSyncJobRunUser(run)">{{ translate("User") }} {{ getSyncJobRunUser(run) }}</p>
-                      <p v-if="getSyncJobRunCount(run)">{{ getSyncJobRunCount(run) }}</p>
-                      <p v-if="getSyncJobRunMessage(run)">{{ getSyncJobRunMessage(run) }}</p>
-                    </ion-label>
-                    <ion-badge slot="end" :color="getSyncJobRunStatusColor(run)">{{ getSyncJobRunStatus(run) }}</ion-badge>
-                  </ion-item>
-                  <ion-item v-if="!syncJobRecentRuns.length">
-                    <ion-label>{{ translate("No recent runs found") }}</ion-label>
-                  </ion-item>
-                </ion-list>
-              </ion-card>
+              <ion-list v-else lines="full">
+                <ion-item>
+                  <ion-label>
+                    {{ translate("Sync job details unavailable") }}
+                    <p>{{ translate("Failed to load sync job details.") }}</p>
+                  </ion-label>
+                </ion-item>
+              </ion-list>
             </template>
+            <ion-fab vertical="bottom" horizontal="end" slot="fixed">
+              <ion-fab-button @click="saveSyncJobDetails" :disabled="!syncJobDetailsDirty || !isSyncJobDraftScheduleValid || isSyncJobDetailsSaving" :aria-label="translate('Save')">
+                <ion-icon :icon="saveOutline" />
+              </ion-fab-button>
+            </ion-fab>
           </ion-content>
         </ion-modal>
-        <ion-modal :is-open="showStepDetailsModal" @didDismiss="showStepDetailsModal = false">
+        <ion-modal :is-open="showStepDetailsModal" :backdrop-dismiss="false" @didDismiss="showStepDetailsModal = false">
           <ion-header>
             <ion-toolbar>
               <ion-buttons slot="start">
@@ -471,16 +522,22 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
+  IonFab,
+  IonFabButton,
   IonHeader,
   IonImg,
   IonIcon,
+  IonInput,
   IonItem,
   IonLabel,
   IonList,
+  IonListHeader,
   IonModal,
   IonNote,
   onIonViewWillEnter,
   IonPage,
+  IonRadio,
+  IonRadioGroup,
   IonSegment,
   IonSegmentButton,
   IonSpinner,
@@ -489,7 +546,8 @@ import {
   IonToolbar,
   alertController
 } from "@ionic/vue";
-import { closeOutline, playOutline, refreshOutline } from "ionicons/icons";
+import { closeOutline, refreshOutline, saveOutline } from "ionicons/icons";
+import cronstrue from "cronstrue";
 
 import { translate } from "@/i18n";
 import { computed, defineProps, onBeforeUnmount, ref, watch } from "vue";
@@ -540,7 +598,7 @@ const {
 const { fetchLogDetails, fetchMdmLogBySystemMessageId, fetchRecentLogsByConfigId, currentMdmLog, recentMdmLogs, errorLogs } = useDataManagerLog();
 const { productUpdateHistories, fetchProductUpdateHistory } = useProductUpdateHistory();
 const { currentSyncRun, fetchSyncRun } = useShopifyProductSyncRun();
-const PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID = "SYNC_SHPY_PRD_UPDS";
+const PRODUCT_UPDATE_SYNC_SERVICE_NAME = "sync_ShopifyProductUpdates";
 const BULK_OPERATION_SEND_JOB_NAME = "send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery";
 const BULK_OPERATION_POLL_JOB_NAME = "poll_ShopifyBulkOperationResult";
 const PRODUCT_SYNC_MDM_CONFIG_ID = "SYNC_SHOPIFY_PRODUCT";
@@ -566,6 +624,7 @@ const TERMINAL_MDM_LOG_STATUSES = [
 
 const latestSystemMessage = ref<any>(null);
 const latestConfirmedSystemMessage = ref<any>(null);
+const latestConsumedSystemMessage = ref<any>(null);
 const lastProductUpdateSyncedAt = ref("");
 const currentTimeMs = ref(Date.now());
 const isLoading = ref(true);
@@ -580,6 +639,7 @@ const showSyncJobDetailsModal = ref(false);
 const showStepDetailsModal = ref(false);
 const isUnsyncedUpdatesLoading = ref(false);
 const isSyncJobDetailsLoading = ref(false);
+const isSyncJobDetailsSaving = ref(false);
 const isStepDetailsLoading = ref(false);
 const isSyncJobConfigLoaded = ref(false);
 const isSyncJobConfiguring = ref(false);
@@ -588,6 +648,10 @@ const scheduledJobName = ref("");
 const currentStepDetail = ref<any>(null);
 const bulkOperationSendJob = ref<any>({});
 const bulkOperationPollJob = ref<any>({});
+const bulkOperationSendJobRecentRuns = ref<any[]>([]);
+const bulkOperationPollJobRecentRuns = ref<any[]>([]);
+const runningShopifyBulkOperation = ref<any>(null);
+const runningShopifyBulkOperationError = ref("");
 const preflightLoaded = ref(false);
 const preflightAccepted = ref(false);
 const preflightWarningConfirmed = ref(false);
@@ -597,9 +661,14 @@ const currentStep = ref<ProductSyncWizardStep>("home");
 const draft = ref(createProductSyncWizardDraft());
 const relatedShops = ref<any[]>([]);
 const shopifyShopProductCount = ref(0);
+const pendingUpdateRequestsCount = ref(0);
+const pendingUpdateRequestsLastCreatedAt = ref("");
 const unsyncedProductUpdates = ref<any[]>([]);
 const syncJobDetails = ref<any>({});
+const syncJobDraftCronExpression = ref("");
+const syncJobDetailsRecentRuns = ref<any[]>([]);
 const syncJobRecentRuns = ref<any[]>([]);
+const selectedSyncJobDetailsJob = ref<any>(null);
 const syncJobId = ref("");
 const selectedShopSystemMessageRemoteId = ref("");
 const setupState = ref<any>({
@@ -655,11 +724,31 @@ const selectedProductStoreName = computed(() => {
 const unsyncedUpdatesCountLabel = computed(() => {
   return shopifyShopProductCount.value > 100 ? "100+" : shopifyShopProductCount.value;
 });
+const pendingUpdateRequestsSubtitle = computed(() => {
+  if (!pendingUpdateRequestsCount.value) {
+    return translate("No pending update requests");
+  }
+
+  const dateTime = parseDateTimeValue(pendingUpdateRequestsLastCreatedAt.value);
+  if (!dateTime || !dateTime.isValid) {
+    return translate("Pending requests are waiting to be sent");
+  }
+
+  return translate("Last request created {time}", {
+    time: dateTime.toRelative({ base: DateTime.fromMillis(currentTimeMs.value) }) || formatDateTime(pendingUpdateRequestsLastCreatedAt.value)
+  });
+});
 const identifierOptions = ref([
   { enumId: "SHOPIFY_PRODUCT_SKU", description: "SKU" },
   { enumId: "SHOPIFY_BARCODE", description: "UPCA / Barcode" },
   { enumId: "SHOPIFY_PRODUCT_ID", description: "Shopify internal id" }
 ]);
+const syncJobScheduleOptions = [
+  { label: "Every 15 minutes", expression: "0 */15 * ? * *" },
+  { label: "Every 30 minutes", expression: "0 */30 * ? * *" },
+  { label: "Every hour", expression: "0 0 * ? * *" },
+  { label: "Every day at midnight", expression: "0 0 0 ? * *" }
+];
 
 const recommendedIdentifierEnumId = computed(() => {
   const skuIdentifier = identifierOptions.value.find((identifier: any) => {
@@ -689,13 +778,13 @@ const activeExperienceModeLabel = computed(() => {
   return activeExperienceMode.value === "returning" ? translate("Returning user") : translate("First-time setup");
 });
 const lastSyncLabel = computed(() => {
-  const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConfirmedSystemMessage.value?.processedDate;
+  const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConsumedSystemMessage.value?.initDate;
   return lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleString()
     : translate("Sync time");
 });
 const lastSyncRelativeLabel = computed(() => {
-  const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConfirmedSystemMessage.value?.processedDate;
+  const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConsumedSystemMessage.value?.initDate;
   if (!lastSyncedAt) return translate("Sync time");
 
   const dateTime = parseDateTimeValue(lastSyncedAt);
@@ -706,22 +795,10 @@ const lastSyncRelativeLabel = computed(() => {
 const syncJobObj = computed(() => {
   if (syncJobId.value) {
     const job = jobs.value.find((j: any) => j.jobName === syncJobId.value);
-    if (job) return job;
+    if (job && isSelectedShopProductSyncJob(job)) return job;
   }
 
-  const selectedShopIdentifiers = [
-    props.id,
-    shop.value.shopId,
-    shop.value.shopifyShopId
-  ].filter(Boolean);
-
-  return jobs.value.find((job: any) => {
-    return job.instanceOfProductId === PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID &&
-      (job.serviceJobParameters || []).some((param: any) => {
-        return ["shopId", "shopifyShopId"].includes(param.parameterName) &&
-          selectedShopIdentifiers.includes(param.parameterValue);
-      });
-  });
+  return jobs.value.find(isSelectedShopProductSyncJob);
 });
 const isSyncScheduled = computed(() => {
   return !!(syncJobObj.value?.cronExpression || syncJobObj.value?.cronString);
@@ -736,6 +813,7 @@ const nextSyncRelativeLabel = computed(() => {
   return getRelativeNextRunLabel(syncJobObj.value);
 });
 const systemMessageSendJobNextRunLabel = computed(() => {
+  if (!pendingUpdateRequestsCount.value) return translate("No requests queued to send");
   return getJobNextRunLabel(bulkOperationSendJob.value);
 });
 const bulkOperationPollJobNextRunLabel = computed(() => {
@@ -752,8 +830,18 @@ const syncSummarySubtitle = computed(() => {
   if (isSyncJobPaused.value) return translate("Paused");
   return nextSyncLabel.value;
 });
-const syncJobDetailsPaused = computed(() => {
-  return isJobPaused(syncJobDetails.value) || isSyncJobPaused.value;
+const syncJobDetailsTitle = computed(() => {
+  const job = syncJobDetails.value?.jobName ? syncJobDetails.value : selectedSyncJobDetailsJob.value;
+  if (isSelectedShopProductSyncJob(job)) {
+    return translate("Queue update requests");
+  }
+  if (job?.jobName === BULK_OPERATION_SEND_JOB_NAME) {
+    return translate("Send update request");
+  }
+  if (job?.jobName === BULK_OPERATION_POLL_JOB_NAME) {
+    return translate("Import completed requests");
+  }
+  return job?.jobName || translate("Sync job details");
 });
 const syncJobProductLabel = computed(() => {
   const productId = syncJobDetails.value?.instanceOfProductId;
@@ -764,9 +852,78 @@ const syncJobProductLabel = computed(() => {
 });
 const syncJobLastRunLabel = computed(() => {
   if (syncJobRecentRuns.value.length) {
-    return formatDateTime(getSyncJobRunStartedAt(syncJobRecentRuns.value[0]));
+    const latestRun = syncJobRecentRuns.value[0];
+    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
   }
   return translate("No recent runs");
+});
+const syncJobDetailsLastRunLabel = computed(() => {
+  if (syncJobDetailsRecentRuns.value.length) {
+    const latestRun = syncJobDetailsRecentRuns.value[0];
+    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
+  }
+  return translate("No recent runs");
+});
+const syncJobDetailsDirty = computed(() => {
+  return syncJobDraftCronExpression.value !== getSyncJobOriginalCronExpression();
+});
+const isSyncJobDraftScheduleValid = computed(() => {
+  if (!syncJobDraftCronExpression.value) return false;
+
+  try {
+    CronExpressionParser.parse(syncJobDraftCronExpression.value, {
+      tz: userProfile.value?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+    });
+    return true;
+  } catch (error) {
+    return false;
+  }
+});
+const syncJobDraftScheduleDescription = computed(() => {
+  return getCronDescription(syncJobDraftCronExpression.value);
+});
+const syncJobDraftNextRunLabel = computed(() => {
+  if (!isSyncJobDraftScheduleValid.value) return translate("Invalid");
+  const nextRun = getNextRunDateTime({ cronExpression: syncJobDraftCronExpression.value });
+  if (!nextRun) return translate("Not scheduled");
+  return nextRun.toLocaleString(DateTime.DATETIME_SHORT);
+});
+const isBulkOperationSendJobPaused = computed(() => {
+  return isJobPaused(bulkOperationSendJob.value);
+});
+const isBulkOperationPollJobPaused = computed(() => {
+  return isJobPaused(bulkOperationPollJob.value);
+});
+const bulkOperationSendJobLastRunLabel = computed(() => {
+  if (bulkOperationSendJobRecentRuns.value.length) {
+    const latestRun = bulkOperationSendJobRecentRuns.value[0];
+    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
+  }
+  return translate("No recent runs");
+});
+const bulkOperationPollJobLastRunLabel = computed(() => {
+  if (bulkOperationPollJobRecentRuns.value.length) {
+    const latestRun = bulkOperationPollJobRecentRuns.value[0];
+    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
+  }
+  return translate("No recent runs");
+});
+const hasRunningShopifyBulkOperation = computed(() => {
+  return !!runningShopifyBulkOperation.value?.id;
+});
+const currentShopifyRequestSubtitle = computed(() => {
+  if (runningShopifyBulkOperationError.value) return runningShopifyBulkOperationError.value;
+  if (!hasRunningShopifyBulkOperation.value) return translate("No running Shopify bulk operation");
+
+  const createdAt = runningShopifyBulkOperation.value.createdAt;
+  const createdAtLabel = createdAt ? formatDateTime(createdAt) : translate("Unavailable");
+  return translate("Created {time}", { time: createdAtLabel });
+});
+const currentShopifyRequestStatusLabel = computed(() => {
+  return getShopifyBulkOperationStatusLabel(runningShopifyBulkOperation.value?.status);
+});
+const currentShopifyRequestStatusColor = computed(() => {
+  return getShopifyBulkOperationStatusColor(runningShopifyBulkOperation.value?.status);
 });
 const syncJobParameters = computed(() => {
   const jobParameters = (syncJobDetails.value?.serviceJobParameters || []).map((parameter: any, index: number) => ({
@@ -845,6 +1002,54 @@ function formatShopifyReference(reference: string) {
   return reference;
 }
 
+function getShopifyBulkOperationStatusLabel(status: string) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (normalizedStatus === "running") return translate("Running");
+  if (normalizedStatus === "created") return translate("Created");
+  if (normalizedStatus === "completed") return translate("Complete");
+  if (normalizedStatus === "failed") return translate("Error");
+  if (normalizedStatus === "canceled") return translate("Canceled");
+  if (normalizedStatus === "canceling") return translate("Canceling");
+  return status || translate("Unavailable");
+}
+
+function getShopifyBulkOperationStatusColor(status: string) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (normalizedStatus === "completed") return "success";
+  if (normalizedStatus === "failed" || normalizedStatus === "canceled") return "danger";
+  if (normalizedStatus === "running" || normalizedStatus === "created" || normalizedStatus === "canceling") return "primary";
+  return "medium";
+}
+
+function isProductUpdateSyncServiceJob(job: any = {}) {
+  const serviceName = String(job.serviceName || "");
+  const jobName = String(job.jobName || "");
+
+  return serviceName === PRODUCT_UPDATE_SYNC_SERVICE_NAME ||
+    jobName === PRODUCT_UPDATE_SYNC_SERVICE_NAME ||
+    jobName.startsWith(`${PRODUCT_UPDATE_SYNC_SERVICE_NAME}_`);
+}
+
+function getServiceJobParameterValue(job: any = {}, parameterName: string) {
+  const parameter = (job.serviceJobParameters || []).find((param: any) => param.parameterName === parameterName);
+  return parameter?.parameterValue || "";
+}
+
+function getLoadedServiceJob(jobName: string) {
+  return jobs.value.find((job: any) => job.jobName === jobName) || {};
+}
+
+function isSelectedShopProductSyncJob(job: any = {}) {
+  const selectedShopifyShopIds = [
+    shop.value.shopifyShopId,
+    props.id
+  ].filter(Boolean).map(String);
+
+  return selectedShopifyShopIds.length > 0 &&
+    isProductUpdateSyncServiceJob(job) &&
+    selectedShopifyShopIds.includes(String(getServiceJobParameterValue(job, "shopifyShopId")));
+}
+
 
 const recentSyncErrors = computed(() => {
   if (errorLogs.value && errorLogs.value.length) {
@@ -915,12 +1120,12 @@ async function loadWizard() {
     await Promise.all([
       store.dispatch("productStore/fetchProductStores"),
       store.dispatch("shopify/fetchShopifyTypeMappings", "SHOPIFY_PRODUCT_TYPE"),
-      fetchJobs()
+      fetchJobs({})
     ]);
 
 
     // Fetch details for product-update sync jobs to get parameters (needed to find the job for this shop)
-    const syncJobs = jobs.value.filter((job: any) => job.instanceOfProductId === PRODUCT_UPDATE_SYNC_JOB_PRODUCT_ID || (syncJobId.value && job.jobName === syncJobId.value));
+    const syncJobs = jobs.value.filter((job: any) => isProductUpdateSyncServiceJob(job) || (syncJobId.value && job.jobName === syncJobId.value));
 
     await Promise.all(syncJobs.map(async (job: any) => {
       const details = await fetchJobDetail(job.jobName);
@@ -935,7 +1140,12 @@ async function loadWizard() {
 
     await loadSelectedShopSystemMessageRemoteId();
     await loadLatestSystemMessage();
+    await loadPendingUpdateRequests();
     await loadShopifyShopProductCount();
+    await loadSyncJobLatestRun();
+    await loadBulkOperationSendJobLatestRun();
+    await loadBulkOperationPollJobLatestRun();
+    await loadRunningShopifyBulkOperation();
 
     setupState.value = await ShopifyProductSyncService.fetchSetupState({
       shopId: props.id,
@@ -980,13 +1190,53 @@ async function loadWizard() {
 }
 
 async function loadBulkOperationMonitoringJobs() {
-  const [sendJob, pollJob] = await Promise.all([
-    fetchJobDetail(BULK_OPERATION_SEND_JOB_NAME),
-    fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME)
-  ]);
+  bulkOperationSendJob.value = getLoadedServiceJob(BULK_OPERATION_SEND_JOB_NAME);
+  bulkOperationPollJob.value = getLoadedServiceJob(BULK_OPERATION_POLL_JOB_NAME);
+}
 
-  bulkOperationSendJob.value = sendJob || {};
-  bulkOperationPollJob.value = pollJob || {};
+async function loadBulkOperationSendJobLatestRun() {
+  if (!bulkOperationSendJob.value?.jobName) {
+    bulkOperationSendJobRecentRuns.value = [];
+    return;
+  }
+
+  try {
+    const jobRuns = await fetchJobRuns(bulkOperationSendJob.value.jobName, { pageSize: 1, pageIndex: 0 });
+    bulkOperationSendJobRecentRuns.value = Array.isArray(jobRuns) ? jobRuns : [];
+  } catch (error: any) {
+    logger.error(error);
+    bulkOperationSendJobRecentRuns.value = [];
+  }
+}
+
+async function loadBulkOperationPollJobLatestRun() {
+  if (!bulkOperationPollJob.value?.jobName) {
+    bulkOperationPollJobRecentRuns.value = [];
+    return;
+  }
+
+  try {
+    const jobRuns = await fetchJobRuns(bulkOperationPollJob.value.jobName, { pageSize: 1, pageIndex: 0 });
+    bulkOperationPollJobRecentRuns.value = Array.isArray(jobRuns) ? jobRuns : [];
+  } catch (error: any) {
+    logger.error(error);
+    bulkOperationPollJobRecentRuns.value = [];
+  }
+}
+
+async function loadRunningShopifyBulkOperation() {
+  try {
+    runningShopifyBulkOperation.value = await ShopifyProductSyncService.fetchRunningBulkOperation({
+      shopId: props.id,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      shop: shop.value
+    });
+    runningShopifyBulkOperationError.value = "";
+  } catch (error: any) {
+    logger.error(error);
+    runningShopifyBulkOperation.value = null;
+    runningShopifyBulkOperationError.value = translate("Shopify request status unavailable");
+  }
 }
 
 async function loadSelectedShopSystemMessageRemoteId() {
@@ -1028,6 +1278,25 @@ async function loadShopifyShopProductCount() {
   }
 }
 
+async function loadPendingUpdateRequests() {
+  try {
+    const pendingState = await ShopifyProductSyncService.fetchPendingProductUpdateRequests({
+      shopId: props.id,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      shop: shop.value
+    });
+    pendingUpdateRequestsCount.value = Number(pendingState.count || 0);
+    pendingUpdateRequestsLastCreatedAt.value = pendingState.latestSystemMessage?.initDate ||
+      pendingState.latestSystemMessage?.createdDate ||
+      pendingState.latestSystemMessage?.lastUpdatedStamp ||
+      "";
+  } catch (error: any) {
+    logger.error(error);
+    pendingUpdateRequestsCount.value = 0;
+    pendingUpdateRequestsLastCreatedAt.value = "";
+  }
+}
+
 async function loadUnsyncedProductUpdates() {
   isUnsyncedUpdatesLoading.value = true;
   try {
@@ -1065,6 +1334,7 @@ async function loadLatestSystemMessage() {
 
   latestSystemMessage.value = await selectTrackProgressSystemMessage(syncRunState.systemMessages || []);
   latestConfirmedSystemMessage.value = syncRunState.latestConfirmedSystemMessage || null;
+  latestConsumedSystemMessage.value = syncRunState.latestConsumedSystemMessage || null;
   lastProductUpdateSyncedAt.value = syncRunState.lastSyncedAt || "";
 
   if (latestSystemMessage.value?.systemMessageId) {
@@ -1206,6 +1476,7 @@ async function runSyncJob(job: any) {
           try {
             await runNow(job.jobName);
             showToast(translate("Job has been scheduled to run now"));
+            await loadSyncJobLatestRun();
           } catch (err) {
             logger.error("Failed to run job now", err);
             showToast(translate("Failed to run job"));
@@ -1248,8 +1519,10 @@ async function updateSyncJob(payload: any, successMessage: string) {
     }
 
     const updatedJob = await fetchJobDetail(payload.jobName);
-    if (syncJobObj.value) {
-      Object.assign(syncJobObj.value, updatedJob, {
+    const loadedJob = jobs.value.find((job: any) => job.jobName === payload.jobName);
+    const jobToUpdate = loadedJob || selectedSyncJobDetailsJob.value;
+    if (jobToUpdate) {
+      Object.assign(jobToUpdate, updatedJob, {
         paused: payload.paused ?? updatedJob.paused,
         cronExpression: payload.cronExpression ?? updatedJob.cronExpression
       });
@@ -1260,34 +1533,79 @@ async function updateSyncJob(payload: any, successMessage: string) {
     }
 
     showToast(successMessage);
+    return true;
   } catch (error: any) {
     logger.error(error);
     showToast(translate("Failed to update sync job."));
+    return false;
   }
 }
 
-async function openSyncJobDetailsModal() {
-  if (!syncJobObj.value?.jobName) return;
+async function openSyncJobDetailsModal(job = syncJobObj.value) {
+  if (!job?.jobName) return;
+  selectedSyncJobDetailsJob.value = job;
   showSyncJobDetailsModal.value = true;
   await refreshSyncJobDetails();
 }
 
-function closeSyncJobDetailsModal() {
+async function requestCloseSyncJobDetailsModal() {
+  const shouldClose = await confirmDiscardSyncJobDetailsChanges();
+  if (!shouldClose) return;
+
+  resetSyncJobDetailsDraft();
   showSyncJobDetailsModal.value = false;
 }
 
+function handleSyncJobDetailsDidDismiss() {
+  showSyncJobDetailsModal.value = false;
+  resetSyncJobDetailsDraft();
+  selectedSyncJobDetailsJob.value = null;
+  syncJobDetails.value = {};
+  syncJobDetailsRecentRuns.value = [];
+}
+
+async function canDismissSyncJobDetailsModal() {
+  const canDismiss = await confirmDiscardSyncJobDetailsChanges();
+  if (canDismiss) resetSyncJobDetailsDraft();
+  return canDismiss;
+}
+
+async function requestRefreshSyncJobDetails() {
+  const shouldRefresh = await confirmDiscardSyncJobDetailsChanges();
+  if (!shouldRefresh) return;
+
+  resetSyncJobDetailsDraft();
+  await refreshSyncJobDetails();
+}
+
+async function saveSyncJobDetails() {
+  if (!selectedSyncJobDetailsJob.value?.jobName || !syncJobDetailsDirty.value || !isSyncJobDraftScheduleValid.value) return;
+
+  isSyncJobDetailsSaving.value = true;
+  try {
+    await updateSyncJob({
+      jobName: selectedSyncJobDetailsJob.value.jobName,
+      cronExpression: syncJobDraftCronExpression.value,
+      paused: isJobPaused(syncJobDetails.value) ? "Y" : "N"
+    }, translate("Sync job updated successfully."));
+  } finally {
+    isSyncJobDetailsSaving.value = false;
+  }
+}
+
 async function refreshSyncJobDetails() {
-  if (!syncJobObj.value?.jobName) return;
+  if (!selectedSyncJobDetailsJob.value?.jobName) return;
 
   isSyncJobDetailsLoading.value = true;
   try {
     const [jobDetails, jobRuns] = await Promise.all([
-      fetchJobDetail(syncJobObj.value.jobName),
-      fetchJobRuns(syncJobObj.value.jobName, { pageSize: 5, pageIndex: 0 })
+      fetchJobDetail(selectedSyncJobDetailsJob.value.jobName),
+      fetchJobRuns(selectedSyncJobDetailsJob.value.jobName, { pageSize: 5, pageIndex: 0 })
     ]);
 
     syncJobDetails.value = jobDetails || {};
-    syncJobRecentRuns.value = Array.isArray(jobRuns) ? jobRuns : [];
+    syncJobDetailsRecentRuns.value = Array.isArray(jobRuns) ? jobRuns : [];
+    setSyncJobDetailsDraft(syncJobDetails.value);
 
     if (jobDetails?.instanceOfProductId && !products.value?.[jobDetails.instanceOfProductId]) {
       await fetchProductDetail(jobDetails.instanceOfProductId);
@@ -1295,10 +1613,62 @@ async function refreshSyncJobDetails() {
   } catch (error: any) {
     logger.error(error);
     syncJobDetails.value = {};
-    syncJobRecentRuns.value = [];
+    syncJobDetailsRecentRuns.value = [];
+    resetSyncJobDetailsDraft();
     showToast(translate("Failed to load sync job details."));
   } finally {
     isSyncJobDetailsLoading.value = false;
+  }
+}
+
+function getSyncJobOriginalCronExpression() {
+  return syncJobDetails.value?.cronExpression || selectedSyncJobDetailsJob.value?.cronExpression || "";
+}
+
+function setSyncJobDetailsDraft(jobDetails: any = {}) {
+  syncJobDraftCronExpression.value = jobDetails?.cronExpression || selectedSyncJobDetailsJob.value?.cronExpression || "";
+}
+
+function resetSyncJobDetailsDraft() {
+  syncJobDraftCronExpression.value = getSyncJobOriginalCronExpression();
+}
+
+async function confirmDiscardSyncJobDetailsChanges() {
+  if (!syncJobDetailsDirty.value) return true;
+
+  return new Promise<boolean>((resolve) => {
+    alertController.create({
+      header: translate("Unsaved changes"),
+      message: translate("You have unsaved schedule changes. Discard them?"),
+      backdropDismiss: false,
+      buttons: [
+        {
+          text: translate("Keep editing"),
+          role: "cancel",
+          handler: () => resolve(false)
+        },
+        {
+          text: translate("Discard changes"),
+          role: "destructive",
+          handler: () => resolve(true)
+        }
+      ]
+    }).then((alert) => alert.present());
+  });
+}
+
+async function loadSyncJobLatestRun() {
+  if (!syncJobObj.value?.jobName) {
+    syncJobRecentRuns.value = [];
+    return;
+  }
+
+  try {
+    const jobRuns = await fetchJobRuns(syncJobObj.value.jobName, { pageSize: 1, pageIndex: 0 });
+    syncJobRecentRuns.value = Array.isArray(jobRuns) ? jobRuns : [];
+  } catch (error: any) {
+    logger.error(error);
+    syncJobRecentRuns.value = [];
   }
 }
 
@@ -1481,12 +1851,11 @@ async function openStartSyncModal() {
     if (action.opensStartConfirmation) {
       draft.value.startConfirmed = false;
       showStartSyncModal.value = true;
+      await checkSyncJobConfig();
     }
-
-    await checkSyncJobConfig();
   } catch (error: any) {
     logger.error(error);
-    showToast(translate("Failed to load preflight review."));
+    showToast(translate("Failed to prepare product sync."));
   }
 }
 
@@ -1667,6 +2036,16 @@ function getRelativeNextRunLabel(job: any) {
   return translate("{count} mins", { count: diffInMinutes });
 }
 
+function getCronDescription(cronExpression: string) {
+  if (!cronExpression) return "";
+
+  try {
+    return cronstrue.toString(cronExpression);
+  } catch (error) {
+    return "";
+  }
+}
+
 function getNextRunDateTime(job: any) {
   const nextExecutionDateTime = job?.nextExecutionDateTime || job?.nextRunTime || job?.nextRunDate || job?.nextRuntime;
   if (nextExecutionDateTime) {
@@ -1734,11 +2113,27 @@ function getSyncJobRunTitle(run: any) {
 }
 
 function getSyncJobRunStartedAt(run: any) {
-  return run.startDate || run.startTime || run.createdDate || run.createdStamp || run.lastUpdatedStamp || "";
+  return run.runTime ||
+    run.runDate ||
+    run.startDate ||
+    run.startTime ||
+    run.startedDate ||
+    run.startedAt ||
+    run.runStartDate ||
+    run.createdDate ||
+    run.createdStamp ||
+    "";
 }
 
 function getSyncJobRunCompletedAt(run: any) {
-  return run.endDate || run.endTime || run.finishDateTime || "";
+  return run.endDate ||
+    run.endTime ||
+    run.finishDateTime ||
+    run.finishedAt ||
+    run.completedDate ||
+    run.completedAt ||
+    run.lastUpdatedStamp ||
+    "";
 }
 
 function getSyncJobRunStatus(run: any) {
@@ -1784,7 +2179,53 @@ function getSyncJobRunUser(run: any) {
 }
 
 function getSyncJobRunMessage(run: any) {
-  return run.messages || run.message || run.errorMessage || run.reason || run.errors || "";
+  const messageCandidates = [
+    run.outputMessage,
+    run.output,
+    run.responseMessage,
+    run.resultMessage,
+    run.runMessage,
+    run.statusMessage,
+    run.successMessage,
+    run.returnMessage,
+    run.message,
+    run.messages,
+    run.errorMessage,
+    run.error,
+    run.errors,
+    run.reason,
+    run.serviceResult,
+    run.result,
+    run.response
+  ];
+
+  for (const message of messageCandidates) {
+    const formattedMessage = formatSyncJobRunMessageValue(message);
+    if (formattedMessage) return formattedMessage;
+  }
+
+  return "";
+}
+
+function formatSyncJobRunMessageValue(value: any): string {
+  if (value === undefined || value === null || value === "") return "";
+
+  if (Array.isArray(value)) {
+    return value.map(formatSyncJobRunMessageValue).filter(Boolean).join(", ");
+  }
+
+  if (typeof value === "object") {
+    const nestedMessage = value.outputMessage || value.responseMessage || value.resultMessage || value.message || value.errorMessage || value.reason;
+    if (nestedMessage) return formatSyncJobRunMessageValue(nestedMessage);
+
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      return "";
+    }
+  }
+
+  return String(value).trim();
 }
 
 function parseDateTimeValue(value: string | number) {

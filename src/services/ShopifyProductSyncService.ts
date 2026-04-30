@@ -47,9 +47,23 @@ export interface ShopifyShopProductCount {
 export interface ShopifyProductUpdateSyncRunState {
   latestSystemMessage?: any;
   latestConfirmedSystemMessage?: any;
+  latestConsumedSystemMessage?: any;
   lastSyncedAt?: string;
   systemMessageRemoteId: string;
   systemMessages?: any[];
+}
+
+export interface ShopifyPendingProductUpdateRequestsState {
+  count: number;
+  latestSystemMessage?: any;
+}
+
+export interface ShopifyRunningBulkOperation {
+  id: string;
+  status: string;
+  type: string;
+  createdAt: string;
+  objectCount: number;
 }
 
 export interface ShopifyUnsyncedProductUpdate {
@@ -98,6 +112,20 @@ query WizardLiveCatalogCounts {
   productVariantsCount {
     count
     precision
+  }
+}
+`;
+
+const RUNNING_BULK_OPERATIONS_QUERY = `
+query RunningBulkOperations {
+  bulkOperations(first: 1, query: "status:running operation_type:query", sortKey: CREATED_AT, reverse: true) {
+    nodes {
+      id
+      status
+      type
+      createdAt
+      objectCount
+    }
   }
 }
 `;
@@ -501,15 +529,46 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
   }
 
   const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed");
+  const consumedMessages = systemMessages.filter((systemMessage: any) => {
+    const statusId = String(systemMessage.statusId || "").toLowerCase();
+    return statusId === "smsgconsumed" || statusId === "consumed";
+  });
   const latestConfirmedSystemMessage = getLatestSystemMessage(confirmedMessages, ["processedDate", "lastUpdatedStamp", "initDate"]);
+  const latestConsumedSystemMessage = getLatestSystemMessage(consumedMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
   const latestSystemMessage = getLatestSystemMessage(systemMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
 
   return {
     latestSystemMessage,
     latestConfirmedSystemMessage,
-    lastSyncedAt: getTimestampDate(latestConfirmedSystemMessage?.processedDate),
+    latestConsumedSystemMessage,
+    lastSyncedAt: getTimestampDate(latestConsumedSystemMessage?.initDate),
     systemMessageRemoteId,
     systemMessages
+  };
+};
+
+const fetchPendingProductUpdateRequests = async (payload: any): Promise<ShopifyPendingProductUpdateRequestsState> => {
+  const systemMessageRemoteId = typeof payload === "string" ? payload : resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to count pending product update requests.");
+  }
+
+  const response = await requestBackend<SystemMessagesResponse>({
+    url: "admin/systemMessages",
+    method: "get",
+    params: {
+      systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
+      systemMessageRemoteId,
+      statusId: "SmsgProduced",
+      pageSize: 1,
+      pageIndex: 0,
+      orderBy: "-initDate"
+    }
+  }, "Pending product update requests");
+
+  return {
+    count: Number(response?.systemMessagesCount || 0),
+    latestSystemMessage: response?.systemMessages?.[0]
   };
 };
 
@@ -538,6 +597,38 @@ const fetchLiveCatalogCounts = async (payload: any): Promise<ShopifyProductSyncR
     shopifyVariantCount: getRequiredCount(graphQlPayload, "productVariantsCount", "Shopify live catalog count query"),
     linkedShopCount: payload.linkedShopCount || 0,
     loaded: true
+  };
+};
+
+const fetchRunningBulkOperation = async (payload: any): Promise<ShopifyRunningBulkOperation | null> => {
+  const systemMessageRemoteId = resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to fetch running bulk operations.");
+  }
+
+  const response = await requestBackend<ShopifyGraphqlResponse>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText: RUNNING_BULK_OPERATIONS_QUERY
+    }
+  });
+
+  const graphQlPayload = response?.response || response?.data || response;
+  if (response?.errors?.length || graphQlPayload?.errors?.length) {
+    throw new Error(`Shopify running bulk operation query returned errors: ${JSON.stringify(response?.errors || graphQlPayload.errors)}`);
+  }
+
+  const runningOperation = graphQlPayload?.bulkOperations?.nodes?.[0];
+  if (!runningOperation) return null;
+
+  return {
+    id: runningOperation.id,
+    status: runningOperation.status,
+    type: runningOperation.type,
+    createdAt: runningOperation.createdAt,
+    objectCount: Number(runningOperation.objectCount || 0)
   };
 };
 
@@ -636,46 +727,40 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
   const stats = await fetchLiveCatalogCounts(payload);
 
   try {
-    const omsProductResp = await api(
-      {
-        url: "oms/dataDocumentView",
-        method: "post",
-        data: {
-          dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
-          pageIndex: 0,
-          pageSize: 1,
-          customParametersMap: {
-            productStoreId: payload.productStoreId,
-            isVirtual: "Y"
-          },
-          fieldsToSelect: "productCount,productStoreId"
-        }
+    const omsProductResp = await requestBackend<any>({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+        pageIndex: 0,
+        pageSize: 1,
+        customParametersMap: {
+          productStoreId: payload.productStoreId,
+          isVirtual: "Y"
+        },
+        fieldsToSelect: "productCount,productStoreId"
       }
-    ) as any;
+    });
 
-    const omsVariantResp = await api(
-      {
-        url: "oms/dataDocumentView",
-        method: "post",
-        data: {
-          dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
-          pageIndex: 0,
-          pageSize: 1,
-          customParametersMap: {
-            productStoreId: payload.productStoreId,
-            isVariant: "Y"
-          },
-          fieldsToSelect: "productCount,productStoreId"
-        }
+    const omsVariantResp = await requestBackend<any>({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+        pageIndex: 0,
+        pageSize: 1,
+        customParametersMap: {
+          productStoreId: payload.productStoreId,
+          isVariant: "Y"
+        },
+        fieldsToSelect: "productCount,productStoreId"
       }
-    ) as any;
+    });
 
     logger.info("Oms product and variant counts", { omsProductResp, omsVariantResp });
 
-    console.log("Oms product and variant counts", { omsProductResp, omsVariantResp });
-
-    stats.omsProductCount = omsProductResp?.data?.entityValueList?.[0]?.productCount || 0;
-    stats.omsVariantCount = omsVariantResp?.data?.entityValueList?.[0]?.productCount || 0;
+    stats.omsProductCount = omsProductResp?.entityValueList?.[0]?.productCount || 0;
+    stats.omsVariantCount = omsVariantResp?.entityValueList?.[0]?.productCount || 0;
   } catch (error) {
     logger.warn("Failed to fetch OMS counts using dataDocumentView", error);
   }
@@ -755,21 +840,26 @@ const fetchPreflight = async (payload: any): Promise<any[]> => {
     });
   } catch (error) {
     logger.error("Failed to fetch preflight data", error);
-    return [];
+    throw error;
   }
 };
 
 const startInitialImport = async (payload: any): Promise<any> => {
-  return api(
-    {
-      url: "shopify/products/sync",
-      method: "post",
-      data: {
-        shopifyShopId: payload.shopId,
-        includeAll: true
-      }
+  const { shopId, productStoreId, productIdentifierEnumId, systemMessageRemoteId } = payload;
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify product sync import requires systemMessageRemoteId.");
+  }
+
+  const response = await requestBackend<any>({
+    url: `oms/shopifyShops/${shopId}/productSync/imports`,
+    method: "post",
+    data: {
+      productStoreId,
+      productIdentifierEnumId,
+      systemMessageRemoteId
     }
-  );
+  }, "Shopify product sync import endpoint");
+  return validateInitialImport(response);
 };
 
 const fetchProgress = async (payload: any): Promise<ShopifyProductSyncProgressState> => {
@@ -868,6 +958,8 @@ const configureSyncJob = async (payload: any): Promise<any> => {
 export const ShopifyProductSyncService = {
   fetchShopSystemMessageRemoteId,
   fetchProductUpdateSyncRunState,
+  fetchPendingProductUpdateRequests,
+  fetchRunningBulkOperation,
   fetchShopifyShopProductCount,
   fetchUnsyncedProductUpdates,
   fetchSetupState,

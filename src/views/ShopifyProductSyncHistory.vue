@@ -341,13 +341,18 @@ function getSystemMessageParams() {
     systemMessageTypeId: 'BulkQueryShopifyProductUpdates',
     systemMessageRemoteId: systemMessageRemoteIds.value.join(","),
     systemMessageRemoteId_op: "in",
-    orderByField: filters.sortOrder === "oldest" ? "initDate" : "-initDate"
+    orderByField: getSystemMessageOrderByField()
   };
 
   if (filters.statusId) params.statusId = filters.statusId;
 
   return params;
 }
+
+function getSystemMessageOrderByField() {
+  return filters.sortOrder === "oldest" ? "initDate" : "-initDate";
+}
+
 function sortSystemMessagesBySelectedOrder(systemMessages: any[]) {
   const sortedMessages = sortSystemMessagesNewestFirst(systemMessages);
   return filters.sortOrder === "oldest" ? sortedMessages.reverse() : sortedMessages;
