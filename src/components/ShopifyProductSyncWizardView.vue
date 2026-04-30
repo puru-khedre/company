@@ -290,7 +290,7 @@
         </ion-card-header>
         <ion-list lines="full">
           <ion-item button detail
-            @click="$emit('open-step-details', { type: 'systemMessage', id: systemMessageId })"
+            @click="emit('open-step-details', { type: 'systemMessage', id: systemMessageId })"
             :disabled="!systemMessageId">
             <ion-icon slot="start" :icon="documentTextOutline" />
             <ion-label>
@@ -300,7 +300,7 @@
             <ion-badge slot="end" :color="systemMessageStatusColor">{{ systemMessageStatusLabel }}</ion-badge>
           </ion-item>
           <ion-item button detail
-            @click="$emit('open-step-details', { type: 'bulkOperation', id: bulkOperationId })"
+            @click="emit('open-step-details', { type: 'bulkOperation', id: bulkOperationId })"
             :disabled="!bulkOperationId">
             <ion-icon slot="start" :icon="pulseOutline" />
             <ion-label>
@@ -346,7 +346,7 @@
           <ion-card-subtitle>{{ bulkFileProcessDescription }}</ion-card-subtitle>
         </ion-card-header>
         <ion-list lines="full">
-          <ion-item button detail @click="$emit('open-step-details', { type: 'mdmLog', id: mdmLogId })"
+          <ion-item button detail @click="emit('open-step-details', { type: 'mdmLog', id: mdmLogId })"
             :disabled="!mdmLogId">
             <ion-icon slot="start" :icon="serverOutline" />
             <ion-label>
@@ -392,7 +392,7 @@
       </ion-list>
     </ion-card>
 
-    <ion-modal :is-open="showMistakeModal" @didDismiss="$emit('close-mistake-modal')">
+    <ion-modal :is-open="showMistakeModal" :backdrop-dismiss="false" @didDismiss="emit('close-mistake-modal')">
       <ion-header>
         <ion-toolbar>
           <ion-buttons slot="start">
@@ -435,7 +435,7 @@
       </ion-content>
     </ion-modal>
 
-    <ion-modal :is-open="showStartSyncModal" @didDismiss="$emit('close-start-sync-modal')">
+    <ion-modal :is-open="showStartSyncModal" :backdrop-dismiss="false" @didDismiss="emit('close-start-sync-modal')">
       <ion-header>
         <ion-toolbar>
           <ion-buttons slot="start">
@@ -469,7 +469,7 @@
               <ion-item lines="none">
                 <ion-label color="warning" class="ion-text-wrap">{{ translate("Product sync job not configured for this shop.") }}</ion-label>
               </ion-item>
-              <ion-button fill="outline" expand="block" :disabled="isSyncJobConfiguring" @click="$emit('configure-sync-job')">
+              <ion-button fill="outline" expand="block" :disabled="isSyncJobConfiguring" @click="emit('configure-sync-job')">
                 <ion-spinner v-if="isSyncJobConfiguring" slot="start" name="crescent" />
                 {{ translate("Schedule Job") }}
               </ion-button>
@@ -584,7 +584,7 @@ const props = defineProps<{
   syncJobConfigured: boolean
 }>();
 
-defineEmits([
+const emit = defineEmits([
   "accept-preflight-and-open-start-sync",
   "close-mistake-modal",
   "close-start-sync-modal",
@@ -600,7 +600,7 @@ defineEmits([
   "start-product-sync",
   "toggle-preflight-warning-confirmation",
   "toggle-product-store-verification",
-  "toggle-start-confirmation",
+  "toggle-start-confirmation"
 ]);
 
 function getPreflightBadgeColor(status: string) {
