@@ -1477,11 +1477,16 @@ async function openStartSyncModal() {
       return;
     }
 
-const action = getReviewImportAction();
-  if (action.opensStartConfirmation) {
-    draft.value.startConfirmed = false;
-    showStartSyncModal.value = true;
+    const action = getReviewImportAction();
+    if (action.opensStartConfirmation) {
+      draft.value.startConfirmed = false;
+      showStartSyncModal.value = true;
+    }
+
     await checkSyncJobConfig();
+  } catch (error: any) {
+    logger.error(error);
+    showToast(translate("Failed to load preflight review."));
   }
 }
 

@@ -1,4 +1,5 @@
 import api from "@/api";
+import logger from "@/logger";
 
 export interface ShopifyProductSyncSetupState {
   hasLinkedOmsProducts: boolean;
@@ -187,6 +188,7 @@ export interface ShopifyProductSyncRun {
     statusLabel?: string;
     statusColor?: string;
     objectCount?: number;
+    rootObjectCount?: number;
     query?: string;
   };
   mdmLog: {
@@ -412,7 +414,7 @@ function sortShopRemoteCandidates(candidates: any[]) {
   });
 }
 
-const fetchShopSystemMessageRemoteId = async (payload: any): Promise<string> => {
+const fetchShopSystemMessageRemoteId = async (payload: any): Promise<any> => {
   const shopifyShopId = payload.shopifyShopId || payload.shop?.shopifyShopId;
   if (!shopifyShopId) {
     throw new Error("Shopify shop id is required to resolve SystemMessageRemote.remoteId.");
@@ -426,6 +428,14 @@ const fetchShopSystemMessageRemoteId = async (payload: any): Promise<string> => 
   const candidates = sortShopRemoteCandidates(getShopRemoteCandidates(response?.systemMessageRemoteList || [], payload));
   if (!candidates.length) {
     throw new Error(`No SystemMessageRemote found with remoteId ${shopifyShopId}.`);
+  }
+
+  if (payload.returnAllSystemMessageRemoteIds) {
+    return candidates
+      .map((candidate: any) => String(candidate.systemMessageRemoteId || "").trim())
+      .filter((systemMessageRemoteId: string, index: number, list: string[]) => {
+        return systemMessageRemoteId && list.indexOf(systemMessageRemoteId) === index;
+      });
   }
 
   for (const candidate of candidates) {
@@ -626,7 +636,7 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
   const stats = await fetchLiveCatalogCounts(payload);
 
   try {
-    const omsProductResp = await callBackend(
+    const omsProductResp = await api(
       {
         url: "oms/dataDocumentView",
         method: "post",
@@ -640,11 +650,10 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
           },
           fieldsToSelect: "productCount,productStoreId"
         }
-      },
-      { entityValueList: [] }
+      }
     ) as any;
 
-    const omsVariantResp = await callBackend(
+    const omsVariantResp = await api(
       {
         url: "oms/dataDocumentView",
         method: "post",
@@ -658,12 +667,15 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
           },
           fieldsToSelect: "productCount,productStoreId"
         }
-      },
-      { entityValueList: [] }
+      }
     ) as any;
 
-    stats.omsProductCount = omsProductResp?.entityValueList?.[0]?.productCount || 0;
-    stats.omsVariantCount = omsVariantResp?.entityValueList?.[0]?.productCount || 0;
+    logger.info("Oms product and variant counts", { omsProductResp, omsVariantResp });
+
+    console.log("Oms product and variant counts", { omsProductResp, omsVariantResp });
+
+    stats.omsProductCount = omsProductResp?.data?.entityValueList?.[0]?.productCount || 0;
+    stats.omsVariantCount = omsVariantResp?.data?.entityValueList?.[0]?.productCount || 0;
   } catch (error) {
     logger.warn("Failed to fetch OMS counts using dataDocumentView", error);
   }
@@ -717,7 +729,6 @@ const fetchPreflight = async (payload: any): Promise<any[]> => {
 
     const omsProducts = omsResp?.data?.entityValueList || [];
 
-    let ab = 0;
     return shopifyVariants.map((v: any) => {
       const omsProduct = omsProducts.find((p: any) => p.shopifyProductId === v.legacyResourceId);
       
@@ -749,7 +760,7 @@ const fetchPreflight = async (payload: any): Promise<any[]> => {
 };
 
 const startInitialImport = async (payload: any): Promise<any> => {
-  return callBackend(
+  return api(
     {
       url: "shopify/products/sync",
       method: "post",
@@ -757,14 +768,8 @@ const startInitialImport = async (payload: any): Promise<any> => {
         shopifyShopId: payload.shopId,
         includeAll: true
       }
-    },
-    {
-      success: false,
-      error: "Product sync import backend endpoint is unavailable.",
-      backendAvailable: false
     }
-  }, "Shopify product sync reconcile endpoint");
-  return validateReconcile(response);
+  );
 };
 
 const fetchProgress = async (payload: any): Promise<ShopifyProductSyncProgressState> => {
