@@ -19,6 +19,17 @@ const getNormalizedJob = (job: any = {}) => ({
   ...job
 });
 
+const getServiceJobs = (payload: any) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.serviceJobs)) return payload.serviceJobs;
+  if (Array.isArray(payload?.serviceJobList)) return payload.serviceJobList;
+  if (Array.isArray(payload?.jobs)) return payload.jobs;
+  if (Array.isArray(payload?.jobList)) return payload.jobList;
+  if (Array.isArray(payload?.docs)) return payload.docs;
+  if (Array.isArray(payload?.entityValueList)) return payload.entityValueList;
+  return [];
+};
+
 export const getNormalizedJobDetail = (jobDetail: any = {}) => {
   return getNormalizedJob(jobDetail);
 };
@@ -53,7 +64,7 @@ export default function useServiceJob() {
           }
         }) as any;
 
-        const respJobs = (resp?.data || []).map((job: any) => ({
+        const respJobs = getServiceJobs(resp?.data).map((job: any) => ({
           ...job,
           cronString: job.cronExpression ? getCronString(job.cronExpression) : ''
         }));

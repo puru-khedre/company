@@ -70,6 +70,7 @@
           @toggle-pause-sync-job="togglePauseSyncJob"
           @open-unsynced-updates="openUnsyncedUpdatesModal"
           @open-specific-products-sync="openSpecificProductsSyncModal"
+          @open-resync-entire-catalog="openResyncEntireCatalogModal"
           @open-step-details="openStepDetails"
           @run-job="runSyncJob"
         />
@@ -176,6 +177,57 @@
               </ion-list>
             </ion-card>
           </ion-content>
+        </ion-modal>
+
+        <ion-modal :is-open="showResyncEntireCatalogModal" :backdrop-dismiss="false" @didDismiss="showResyncEntireCatalogModal = false">
+          <ion-header>
+            <ion-toolbar>
+              <ion-buttons slot="start">
+                <ion-button @click="showResyncEntireCatalogModal = false" :aria-label="translate('Close')">
+                  <ion-icon slot="icon-only" :icon="closeOutline" />
+                </ion-button>
+              </ion-buttons>
+              <ion-title>{{ translate("Re-sync entire catalog") }}</ion-title>
+            </ion-toolbar>
+          </ion-header>
+          <ion-content>
+            <ion-list lines="full">
+              <ion-item lines="none">
+                <ion-label>
+                  <h2>{{ translate("Re-sync entire catalog") }}</h2>
+                  <p>{{ translate("This will import every product currently in Shopify again.") }}</p>
+                  <p>{{ translate("This process can take time because Shopify has to export the catalog before HotWax imports it. This will not delete products that were deleted in Shopify.") }}</p>
+                </ion-label>
+              </ion-item>
+              <ion-item>
+                <ion-label>
+                  {{ translate("Products to import") }}
+                  <p>{{ translate("Current products in Shopify") }}</p>
+                </ion-label>
+                <ion-note slot="end">{{ resyncCatalogProductCountLabel }}</ion-note>
+              </ion-item>
+              <ion-item>
+                <ion-label>
+                  {{ translate("Variants to import") }}
+                  <p>{{ translate("Current product variants in Shopify") }}</p>
+                </ion-label>
+                <ion-note slot="end">{{ resyncCatalogVariantCountLabel }}</ion-note>
+              </ion-item>
+            </ion-list>
+          </ion-content>
+          <ion-footer>
+            <ion-toolbar>
+              <ion-buttons slot="start">
+                <ion-button fill="clear" @click="showResyncEntireCatalogModal = false" :disabled="isResyncEntireCatalogStarting">{{ translate("Cancel") }}</ion-button>
+              </ion-buttons>
+              <ion-buttons slot="end">
+                <ion-button fill="solid" color="primary" @click="startResyncEntireCatalog" :disabled="isResyncEntireCatalogStarting">
+                  <ion-spinner v-if="isResyncEntireCatalogStarting" name="crescent" />
+                  <span v-else>{{ translate("Start full catalog re-sync") }}</span>
+                </ion-button>
+              </ion-buttons>
+            </ion-toolbar>
+          </ion-footer>
         </ion-modal>
 
         <ion-modal :is-open="showSyncJobDetailsModal" :backdrop-dismiss="false" :can-dismiss="canDismissSyncJobDetailsModal" @didDismiss="handleSyncJobDetailsDidDismiss">
@@ -469,10 +521,10 @@ import {
   IonButton,
   IonButtons,
   IonCard,
-  IonCardContent,
   IonCardHeader,
   IonCardTitle,
   IonContent,
+  IonFooter,
   IonFab,
   IonFabButton,
   IonHeader,
@@ -585,6 +637,7 @@ const isReviewLoading = ref(false);
 const showModeModal = ref(false);
 const showMistakeModal = ref(false);
 const showStartSyncModal = ref(false);
+const showResyncEntireCatalogModal = ref(false);
 const showSyncJobDetailsModal = ref(false);
 const showStepDetailsModal = ref(false);
 const isSyncJobDetailsLoading = ref(false);
@@ -592,6 +645,7 @@ const isSyncJobDetailsSaving = ref(false);
 const isStepDetailsLoading = ref(false);
 const isSyncJobConfigLoaded = ref(false);
 const isSyncJobConfiguring = ref(false);
+const isResyncEntireCatalogStarting = ref(false);
 const syncJobConfigured = ref(false);
 const scheduledJobName = ref("");
 const currentStepDetail = ref<any>(null);
@@ -778,6 +832,8 @@ const syncSummarySubtitle = computed(() => {
   if (isSyncJobPaused.value) return translate("Paused");
   return nextSyncLabel.value;
 });
+const resyncCatalogProductCountLabel = computed(() => formatCount(reviewStats.value.shopifyProductCount));
+const resyncCatalogVariantCountLabel = computed(() => formatCount(reviewStats.value.shopifyVariantCount));
 const syncJobDetailsTitle = computed(() => {
   const job = syncJobDetails.value?.jobName ? syncJobDetails.value : selectedSyncJobDetailsJob.value;
   if (isSelectedShopProductSyncJob(job)) {
@@ -1287,6 +1343,18 @@ async function openSpecificProductsSyncModal() {
   await productsModal.present();
   const { data } = await productsModal.onDidDismiss();
   handleSelectedProductsForSync(data);
+}
+
+async function openResyncEntireCatalogModal() {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product sync is unavailable for this shop."));
+    return;
+  }
+
+  showResyncEntireCatalogModal.value = true;
+  if (!reviewStats.value.loaded && !isReviewLoading.value) {
+    await loadReviewStats();
+  }
 }
 
 function handleSelectedProductsForSync(data: any) {
@@ -1878,7 +1946,10 @@ async function startProductSync() {
   isSaving.value = true;
   try {
     const result = await ShopifyProductSyncService.startInitialImport({
-      shopId: props.id
+      shopId: props.id,
+      productStoreId: draft.value.selectedProductStoreId,
+      productIdentifierEnumId: draft.value.selectedIdentifierEnumId,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
     });
     assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
 
@@ -1901,6 +1972,44 @@ async function startProductSync() {
     showToast(translate("Failed to start product sync"));
   }
   isSaving.value = false;
+}
+
+async function startResyncEntireCatalog() {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product sync is unavailable for this shop."));
+    return;
+  }
+
+  isResyncEntireCatalogStarting.value = true;
+  try {
+    const result = await ShopifyProductSyncService.startInitialImport({
+      shopId: props.id,
+      productStoreId: draft.value.selectedProductStoreId,
+      productIdentifierEnumId: draft.value.selectedIdentifierEnumId,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
+    });
+    assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
+
+    if (shouldShowProductSyncProgress(result)) {
+      syncJobId.value = result.syncJobId || result.progress?.syncJobId;
+      progressState.value = result.progress || progressState.value;
+      if (progressState.value.systemMessageId) {
+        await fetchSyncRun(progressState.value.systemMessageId);
+      }
+      showResyncEntireCatalogModal.value = false;
+      currentStep.value = "progress";
+      const loadedProgress = await loadProgress();
+      if (loadedProgress) startProgressPolling();
+      showToast(translate("Full catalog re-sync started."));
+    } else {
+      showToast(result.error || translate("Product sync could not be started."));
+    }
+  } catch (error: any) {
+    logger.error(error);
+    showToast(translate("Failed to start product sync"));
+  } finally {
+    isResyncEntireCatalogStarting.value = false;
+  }
 }
 
 async function loadProgress() {
@@ -2065,6 +2174,13 @@ function getJobNextRunLabel(job: any) {
 function formatDateTime(value: string) {
   if (!value) return translate("Unavailable");
   return new Date(value).toLocaleString();
+}
+
+function formatCount(value: unknown) {
+  if (value === undefined || value === null || value === "") return translate("Unavailable");
+  const count = Number(value);
+  if (Number.isNaN(count)) return translate("Unavailable");
+  return count.toLocaleString();
 }
 
 function formatParameterValue(value: unknown) {

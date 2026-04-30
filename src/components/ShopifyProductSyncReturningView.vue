@@ -187,7 +187,7 @@
             <p>{{ translate("Rewind the last sync time to reimport updates") }}</p>
           </ion-label>
         </ion-item>
-        <ion-item detail>
+        <ion-item button detail @click="emit('open-resync-entire-catalog')">
           <ion-label>
             {{ translate("Re-sync entire catalog") }}
             <p>{{ translate("Download the entire product catalog from Shopify again. Use with caution") }}</p>
@@ -378,7 +378,7 @@ const props = defineProps<{
   hasCurrentShopifyRequest?: boolean
   syncJobObj?: any
 }>();
-const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job"]);
+const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job"]);
 
 
 
