@@ -100,9 +100,13 @@
           :show-mistake-modal="showMistakeModal"
           :show-start-sync-modal="showStartSyncModal"
           :start-sync-disabled="startSyncDisabled"
+          :is-sync-job-config-loaded="isSyncJobConfigLoaded"
+          :is-sync-job-configuring="isSyncJobConfiguring"
+          :sync-job-configured="syncJobConfigured"
           @accept-preflight-and-open-start-sync="acceptPreflightAndOpenStartSync"
           @close-mistake-modal="showMistakeModal = false"
           @close-start-sync-modal="showStartSyncModal = false"
+          @configure-sync-job="configureSyncJob"
           @go-back="goBack"
           @go-next="goNext"
           @identifier-change="handleIdentifierChange"
@@ -577,6 +581,10 @@ const showStepDetailsModal = ref(false);
 const isUnsyncedUpdatesLoading = ref(false);
 const isSyncJobDetailsLoading = ref(false);
 const isStepDetailsLoading = ref(false);
+const isSyncJobConfigLoaded = ref(false);
+const isSyncJobConfiguring = ref(false);
+const syncJobConfigured = ref(false);
+const scheduledJobName = ref("");
 const currentStepDetail = ref<any>(null);
 const bulkOperationSendJob = ref<any>({});
 const bulkOperationPollJob = ref<any>({});
@@ -649,7 +657,7 @@ const unsyncedUpdatesCountLabel = computed(() => {
 });
 const identifierOptions = ref([
   { enumId: "SHOPIFY_PRODUCT_SKU", description: "SKU" },
-  { enumId: "SHOPIFY_PRODUCT_UPCA", description: "UPCA / Barcode" },
+  { enumId: "SHOPIFY_BARCODE", description: "UPCA / Barcode" },
   { enumId: "SHOPIFY_PRODUCT_ID", description: "Shopify internal id" }
 ]);
 
@@ -1428,11 +1436,22 @@ function toggleStartConfirmation() {
 }
 
 async function loadPreflight() {
-  preflightResult.value = await ShopifyProductSyncService.fetchPreflight({
-    shopId: props.id,
+  const rawItems = await ShopifyProductSyncService.fetchPreflight({
+    systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
     productStoreId: draft.value.selectedProductStoreId,
     productIdentifierEnumId: draft.value.selectedIdentifierEnumId
   });
+
+  preflightResult.value = {
+    items: rawItems.map((item: any) => ({
+      label: item.shopifyValue,
+      detail: item.omsValue || translate("Not found"),
+      status: item.isMatched ? "Matched" : (item.omsValue ? "Conflict" : "Not found")
+    })),
+    matched: rawItems.filter((i: any) => i.isMatched).length,
+    sampled: rawItems.length
+  };
+
   preflightLoaded.value = true;
   preflightWarningConfirmed.value = false;
 }
@@ -1463,10 +1482,45 @@ async function openStartSyncModal() {
       draft.value.startConfirmed = false;
       showStartSyncModal.value = true;
     }
+
+    await checkSyncJobConfig();
   } catch (error: any) {
     logger.error(error);
     showToast(translate("Failed to load preflight review."));
   }
+}
+
+async function checkSyncJobConfig() {
+  isSyncJobConfigLoaded.value = false;
+  try {
+    const shopifyShopId = props.id; 
+    const result = await ShopifyProductSyncService.fetchSyncJobConfig({ shopifyShopId });
+    
+    syncJobConfigured.value = result.isConfigured;
+    if (result.isConfigured) {
+      scheduledJobName.value = result.jobName;
+    }
+  } catch (error) {
+    logger.error("Failed to check sync job configuration", error);
+    syncJobConfigured.value = false;
+  }
+  isSyncJobConfigLoaded.value = true;
+}
+
+async function configureSyncJob() {
+  isSyncJobConfiguring.value = true;
+  try {
+    const shopifyShopId = props.id; 
+    await ShopifyProductSyncService.configureSyncJob({ shopifyShopId });
+    
+    syncJobConfigured.value = true;
+    showToast(translate("Product sync job scheduled successfully."));
+    await checkSyncJobConfig(); // Refresh state
+  } catch (error) {
+    logger.error("Failed to configure sync job", error);
+    showToast(translate("Failed to schedule job."));
+  }
+  isSyncJobConfiguring.value = false;
 }
 
 function acceptPreflightAndOpenStartSync() {
@@ -1481,10 +1535,7 @@ async function startProductSync() {
   isSaving.value = true;
   try {
     const result = await ShopifyProductSyncService.startInitialImport({
-      shopId: props.id,
-      productStoreId: draft.value.selectedProductStoreId,
-      productIdentifierEnumId: draft.value.selectedIdentifierEnumId,
-      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
+      shopId: props.id
     });
     assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
 

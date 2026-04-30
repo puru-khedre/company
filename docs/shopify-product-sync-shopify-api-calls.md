@@ -127,30 +127,20 @@ Use this query to fetch a small rolling sample of products and variant identifie
 
 Primary uses:
 
-- fetch a 10-product sample for the preflight modal
+- fetch a 10-variant sample for the preflight modal
 - compare Shopify identifiers against OMS-linked products
 - support the match thresholds documented in the implementation spec
 
 Validated query:
 
 ```graphql
-query WizardIdentifierSample($first: Int!, $after: String) {
-  products(first: $first, after: $after, sortKey: UPDATED_AT) {
-    pageInfo {
-      hasNextPage
-      endCursor
-    }
+query WizardVariantSample($first: Int!) {
+  productVariants(first: $first) {
     nodes {
       id
-      handle
+      sku
+      barcode
       legacyResourceId
-      variants(first: 20) {
-        nodes {
-          id
-          sku
-          barcode
-        }
-      }
     }
   }
 }
@@ -160,8 +150,8 @@ How the app should use it:
 
 - For `SKU`, compare against variant `sku`.
 - For `UPCA / Barcode`, compare against variant `barcode`.
-- For `Shopify internal id`, compare against product `legacyResourceId`.
-- Page until Moqui has enough usable products for the preflight sample, or until the catalog is exhausted.
+- For `Shopify internal id`, compare against variant `legacyResourceId`.
+- Page until Moqui has enough usable variants for the preflight sample, or until the catalog is exhausted.
 
 Notes:
 
@@ -338,7 +328,7 @@ That will produce a more accurate UI than polling Shopify in isolation.
 | Select product identifier | none | yes |
 | Product type mapping | `WizardProductTypeDiscovery` | no |
 | Review | `WizardLiveCatalogCounts` | yes |
-| Mistake modal | `WizardIdentifierSample` | yes |
+| Mistake modal | `WizardVariantSample` | yes |
 | Start sync modal | none | yes |
 | Progress tracker | `WizardBulkOperationById` using Moqui `remoteId`, and optionally `WizardRecentBulkQueryOperations`, plus Moqui aggregated status | yes |
 | Reconcile | `WizardLiveCatalogCounts` | yes |
@@ -350,7 +340,7 @@ The progress tracker should combine these reads with ServiceJob next-run timing 
 The minimal v1 set is:
 
 1. `WizardLiveCatalogCounts`
-2. `WizardIdentifierSample`
+2. `WizardVariantSample`
 3. `WizardBulkOperationById` for Shopify-side progress counters tied to Moqui `remoteId`
 4. optional `WizardRecentBulkQueryOperations` for recent Shopify-side bulk history
 5. optional `WizardShopContext` for live sanity checks

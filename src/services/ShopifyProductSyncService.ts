@@ -1,4 +1,5 @@
 import api from "@/api";
+import logger from "@/logger";
 
 export interface ShopifyProductSyncSetupState {
   hasLinkedOmsProducts: boolean;
@@ -187,6 +188,7 @@ export interface ShopifyProductSyncRun {
     statusLabel?: string;
     statusColor?: string;
     objectCount?: number;
+    rootObjectCount?: number;
     query?: string;
   };
   mdmLog: {
@@ -412,7 +414,7 @@ function sortShopRemoteCandidates(candidates: any[]) {
   });
 }
 
-const fetchShopSystemMessageRemoteId = async (payload: any): Promise<string> => {
+const fetchShopSystemMessageRemoteId = async (payload: any): Promise<any> => {
   const shopifyShopId = payload.shopifyShopId || payload.shop?.shopifyShopId;
   if (!shopifyShopId) {
     throw new Error("Shopify shop id is required to resolve SystemMessageRemote.remoteId.");
@@ -426,6 +428,14 @@ const fetchShopSystemMessageRemoteId = async (payload: any): Promise<string> => 
   const candidates = sortShopRemoteCandidates(getShopRemoteCandidates(response?.systemMessageRemoteList || [], payload));
   if (!candidates.length) {
     throw new Error(`No SystemMessageRemote found with remoteId ${shopifyShopId}.`);
+  }
+
+  if (payload.returnAllSystemMessageRemoteIds) {
+    return candidates
+      .map((candidate: any) => String(candidate.systemMessageRemoteId || "").trim())
+      .filter((systemMessageRemoteId: string, index: number, list: string[]) => {
+        return systemMessageRemoteId && list.indexOf(systemMessageRemoteId) === index;
+      });
   }
 
   for (const candidate of candidates) {
@@ -623,36 +633,143 @@ const fetchProductStoreContext = async (payload: any): Promise<any> => {
 };
 
 const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewStats> => {
-  return fetchLiveCatalogCounts(payload);
+  const stats = await fetchLiveCatalogCounts(payload);
+
+  try {
+    const omsProductResp = await api(
+      {
+        url: "oms/dataDocumentView",
+        method: "post",
+        data: {
+          dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+          pageIndex: 0,
+          pageSize: 1,
+          customParametersMap: {
+            productStoreId: payload.productStoreId,
+            isVirtual: "Y"
+          },
+          fieldsToSelect: "productCount,productStoreId"
+        }
+      }
+    ) as any;
+
+    const omsVariantResp = await api(
+      {
+        url: "oms/dataDocumentView",
+        method: "post",
+        data: {
+          dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+          pageIndex: 0,
+          pageSize: 1,
+          customParametersMap: {
+            productStoreId: payload.productStoreId,
+            isVariant: "Y"
+          },
+          fieldsToSelect: "productCount,productStoreId"
+        }
+      }
+    ) as any;
+
+    logger.info("Oms product and variant counts", { omsProductResp, omsVariantResp });
+
+    console.log("Oms product and variant counts", { omsProductResp, omsVariantResp });
+
+    stats.omsProductCount = omsProductResp?.data?.entityValueList?.[0]?.productCount || 0;
+    stats.omsVariantCount = omsVariantResp?.data?.entityValueList?.[0]?.productCount || 0;
+  } catch (error) {
+    logger.warn("Failed to fetch OMS counts using dataDocumentView", error);
+  }
+
+  return stats;
 };
 
-const fetchPreflight = async (payload: any): Promise<ShopifyProductSyncPreflightResult> => {
-  const response = await requestBackend<ShopifyProductSyncPreflightResult>({
-    url: `oms/shopifyShops/${payload.shopId}/productSync/preflight`,
-    method: "get",
-    params: {
-      productStoreId: payload.productStoreId,
-      productIdentifierEnumId: payload.productIdentifierEnumId
-    }
-  }, "Shopify product sync preflight endpoint");
-  return validatePreflight(response);
+const fetchPreflight = async (payload: any): Promise<any[]> => {
+  const { systemMessageRemoteId, productStoreId, productIdentifierEnumId } = payload;
+  
+  try {
+    const shopifyResp = await api({
+      url: "shopify/graphql",
+      method: "post",
+      data: {
+        systemMessageRemoteId,
+        queryText: `
+          query WizardVariantSample($first: Int!) {
+            productVariants(first: $first) {
+              nodes {
+                id
+                sku
+                barcode
+                legacyResourceId
+              }
+            }
+          }
+        `,
+        variables: { first: 10 }
+      }
+    }) as any;
+
+    const graphQlPayload = shopifyResp?.data;
+    const shopifyVariants = graphQlPayload?.response?.productVariants?.nodes || [];
+    if (shopifyVariants.length === 0) return [];
+
+    const shopifyVariantIds = shopifyVariants.map((v: any) => v.legacyResourceId);
+
+    const omsResp = await api({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+        customParametersMap: {
+          productStoreId,
+          shopifyProductId: shopifyVariantIds
+        },
+        fieldsToSelect: "shopifyProductId,internalName"
+      }
+    }) as any;
+
+    const omsProducts = omsResp?.data?.entityValueList || [];
+
+    return shopifyVariants.map((v: any) => {
+      const omsProduct = omsProducts.find((p: any) => p.shopifyProductId === v.legacyResourceId);
+      
+      let shopifyValue = "";
+      switch (productIdentifierEnumId) {
+        case "SHOPIFY_PRODUCT_SKU":
+          shopifyValue = v.sku;
+          break;
+        case "SHOPIFY_BARCODE":
+          shopifyValue = v.barcode;
+          break;
+        case "SHOPIFY_PRODUCT_ID":
+          shopifyValue = v.legacyResourceId;
+          break;
+      }
+
+      return {
+        shopifyVariantId: v.id,
+        shopifyProductId: v.legacyResourceId,
+        shopifyValue,
+        omsValue: omsProduct ? omsProduct.internalName : null,
+        isMatched: omsProduct ? (omsProduct.internalName === shopifyValue) : false
+      };
+    });
+  } catch (error) {
+    logger.error("Failed to fetch preflight data", error);
+    return [];
+  }
 };
 
 const startInitialImport = async (payload: any): Promise<any> => {
-  if (!payload.systemMessageRemoteId) {
-    throw new Error("Shopify systemMessageRemoteId is required to start product sync initial import.");
-  }
-
-  const response = await requestBackend<any>({
-    url: `oms/shopifyShops/${payload.shopId}/productSync/imports`,
-    method: "post",
-    data: {
-      productStoreId: payload.productStoreId,
-      productIdentifierEnumId: payload.productIdentifierEnumId,
-      systemMessageRemoteId: payload.systemMessageRemoteId
+  return api(
+    {
+      url: "shopify/products/sync",
+      method: "post",
+      data: {
+        shopifyShopId: payload.shopId,
+        includeAll: true
+      }
     }
-  }, "Start initial Shopify product sync import backend endpoint is unavailable or not implemented");
-  return validateInitialImport(response);
+  );
 };
 
 const fetchProgress = async (payload: any): Promise<ShopifyProductSyncProgressState> => {
@@ -694,6 +811,60 @@ const fetchHistory = async (payload: any): Promise<ShopifyProductSyncHistoryStat
   };
 };
 
+const fetchSyncJobConfig = async (payload: any): Promise<{ isConfigured: boolean; jobName: string }> => {
+  const shopifyShopId = payload.shopifyShopId;
+  
+  try {
+    const resp = await api({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "SERVICE_JOB_PARAMETER",
+        pageIndex: 0,
+        pageSize: 1,
+        customParametersMap: {
+          parameterName: "shopifyShopId",
+          parameterValue: shopifyShopId,
+          parentJobName: "sync_ShopifyProductUpdates"
+        }
+      }
+    }) as any;
+
+    const entityValueList = resp?.data?.entityValueList || [];
+    if (entityValueList.length > 0) {
+      return { isConfigured: true, jobName: entityValueList[0].jobName };
+    }
+  } catch (error) {
+    logger.warn("Failed to fetch sync job config using dataDocumentView", error);
+  }
+  
+  return { isConfigured: false, jobName: "" };
+};
+
+const configureSyncJob = async (payload: any): Promise<any> => {
+  const shopifyShopId = payload.shopifyShopId;
+  const newJobName = `sync_ShopifyProductUpdates_${shopifyShopId}`;
+  
+  await api({
+    url: "admin/serviceJobs/sync_ShopifyProductUpdates/clone",
+    method: "POST",
+    data: { newJobName }
+  });
+
+  return await api({
+    url: `admin/serviceJobs/${newJobName}`,
+    method: "PUT",
+    data: {
+      jobName: newJobName,
+      paused: "Y",
+      serviceJobParameters: [{
+        parameterName: "shopifyShopId",
+        parameterValue: shopifyShopId
+      }]
+    }
+  });
+};
+
 export const ShopifyProductSyncService = {
   fetchShopSystemMessageRemoteId,
   fetchProductUpdateSyncRunState,
@@ -706,5 +877,7 @@ export const ShopifyProductSyncService = {
   startInitialImport,
   fetchProgress,
   fetchReconcile,
-  fetchHistory
+  fetchHistory,
+  fetchSyncJobConfig,
+  configureSyncJob
 };
