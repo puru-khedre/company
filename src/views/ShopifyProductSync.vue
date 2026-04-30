@@ -69,6 +69,7 @@
           @schedule-sync="scheduleSyncJob"
           @toggle-pause-sync-job="togglePauseSyncJob"
           @open-unsynced-updates="openUnsyncedUpdatesModal"
+          @open-specific-products-sync="openSpecificProductsSyncModal"
           @open-step-details="openStepDetails"
           @run-job="runSyncJob"
         />
@@ -174,56 +175,6 @@
                 </ion-item>
               </ion-list>
             </ion-card>
-          </ion-content>
-        </ion-modal>
-
-        <ion-modal :is-open="showUnsyncedUpdatesModal" :backdrop-dismiss="false" @didDismiss="showUnsyncedUpdatesModal = false">
-          <ion-header>
-            <ion-toolbar>
-              <ion-buttons slot="start">
-                <ion-button @click="showUnsyncedUpdatesModal = false" :aria-label="translate('Close')">
-                  <ion-icon slot="icon-only" :icon="closeOutline" />
-                </ion-button>
-              </ion-buttons>
-              <ion-title>{{ translate("Un-synced Shopify updates") }}</ion-title>
-              <ion-buttons slot="end">
-                <ion-button @click="loadUnsyncedProductUpdates" :disabled="isUnsyncedUpdatesLoading" :aria-label="translate('Refresh')">
-                  <ion-icon slot="icon-only" :icon="refreshOutline" />
-                </ion-button>
-              </ion-buttons>
-            </ion-toolbar>
-          </ion-header>
-          <ion-content>
-            <ion-card v-if="isUnsyncedUpdatesLoading">
-              <ion-card-content>
-                <ion-spinner name="crescent" />
-              </ion-card-content>
-            </ion-card>
-              <ion-list v-else lines="full">
-              <ion-item v-if="shopifyShopProductCount > 100">
-                <ion-label>{{ translate("Showing the first 100 updated products.") }}</ion-label>
-                <ion-note slot="end">{{ translate("100+") }}</ion-note>
-              </ion-item>
-              <ion-item v-for="product in unsyncedProductUpdates" :key="product.id">
-                <ion-thumbnail v-if="product.imageUrl" slot="start">
-                  <ion-img :src="product.imageUrl" :alt="product.imageAltText || product.title" />
-                </ion-thumbnail>
-                <ion-label>
-                  {{ product.title }}
-                  <p>{{ product.handle }}</p>
-                  <p>{{ product.vendor || translate("No vendor") }} · {{ product.productType || translate("No type") }}</p>
-                  <p>{{ translate("Updated") }} {{ formatShopifyDate(product.updatedAt) }}</p>
-                </ion-label>
-                <ion-note slot="end">
-                  {{ product.variantsCount }} {{ translate("variants") }}
-                  <p>{{ product.status }}</p>
-                  <p>{{ translate("Inventory") }} {{ product.totalInventory ?? 0 }}</p>
-                </ion-note>
-              </ion-item>
-              <ion-item v-if="!unsyncedProductUpdates.length">
-                <ion-label>{{ translate("No un-synced product updates") }}</ion-label>
-              </ion-item>
-            </ion-list>
           </ion-content>
         </ion-modal>
 
@@ -525,7 +476,6 @@ import {
   IonFab,
   IonFabButton,
   IonHeader,
-  IonImg,
   IonIcon,
   IonInput,
   IonItem,
@@ -541,10 +491,10 @@ import {
   IonSegment,
   IonSegmentButton,
   IonSpinner,
-  IonThumbnail,
   IonTitle,
   IonToolbar,
-  alertController
+  alertController,
+  modalController
 } from "@ionic/vue";
 import { closeOutline, refreshOutline, saveOutline } from "ionicons/icons";
 import cronstrue from "cronstrue";
@@ -554,6 +504,7 @@ import { computed, defineProps, onBeforeUnmount, ref, watch } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import ShopifyProductSyncReturningView from "@/components/ShopifyProductSyncReturningView.vue";
+import ShopifyProductSyncProductsModal from "@/components/ShopifyProductSyncProductsModal.vue";
 import ShopifyProductSyncWizardView from "@/components/ShopifyProductSyncWizardView.vue";
 import { ProductStoreService } from "@/services/ProductStoreService";
 import { ShopifyService } from "@/services/ShopifyService";
@@ -634,10 +585,8 @@ const isReviewLoading = ref(false);
 const showModeModal = ref(false);
 const showMistakeModal = ref(false);
 const showStartSyncModal = ref(false);
-const showUnsyncedUpdatesModal = ref(false);
 const showSyncJobDetailsModal = ref(false);
 const showStepDetailsModal = ref(false);
-const isUnsyncedUpdatesLoading = ref(false);
 const isSyncJobDetailsLoading = ref(false);
 const isSyncJobDetailsSaving = ref(false);
 const isStepDetailsLoading = ref(false);
@@ -663,7 +612,6 @@ const relatedShops = ref<any[]>([]);
 const shopifyShopProductCount = ref(0);
 const pendingUpdateRequestsCount = ref(0);
 const pendingUpdateRequestsLastCreatedAt = ref("");
-const unsyncedProductUpdates = ref<any[]>([]);
 const syncJobDetails = ref<any>({});
 const syncJobDraftCronExpression = ref("");
 const syncJobDetailsRecentRuns = ref<any[]>([]);
@@ -1297,32 +1245,58 @@ async function loadPendingUpdateRequests() {
   }
 }
 
-async function loadUnsyncedProductUpdates() {
-  isUnsyncedUpdatesLoading.value = true;
-  try {
-    unsyncedProductUpdates.value = await ShopifyProductSyncService.fetchUnsyncedProductUpdates({
-      shopId: props.id,
+async function openUnsyncedUpdatesModal() {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product search is unavailable for this shop."));
+    return;
+  }
+
+  const productsModal = await modalController.create({
+    component: ShopifyProductSyncProductsModal,
+    componentProps: {
+      mode: "unsynced",
       systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
       lastSyncedAt: lastProductUpdateSyncedAt.value,
-      shop: shop.value,
-      pageSize: 100
-    });
-  } catch (error: any) {
-    logger.error(error);
-    unsyncedProductUpdates.value = [];
-    showToast(translate("Failed to load un-synced product updates."));
+      shopifyShopProductCount: shopifyShopProductCount.value
+    },
+    showBackdrop: true,
+    swipeToClose: true
+  });
+
+  await productsModal.present();
+  const { data } = await productsModal.onDidDismiss();
+  handleSelectedProductsForSync(data);
+}
+
+async function openSpecificProductsSyncModal() {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product search is unavailable for this shop."));
+    return;
   }
-  isUnsyncedUpdatesLoading.value = false;
+
+  const productsModal = await modalController.create({
+    component: ShopifyProductSyncProductsModal,
+    componentProps: {
+      mode: "search",
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
+    },
+    showBackdrop: true,
+    swipeToClose: true
+  });
+
+  await productsModal.present();
+  const { data } = await productsModal.onDidDismiss();
+  handleSelectedProductsForSync(data);
 }
 
-async function openUnsyncedUpdatesModal() {
-  showUnsyncedUpdatesModal.value = true;
-  await loadUnsyncedProductUpdates();
-}
+function handleSelectedProductsForSync(data: any) {
+  if (!data?.productIds?.length) return;
 
-function formatShopifyDate(value: string) {
-  if (!value) return translate("Recent");
-  return new Date(value).toLocaleString();
+  logger.info("Selected products for on-demand Shopify sync", {
+    productIds: data.productIds,
+    legacyResourceIds: data.legacyResourceIds
+  });
+  showToast(translate("Immediate product sync request API is not available yet."));
 }
 
 async function loadLatestSystemMessage() {

@@ -68,6 +68,7 @@ export interface ShopifyRunningBulkOperation {
 
 export interface ShopifyUnsyncedProductUpdate {
   id: string;
+  legacyResourceId?: string;
   title: string;
   handle: string;
   updatedAt: string;
@@ -78,6 +79,28 @@ export interface ShopifyUnsyncedProductUpdate {
   imageUrl?: string;
   imageAltText?: string;
   variantsCount: number;
+}
+
+export interface ShopifyProductSyncProductSearchResult {
+  id: string;
+  legacyResourceId: string;
+  title: string;
+  handle: string;
+  updatedAt: string;
+  vendor: string;
+  productType: string;
+  status: string;
+  totalInventory?: number;
+  imageUrl?: string;
+  imageAltText?: string;
+  variantsCount: number;
+  cursor: string;
+}
+
+export interface ShopifyProductSyncProductSearchState {
+  products: ShopifyProductSyncProductSearchResult[];
+  hasNextPage: boolean;
+  endCursor: string;
 }
 
 interface ShopifyGraphqlResponse {
@@ -150,6 +173,7 @@ query UnsyncedProductUpdates {
   products(first: ${pageSize}${filterQuery}, sortKey: UPDATED_AT, reverse: true) {
     nodes {
       id
+      legacyResourceId
       title
       handle
       updatedAt
@@ -172,6 +196,108 @@ query UnsyncedProductUpdates {
   }
 }
 `;
+}
+
+function buildProductSearchQuery(queryString: string, first = 20, after?: string) {
+  const pageSize = Math.min(Math.max(Number(first) || 20, 1), 50);
+  const afterQuery = after ? `, after: "${escapeGraphqlString(after)}"` : "";
+  return `
+query ProductSyncProductSearch {
+  products(first: ${pageSize}, query: "${escapeGraphqlString(queryString)}", sortKey: TITLE${afterQuery}) {
+    edges {
+      cursor
+      node {
+        id
+        legacyResourceId
+        title
+        handle
+        updatedAt
+        vendor
+        productType
+        status
+        totalInventory
+        variantsCount {
+          count
+        }
+        featuredMedia {
+          ... on MediaImage {
+            image {
+              url
+              altText
+            }
+          }
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+`;
+}
+
+function buildProductByIdQuery(productGid: string) {
+  return `
+query ProductSyncProductById {
+  product(id: "${escapeGraphqlString(productGid)}") {
+    id
+    legacyResourceId
+    title
+    handle
+    updatedAt
+    vendor
+    productType
+    status
+    totalInventory
+    variantsCount {
+      count
+    }
+    featuredMedia {
+      ... on MediaImage {
+        image {
+          url
+          altText
+        }
+      }
+    }
+  }
+}
+`;
+}
+
+function getExactShopifyProductGid(queryString: string) {
+  const normalizedQuery = queryString.trim();
+  if (/^gid:\/\/shopify\/Product\/\d+$/.test(normalizedQuery)) {
+    return normalizedQuery;
+  }
+  if (/^\d{8,}$/.test(normalizedQuery)) {
+    return `gid://shopify/Product/${normalizedQuery}`;
+  }
+  return "";
+}
+
+function getShopifyProductLegacyId(productGid: string) {
+  return productGid.split("/").pop() || "";
+}
+
+function mapShopifyProductNode(product: any, cursor = ""): ShopifyProductSyncProductSearchResult {
+  return {
+    id: product.id,
+    legacyResourceId: String(product.legacyResourceId || ""),
+    title: product.title,
+    handle: product.handle,
+    updatedAt: product.updatedAt,
+    vendor: product.vendor,
+    productType: product.productType,
+    status: product.status,
+    totalInventory: product.totalInventory,
+    imageUrl: product.featuredMedia?.image?.url,
+    imageAltText: product.featuredMedia?.image?.altText,
+    variantsCount: Number(product.variantsCount?.count || 0),
+    cursor
+  };
 }
 
 export interface ShopifyProductSyncHistoryOperation {
@@ -706,6 +832,7 @@ const fetchUnsyncedProductUpdates = async (payload: any): Promise<ShopifyUnsynce
 
   return graphQlPayload.products.nodes.map((product: any) => ({
     id: product.id,
+    legacyResourceId: String(product.legacyResourceId || ""),
     title: product.title,
     handle: product.handle,
     updatedAt: product.updatedAt,
@@ -717,6 +844,103 @@ const fetchUnsyncedProductUpdates = async (payload: any): Promise<ShopifyUnsynce
     imageAltText: product.featuredMedia?.image?.altText,
     variantsCount: Number(product.variantsCount?.count || 0)
   }));
+};
+
+const fetchRecentlyUpdatedShopifyProducts = async (payload: any): Promise<ShopifyProductSyncProductSearchState> => {
+  const systemMessageRemoteId = resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to fetch recently updated products.");
+  }
+
+  const response = await requestBackend<ShopifyGraphqlResponse>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText: buildProductUpdatesListQuery(undefined, payload.pageSize || 15)
+    }
+  }, "Shopify recently updated products query");
+
+  const graphQlPayload = response?.response || response?.data || response;
+  if (response?.errors?.length || graphQlPayload?.errors?.length) {
+    throw new Error(`Shopify recently updated products query returned errors: ${JSON.stringify(response?.errors || graphQlPayload.errors)}`);
+  }
+  if (!Array.isArray(graphQlPayload?.products?.nodes)) {
+    throw new Error("Shopify recently updated products query response is missing products.nodes.");
+  }
+
+  return {
+    products: graphQlPayload.products.nodes.map((product: any) => mapShopifyProductNode(product)),
+    hasNextPage: false,
+    endCursor: ""
+  };
+};
+
+const searchShopifyProducts = async (payload: any): Promise<ShopifyProductSyncProductSearchState> => {
+  const systemMessageRemoteId = resolveSystemMessageRemoteId(payload);
+  if (!systemMessageRemoteId) {
+    throw new Error("Shopify systemMessageRemoteId is required to search products.");
+  }
+
+  const queryString = String(payload.queryString || "").trim();
+  if (!queryString) {
+    return {
+      products: [],
+      hasNextPage: false,
+      endCursor: ""
+    };
+  }
+
+  const exactProductGid = !payload.after ? getExactShopifyProductGid(queryString) : "";
+  if (exactProductGid) {
+    const response = await requestBackend<ShopifyGraphqlResponse>({
+      url: "shopify/graphql",
+      method: "post",
+      data: {
+        systemMessageRemoteId,
+        queryText: buildProductByIdQuery(exactProductGid)
+      }
+    }, "Shopify product ID lookup query");
+
+    const graphQlPayload = response?.response || response?.data || response;
+    if (response?.errors?.length || graphQlPayload?.errors?.length) {
+      throw new Error(`Shopify product ID lookup query returned errors: ${JSON.stringify(response?.errors || graphQlPayload.errors)}`);
+    }
+    const productNode = graphQlPayload?.product || graphQlPayload?.data?.product || graphQlPayload?.response?.product || graphQlPayload?.response?.data?.product;
+    if (productNode) {
+      return {
+        products: [mapShopifyProductNode(productNode)],
+        hasNextPage: false,
+        endCursor: ""
+      };
+    }
+  }
+
+  const searchQueryString = exactProductGid ? `id:${getShopifyProductLegacyId(exactProductGid)}` : queryString;
+  const response = await requestBackend<ShopifyGraphqlResponse>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText: buildProductSearchQuery(searchQueryString, payload.pageSize || 20, payload.after)
+    }
+  }, "Shopify product search query");
+
+  const graphQlPayload = response?.response || response?.data || response;
+  if (response?.errors?.length || graphQlPayload?.errors?.length) {
+    throw new Error(`Shopify product search query returned errors: ${JSON.stringify(response?.errors || graphQlPayload.errors)}`);
+  }
+  if (!Array.isArray(graphQlPayload?.products?.edges)) {
+    throw new Error("Shopify product search query response is missing products.edges.");
+  }
+
+  return {
+    products: graphQlPayload.products.edges.map((edge: any) => {
+      return mapShopifyProductNode(edge.node || {}, edge.cursor);
+    }),
+    hasNextPage: !!graphQlPayload.products.pageInfo?.hasNextPage,
+    endCursor: graphQlPayload.products.pageInfo?.endCursor || ""
+  };
 };
 
 const fetchProductStoreContext = async (payload: any): Promise<any> => {
@@ -961,7 +1185,9 @@ export const ShopifyProductSyncService = {
   fetchPendingProductUpdateRequests,
   fetchRunningBulkOperation,
   fetchShopifyShopProductCount,
+  fetchRecentlyUpdatedShopifyProducts,
   fetchUnsyncedProductUpdates,
+  searchShopifyProducts,
   fetchSetupState,
   fetchProductStoreContext,
   fetchReviewStats,

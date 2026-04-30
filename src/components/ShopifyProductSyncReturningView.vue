@@ -175,7 +175,7 @@
         <ion-card-subtitle>{{ translate("Override the scheduled sync with a custom request") }}</ion-card-subtitle>
       </ion-card-header>
       <ion-list>
-        <ion-item detail>
+        <ion-item button detail @click="emit('open-specific-products-sync')">
           <ion-label>
             {{ translate("Sync specific products") }}
             <p>{{ translate("Select products to run the product sync for on demand") }}</p>
@@ -378,7 +378,7 @@ const props = defineProps<{
   hasCurrentShopifyRequest?: boolean
   syncJobObj?: any
 }>();
-const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job"]);
+const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job"]);
 
 
 
