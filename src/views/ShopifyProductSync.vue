@@ -1396,14 +1396,48 @@ async function openResyncEntireCatalogModal() {
   }
 }
 
-function handleSelectedProductsForSync(data: any) {
-  if (!data?.productIds?.length) return;
+async function handleSelectedProductsForSync(data: any) {
+  const shopifyProductIds = getSelectedShopifyProductIds(data);
+  if (!shopifyProductIds.length) return;
 
-  logger.info("Selected products for on-demand Shopify sync", {
-    productIds: data.productIds,
-    legacyResourceIds: data.legacyResourceIds
+  isSaving.value = true;
+  try {
+    const result = await ShopifyProductSyncService.syncShopifyProductsOnDemand({
+      shopId: props.id,
+      shopifyProductIds
+    });
+
+    showToast(getSelectedProductSyncResultMessage(result, shopifyProductIds.length));
+    await loadLatestSystemMessage();
+    await loadPendingUpdateRequests();
+  } catch (error: any) {
+    logger.error(error);
+    showToast(getErrorMessage(error, translate("Failed to sync selected products.")));
+  } finally {
+    isSaving.value = false;
+  }
+}
+
+function getSelectedShopifyProductIds(data: any) {
+  const legacyResourceIds = Array.isArray(data?.legacyResourceIds) ? data.legacyResourceIds : [];
+  const productIds = legacyResourceIds.length ? legacyResourceIds : (data?.productIds || []).map(getShopifyProductLegacyId);
+
+  return productIds
+    .map((productId: any) => String(productId || "").trim())
+    .filter((productId: string, index: number, list: string[]) => /^\d+$/.test(productId) && list.indexOf(productId) === index);
+}
+
+function getShopifyProductLegacyId(productId: string) {
+  return String(productId || "").split("/").pop() || "";
+}
+
+function getSelectedProductSyncResultMessage(result: any, requestedCount: number) {
+  return translate("Selected product sync completed: {synced} synced, {failed} failed, {rejected} rejected.", {
+    synced: Number(result?.syncedCount || 0),
+    failed: Number(result?.failedCount || 0),
+    rejected: Number(result?.rejectedCount || 0),
+    requested: requestedCount
   });
-  showToast(translate("Immediate product sync request API is not available yet."));
 }
 
 async function loadLatestSystemMessage() {
