@@ -103,6 +103,17 @@ export interface ShopifyProductSyncProductSearchState {
   endCursor: string;
 }
 
+export interface ShopifyProductSyncOnDemandResult {
+  syncedProductId?: string[];
+  missingProductId?: string[];
+  failedProductId?: string[];
+  rejectedProductId?: string[];
+  acceptedCount?: number;
+  syncedCount?: number;
+  failedCount?: number;
+  rejectedCount?: number;
+}
+
 interface ShopifyGraphqlResponse {
   response?: any;
   data?: any;
@@ -943,6 +954,32 @@ const searchShopifyProducts = async (payload: any): Promise<ShopifyProductSyncPr
   };
 };
 
+const syncShopifyProductsOnDemand = async (payload: any): Promise<ShopifyProductSyncOnDemandResult> => {
+  const shopifyProductIds = (payload.shopifyProductIds || [])
+    .map((shopifyProductId: any) => String(shopifyProductId || "").trim())
+    .filter((shopifyProductId: string, index: number, list: string[]) => shopifyProductId && list.indexOf(shopifyProductId) === index);
+
+  if (!payload.shopId) {
+    throw new Error("Shopify shop id is required to sync selected products.");
+  }
+  if (!shopifyProductIds.length) {
+    throw new Error("Select at least one Shopify product to sync.");
+  }
+
+  const data: any = {
+    shopId: payload.shopId,
+    shopifyProductId: shopifyProductIds
+  };
+  if (payload.namespace) data.namespace = payload.namespace;
+  if (payload.additionalParameters) data.additionalParameters = payload.additionalParameters;
+
+  return requestBackend<ShopifyProductSyncOnDemandResult>({
+    url: "sob/shopify/syncShopifyProductsOnDemand",
+    method: "post",
+    data
+  }, "Shopify selected products sync endpoint");
+};
+
 const fetchProductStoreContext = async (payload: any): Promise<any> => {
   return buildProductStoreContext(payload);
 };
@@ -1188,6 +1225,7 @@ export const ShopifyProductSyncService = {
   fetchRecentlyUpdatedShopifyProducts,
   fetchUnsyncedProductUpdates,
   searchShopifyProducts,
+  syncShopifyProductsOnDemand,
   fetchSetupState,
   fetchProductStoreContext,
   fetchReviewStats,
