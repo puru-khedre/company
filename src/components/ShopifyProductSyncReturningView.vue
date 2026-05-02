@@ -35,7 +35,7 @@
           </ion-label>
           <ion-badge slot="end" color="warning" v-if="isSyncPaused">{{ translate("Paused") }}</ion-badge>
           <ion-label slot="end" v-else-if="isSyncScheduled">{{ nextSyncRelativeLabel }}</ion-label>
-          <ion-button slot="end" fill="outline" color="primary" v-else @click.stop="openScheduleModal()">{{ translate("Schedule") }}</ion-button>
+          <ion-button slot="end" fill="outline" color="primary" v-else @click.stop="emit('open-sync-job-details', syncJobObj)">{{ translate("Schedule") }}</ion-button>
         </ion-item>
         <ion-item button detail @click="emit('open-unsynced-updates')">
           <ion-label>{{ translate("Un-synced updates") }}</ion-label>
@@ -151,7 +151,7 @@
             {{ translate("Current Shopify request status")}}
             <p>{{ currentShopifyRequestSubtitle }}</p>
           </ion-label>
-          <ion-badge v-if="hasCurrentShopifyRequest" slot="end" :color="currentShopifyRequestStatusColor">{{ currentShopifyRequestStatusLabel }}</ion-badge>
+          <ion-badge slot="end" :color="hasCurrentShopifyRequest ? currentShopifyRequestStatusColor : 'medium'">{{ hasCurrentShopifyRequest ? currentShopifyRequestStatusLabel : translate("Idle") }}</ion-badge>
         </ion-item>
         <ion-item>
           <ion-label>
@@ -357,7 +357,7 @@ import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps, ref } from "vue";
 import { checkmarkCircleOutline, closeOutline, ellipsisVerticalOutline, flashOutline, pauseCircleOutline, refreshOutline, timeOutline } from "ionicons/icons";
 import { modalController, popoverController } from "@ionic/vue";
-import ScheduleModal from "./ScheduleModal.vue";
+
 import ShopifyProductSyncActionsPopover from "./ShopifyProductSyncActionsPopover.vue";
 import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
 
@@ -409,20 +409,7 @@ const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsy
 
 
 
-async function openScheduleModal() {
-  const scheduleModal = await modalController.create({
-    component: ScheduleModal,
-    componentProps: { cronExpression: props.syncJobObj?.cronExpression || "0 */15 * ? * *" },
-    showBackdrop: true,
-    swipeToClose: true
-  });
-  scheduleModal.onDidDismiss().then((result) => {
-    if (result.data && result.data.expression) {
-      emit("schedule-sync", result.data.expression);
-    }
-  });
-  await scheduleModal.present();
-}
+
 
 async function openActionsPopover(event: Event) {
   const popover = await popoverController.create({
@@ -437,7 +424,7 @@ async function openActionsPopover(event: Event) {
 
   const { data } = await popover.onDidDismiss();
   if (data?.action === 'reschedule') {
-    openScheduleModal();
+    emit('open-sync-job-details', props.syncJobObj);
   } else if (data?.action === 'pause') {
     emit("toggle-pause-sync-job", true);
   } else if (data?.action === 'resume') {

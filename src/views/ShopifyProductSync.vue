@@ -302,7 +302,7 @@
                         {{ translate("Schedule") }}
                         <p>{{ syncJobDraftScheduleDescription || translate("Not scheduled") }}</p>
                       </ion-label>
-                      <ion-note slot="end">{{ syncJobDraftNextRunLabel }}</ion-note>
+                      <ion-note slot="end">{{ syncJobDraftNextRunRelativeLabel }}</ion-note>
                     </ion-item>
                     <ion-list slot="content" lines="full">
                       <ion-item>
@@ -314,10 +314,10 @@
                       </ion-item>
                       <ion-item>
                         <ion-label>
-                          {{ translate("Schedule preview") }}
-                          <p>{{ isSyncJobDraftScheduleValid ? syncJobDraftScheduleDescription : translate("Provide a valid cron expression") }}</p>
+                          <p class="overline" >{{ translate("Schedule preview") }}</p>
+                          {{ isSyncJobDraftScheduleValid ? syncJobDraftScheduleDescription : translate("Provide a valid cron expression") }}
                         </ion-label>
-                        <ion-note slot="end">{{ isSyncJobDraftScheduleValid ? syncJobDraftNextRunLabel : translate("Invalid") }}</ion-note>
+                        <ion-note slot="end">{{ syncJobDraftNextRunTimeLabel }}</ion-note>
                       </ion-item>
                       <ion-list-header>{{ translate("Schedule Options") }}</ion-list-header>
                       <ion-radio-group v-model="syncJobDraftCronExpression">
@@ -380,9 +380,7 @@
                         {{ translate("Edit history") }}
                         <p>{{ translate("User changes recorded in EntityAuditLog.") }}</p>
                       </ion-label>
-                      <ion-spinner v-if="isSyncJobAuditHistoryLoading" slot="end" name="crescent" />
-                      <ion-note v-else-if="syncJobAuditHistoryError" slot="end">{{ translate("Unavailable") }}</ion-note>
-                      <ion-note v-else slot="end">{{ syncJobAuditHistory.length }}</ion-note>
+                      <ion-note slot="end">{{ syncJobAuditHistoryError ? translate("Unavailable") : syncJobAuditHistory.length }}</ion-note>
                     </ion-item>
                     <ion-list slot="content" lines="full">
                       <ion-item v-if="isSyncJobAuditHistoryLoading">
@@ -979,6 +977,18 @@ const syncJobDraftNextRunLabel = computed(() => {
   const nextRun = getNextRunDateTime({ cronExpression: syncJobDraftCronExpression.value });
   if (!nextRun) return translate("Not scheduled");
   return nextRun.toLocaleString(DateTime.DATETIME_SHORT);
+});
+const syncJobDraftNextRunRelativeLabel = computed(() => {
+  if (!isSyncJobDraftScheduleValid.value) return translate("Invalid");
+  const nextRun = getNextRunDateTime({ cronExpression: syncJobDraftCronExpression.value });
+  if (!nextRun) return translate("Not scheduled");
+  return `${translate("next run in")} ${nextRun.toRelative({ base: DateTime.fromMillis(currentTimeMs.value), style: "long" }).replace("in ", "")}`;
+});
+const syncJobDraftNextRunTimeLabel = computed(() => {
+  if (!isSyncJobDraftScheduleValid.value) return translate("Invalid");
+  const nextRun = getNextRunDateTime({ cronExpression: syncJobDraftCronExpression.value });
+  if (!nextRun) return translate("Not scheduled");
+  return `${translate("next run at")} ${nextRun.toLocaleString(DateTime.DATETIME_SHORT)}`;
 });
 const isBulkOperationSendJobPaused = computed(() => {
   return isJobPaused(bulkOperationSendJob.value);
@@ -2510,41 +2520,40 @@ function getSyncJobAuditChangedBy(auditLog: any) {
 }
 
 async function loadSyncJobAuditUsers(auditLogs: any[]) {
-  const userLoginIds = Array.from(new Set(auditLogs.map(getSyncJobAuditChangedBy).filter(Boolean)));
-  const missingUserLoginIds = userLoginIds.filter((userLoginId) => !syncJobAuditUsers.value[userLoginId]);
+  const userIds = Array.from(new Set(auditLogs.map(getSyncJobAuditChangedBy).filter(Boolean)));
+  const missingUserIds = userIds.filter((userId) => !syncJobAuditUsers.value[userId]);
 
-  if (!missingUserLoginIds.length) return;
+  if (!missingUserIds.length) return;
 
-  const responses = await Promise.allSettled(missingUserLoginIds.map(async (userLoginId) => {
-    const resp = await UserService.getPersonByUserLoginId(userLoginId);
-    return { userLoginId, data: resp?.data || {} };
+  const responses = await Promise.allSettled(missingUserIds.map(async (userId) => {
+    const resp = await UserService.getUserAccount(userId);
+    return { userId, data: resp?.data || {} };
   }));
 
   const auditUsers = { ...syncJobAuditUsers.value };
   responses.forEach((response) => {
     if (response.status === "fulfilled") {
-      auditUsers[response.value.userLoginId] = response.value.data;
+      auditUsers[response.value.userId] = response.value.data;
       return;
     }
 
-    const rejectedUserLoginId = missingUserLoginIds[responses.indexOf(response)];
-    auditUsers[rejectedUserLoginId] = { userLoginId: rejectedUserLoginId };
+    const rejectedUserId = missingUserIds[responses.indexOf(response)];
+    auditUsers[rejectedUserId] = { userId: rejectedUserId };
     logger.warn("Failed to load audit user details", response.reason);
   });
   syncJobAuditUsers.value = auditUsers;
 }
 
 function getSyncJobAuditChangedByLabel(auditLog: any) {
-  const userLoginId = getSyncJobAuditChangedBy(auditLog);
-  if (!userLoginId) return "";
+  const userId = getSyncJobAuditChangedBy(auditLog);
+  if (!userId) return "";
 
-  const userDetails = syncJobAuditUsers.value[userLoginId];
-  if (!userDetails) return userLoginId;
+  const userDetails = syncJobAuditUsers.value[userId];
+  if (!userDetails) return userId;
 
-  const fullName = [userDetails.firstName, userDetails.middleName, userDetails.lastName].filter(Boolean).join(" ").trim() || userDetails.fullName;
-  const primaryLabel = fullName || userDetails.groupName || userDetails.partyId || userLoginId;
+  const primaryLabel = userDetails.userFullName?.trim() || userDetails.externalUserId || userDetails.username || userId;
 
-  return primaryLabel === userLoginId ? userLoginId : `${primaryLabel} (${userLoginId})`;
+  return primaryLabel === userId ? userId : `${primaryLabel} (${userId})`;
 }
 
 function getSyncJobAuditChangeLabel(auditLog: any) {

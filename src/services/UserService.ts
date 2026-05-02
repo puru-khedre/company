@@ -62,9 +62,9 @@ const getAvailableTimeZones = async (): Promise <any>  => {
   });
 }
 
-const getPersonByUserLoginId = async (userLoginId: string): Promise<any> => {
+const getUserAccount = async (userId: string): Promise<any> => {
   return api({
-    url: `admin/users/${encodeURIComponent(userLoginId)}/person`,
+    url: `admin/users/${encodeURIComponent(userId)}`,
     method: "GET"
   });
 }
@@ -169,7 +169,7 @@ const getUserPermissions = async (payload: any, url: string, token: any): Promis
 
 export const UserService = {
   getAvailableTimeZones,
-  getPersonByUserLoginId,
+  getUserAccount,
   getUserProfile,
   getUserPermissions,
   login,
