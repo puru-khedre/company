@@ -19,6 +19,29 @@ const getNormalizedJob = (job: any = {}) => ({
   ...job
 });
 
+const getServiceJobs = (payload: any) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.serviceJobs)) return payload.serviceJobs;
+  if (Array.isArray(payload?.serviceJobList)) return payload.serviceJobList;
+  if (Array.isArray(payload?.jobs)) return payload.jobs;
+  if (Array.isArray(payload?.jobList)) return payload.jobList;
+  if (Array.isArray(payload?.docs)) return payload.docs;
+  if (Array.isArray(payload?.entityValueList)) return payload.entityValueList;
+  return [];
+};
+
+const getEntityAuditLogs = (payload: any) => {
+  if (Array.isArray(payload)) return payload;
+  if (payload?._entity === "moqui.entity.EntityAuditLog") return [payload];
+  if (Array.isArray(payload?.entityAuditLogs)) return payload.entityAuditLogs;
+  if (Array.isArray(payload?.entityAuditLogList)) return payload.entityAuditLogList;
+  if (Array.isArray(payload?.auditLogs)) return payload.auditLogs;
+  if (Array.isArray(payload?.auditLogList)) return payload.auditLogList;
+  if (Array.isArray(payload?.entityValueList)) return payload.entityValueList;
+  if (Array.isArray(payload?.docs)) return payload.docs;
+  return [];
+};
+
 export const getNormalizedJobDetail = (jobDetail: any = {}) => {
   return getNormalizedJob(jobDetail);
 };
@@ -53,7 +76,7 @@ export default function useServiceJob() {
           }
         }) as any;
 
-        const respJobs = (resp?.data || []).map((job: any) => ({
+        const respJobs = getServiceJobs(resp?.data).map((job: any) => ({
           ...job,
           cronString: job.cronExpression ? getCronString(job.cronExpression) : ''
         }));
@@ -167,6 +190,22 @@ export default function useServiceJob() {
     return Array.isArray(jobRuns) ? jobRuns : [];
   };
 
+  const fetchJobAuditHistory = async (jobName: string, payload = { pageSize: 10, pageIndex: 0 }) => {
+    const resp = await api({
+      url: "admin/entityAuditLogs",
+      method: "GET",
+      params: {
+        pageSize: payload.pageSize,
+        pageIndex: payload.pageIndex,
+        changedEntityName: "moqui.service.job.ServiceJob",
+        pkPrimaryValue: jobName,
+        orderByField: "-changedDate"
+      }
+    }) as any;
+
+    return getEntityAuditLogs(resp?.data);
+  };
+
   const updateJob = async (payload: any) => {
     return await api({
       url: `admin/serviceJobs/${payload.jobName}`,
@@ -189,6 +228,7 @@ export default function useServiceJob() {
     fetchProductDetail,
     fetchJobDetail,
     fetchJobRuns,
+    fetchJobAuditHistory,
     updateJob,
     runNow
   };

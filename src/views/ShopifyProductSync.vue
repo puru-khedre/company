@@ -35,6 +35,7 @@
       <template v-else>
         <shopify-product-sync-returning-view
           v-if="activeExperienceMode === 'returning'"
+          :is-secondary-loading="isSecondaryLoading"
           :is-sync-scheduled="isSyncScheduled"
           :is-sync-paused="isSyncJobPaused"
           :last-sync-label="lastSyncLabel"
@@ -44,7 +45,6 @@
           :system-message-send-job-next-run-label="systemMessageSendJobNextRunLabel"
           :bulk-operation-poll-job-next-run-label="bulkOperationPollJobNextRunLabel"
           :current-sync-run="currentSyncRun"
-          :recent-sync-errors="recentSyncErrors"
           :recent-sync-updates="recentSyncUpdates"
           :selected-product-store-name="selectedProductStoreName"
           :summary-subtitle="syncSummarySubtitle"
@@ -64,13 +64,27 @@
           :current-shopify-request-status-color="currentShopifyRequestStatusColor"
           :has-current-shopify-request="hasRunningShopifyBulkOperation"
           :sync-job-obj="syncJobObj"
+          :error-record-count="errorRecordCount"
+          :last-sync-total-record-count="lastSyncTotalRecordCount"
+          :failed-records="pagedFilteredParsedErrorRecords"
+          :total-detailed-errors-count="filteredParsedErrorRecords.length"
+          :has-detailed-errors="recentMdmLogs.length > 0"
+          :detailed-error-query="detailedErrorSearchQuery"
+          @update:detailed-error-query="detailedErrorSearchQuery = $event"
+          @show-error-modal="openErrorDetailsModal"
+          @refresh-errors="refreshErrorRecords"
+          @resync-product="resyncProduct"
+          @load-more-errors="loadMoreErrorRecords"
           @open-history="openHistory"
           @open-sync-job-details="openSyncJobDetailsModal"
           @schedule-sync="scheduleSyncJob"
           @toggle-pause-sync-job="togglePauseSyncJob"
           @open-unsynced-updates="openUnsyncedUpdatesModal"
+          @open-specific-products-sync="openSpecificProductsSyncModal"
+          @open-resync-entire-catalog="openResyncEntireCatalogModal"
           @open-step-details="openStepDetails"
           @run-job="runSyncJob"
+          @download-file="downloadRawFile"
         />
 
         <shopify-product-sync-wizard-view
@@ -133,8 +147,9 @@
           @toggle-start-confirmation="toggleStartConfirmation"
           @open-step-details="openStepDetails"
         />
+      </template>
 
-        <ion-modal :is-open="showModeModal" :backdrop-dismiss="false" @didDismiss="showModeModal = false">
+      <ion-modal :is-open="showModeModal" :backdrop-dismiss="false" @didDismiss="showModeModal = false">
           <ion-header>
             <ion-toolbar>
               <ion-buttons slot="start">
@@ -177,54 +192,55 @@
           </ion-content>
         </ion-modal>
 
-        <ion-modal :is-open="showUnsyncedUpdatesModal" :backdrop-dismiss="false" @didDismiss="showUnsyncedUpdatesModal = false">
+        <ion-modal :is-open="showResyncEntireCatalogModal" :backdrop-dismiss="false" @didDismiss="showResyncEntireCatalogModal = false">
           <ion-header>
             <ion-toolbar>
               <ion-buttons slot="start">
-                <ion-button @click="showUnsyncedUpdatesModal = false" :aria-label="translate('Close')">
+                <ion-button @click="showResyncEntireCatalogModal = false" :aria-label="translate('Close')">
                   <ion-icon slot="icon-only" :icon="closeOutline" />
                 </ion-button>
               </ion-buttons>
-              <ion-title>{{ translate("Un-synced Shopify updates") }}</ion-title>
-              <ion-buttons slot="end">
-                <ion-button @click="loadUnsyncedProductUpdates" :disabled="isUnsyncedUpdatesLoading" :aria-label="translate('Refresh')">
-                  <ion-icon slot="icon-only" :icon="refreshOutline" />
-                </ion-button>
-              </ion-buttons>
+              <ion-title>{{ translate("Re-sync entire catalog") }}</ion-title>
             </ion-toolbar>
           </ion-header>
           <ion-content>
-            <ion-card v-if="isUnsyncedUpdatesLoading">
-              <ion-card-content>
-                <ion-spinner name="crescent" />
-              </ion-card-content>
-            </ion-card>
-              <ion-list v-else lines="full">
-              <ion-item v-if="shopifyShopProductCount > 100">
-                <ion-label>{{ translate("Showing the first 100 updated products.") }}</ion-label>
-                <ion-note slot="end">{{ translate("100+") }}</ion-note>
-              </ion-item>
-              <ion-item v-for="product in unsyncedProductUpdates" :key="product.id">
-                <ion-thumbnail v-if="product.imageUrl" slot="start">
-                  <ion-img :src="product.imageUrl" :alt="product.imageAltText || product.title" />
-                </ion-thumbnail>
+            <ion-list lines="full">
+              <ion-item lines="none">
                 <ion-label>
-                  {{ product.title }}
-                  <p>{{ product.handle }}</p>
-                  <p>{{ product.vendor || translate("No vendor") }} · {{ product.productType || translate("No type") }}</p>
-                  <p>{{ translate("Updated") }} {{ formatShopifyDate(product.updatedAt) }}</p>
+                  <h2>{{ translate("Re-sync entire catalog") }}</h2>
+                  <p>{{ translate("This will import every product currently in Shopify again.") }}</p>
+                  <p>{{ translate("This process can take time because Shopify has to export the catalog before HotWax imports it. This will not delete products that were deleted in Shopify.") }}</p>
                 </ion-label>
-                <ion-note slot="end">
-                  {{ product.variantsCount }} {{ translate("variants") }}
-                  <p>{{ product.status }}</p>
-                  <p>{{ translate("Inventory") }} {{ product.totalInventory ?? 0 }}</p>
-                </ion-note>
               </ion-item>
-              <ion-item v-if="!unsyncedProductUpdates.length">
-                <ion-label>{{ translate("No un-synced product updates") }}</ion-label>
+              <ion-item>
+                <ion-label>
+                  {{ translate("Products to import") }}
+                  <p>{{ translate("Current products in Shopify") }}</p>
+                </ion-label>
+                <ion-note slot="end">{{ resyncCatalogProductCountLabel }}</ion-note>
+              </ion-item>
+              <ion-item>
+                <ion-label>
+                  {{ translate("Variants to import") }}
+                  <p>{{ translate("Current product variants in Shopify") }}</p>
+                </ion-label>
+                <ion-note slot="end">{{ resyncCatalogVariantCountLabel }}</ion-note>
               </ion-item>
             </ion-list>
           </ion-content>
+          <ion-footer>
+            <ion-toolbar>
+              <ion-buttons slot="start">
+                <ion-button fill="clear" @click="showResyncEntireCatalogModal = false" :disabled="isResyncEntireCatalogStarting">{{ translate("Cancel") }}</ion-button>
+              </ion-buttons>
+              <ion-buttons slot="end">
+                <ion-button fill="solid" color="primary" @click="startResyncEntireCatalog" :disabled="isResyncEntireCatalogStarting">
+                  <ion-spinner v-if="isResyncEntireCatalogStarting" name="crescent" />
+                  <span v-else>{{ translate("Start full catalog re-sync") }}</span>
+                </ion-button>
+              </ion-buttons>
+            </ion-toolbar>
+          </ion-footer>
         </ion-modal>
 
         <ion-modal :is-open="showSyncJobDetailsModal" :backdrop-dismiss="false" :can-dismiss="canDismissSyncJobDetailsModal" @didDismiss="handleSyncJobDetailsDidDismiss">
@@ -261,8 +277,13 @@
                     </ion-label>
                   </ion-item>
                   <ion-item>
-                    <ion-label>{{ translate("Status") }}</ion-label>
-                    <ion-label slot="end">{{ getSyncJobStatusLabel(syncJobDetails) }}</ion-label>
+                    <ion-label>{{ translate("Active") }}</ion-label>
+                    <ion-toggle
+                      slot="end"
+                      :checked="syncJobDraftActive"
+                      :disabled="isSyncJobDetailsSaving"
+                      @ionChange="handleSyncJobActiveChange($event.detail.checked)"
+                    />
                   </ion-item>
                   <ion-item>
                     <ion-label>{{ translate("Last run") }}</ion-label>
@@ -271,14 +292,6 @@
                   <ion-item>
                     <ion-label>{{ translate("Instance of product") }}</ion-label>
                     <ion-label slot="end">{{ syncJobProductLabel }}</ion-label>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label>{{ translate("Created") }}</ion-label>
-                    <ion-label slot="end">{{ formatDateTime(syncJobDetails.createdDate || syncJobDetails.createdStamp) }}</ion-label>
-                  </ion-item>
-                  <ion-item>
-                    <ion-label>{{ translate("Updated") }}</ion-label>
-                    <ion-label slot="end">{{ formatDateTime(syncJobDetails.lastUpdatedStamp || syncJobDetails.lastModifiedDate) }}</ion-label>
                   </ion-item>
                 </ion-list>
 
@@ -359,6 +372,41 @@
                       <ion-item v-if="!syncJobDetailsRecentRuns.length">
                         <ion-label>{{ translate("No recent runs found") }}</ion-label>
                       </ion-item>
+                    </ion-list>
+                  </ion-accordion>
+                  <ion-accordion value="edit-history">
+                    <ion-item slot="header">
+                      <ion-label>
+                        {{ translate("Edit history") }}
+                        <p>{{ translate("User changes recorded in EntityAuditLog.") }}</p>
+                      </ion-label>
+                      <ion-spinner v-if="isSyncJobAuditHistoryLoading" slot="end" name="crescent" />
+                      <ion-note v-else-if="syncJobAuditHistoryError" slot="end">{{ translate("Unavailable") }}</ion-note>
+                      <ion-note v-else slot="end">{{ syncJobAuditHistory.length }}</ion-note>
+                    </ion-item>
+                    <ion-list slot="content" lines="full">
+                      <ion-item v-if="isSyncJobAuditHistoryLoading">
+                        <ion-spinner name="crescent" />
+                      </ion-item>
+                      <ion-item v-else-if="syncJobAuditHistoryError">
+                        <ion-label>
+                          {{ translate("Edit history unavailable") }}
+                          <p>{{ syncJobAuditHistoryError }}</p>
+                        </ion-label>
+                      </ion-item>
+                      <ion-item v-else-if="!syncJobAuditHistory.length">
+                        <ion-label>{{ translate("No edit history found") }}</ion-label>
+                      </ion-item>
+                      <template v-else>
+                        <ion-item v-for="auditLog in syncJobAuditHistory" :key="getSyncJobAuditHistoryKey(auditLog)">
+                          <ion-label>
+                            {{ getSyncJobAuditFieldLabel(auditLog) }}
+                            <p>{{ formatDateTime(getSyncJobAuditChangedAt(auditLog)) }}</p>
+                            <p v-if="getSyncJobAuditChangedBy(auditLog)">{{ translate("Changed by") }}: {{ getSyncJobAuditChangedBy(auditLog) }}</p>
+                            <p>{{ getSyncJobAuditChangeLabel(auditLog) }}</p>
+                          </ion-label>
+                        </ion-item>
+                      </template>
                     </ion-list>
                   </ion-accordion>
                 </ion-accordion-group>
@@ -502,7 +550,29 @@
           </ion-content>
         </ion-modal>
 
-      </template>
+        <ion-modal :is-open="showErrorDetailsModal" @didDismiss="showErrorDetailsModal = false">
+          <ion-header>
+            <ion-toolbar>
+              <ion-buttons slot="start">
+                <ion-button @click="showErrorDetailsModal = false">
+                  <ion-icon slot="icon-only" :icon="closeOutline" />
+                </ion-button>
+              </ion-buttons>
+              <ion-title>{{ translate("Error details") }}</ion-title>
+              <ion-buttons slot="end">
+                <ion-button color="primary" @click="resyncProduct(selectedErrorRecord)">
+                  {{ translate("Resync") }}
+                </ion-button>
+              </ion-buttons>
+            </ion-toolbar>
+          </ion-header>
+          <ion-content>
+            <div class="ion-padding">
+              <pre>{{ JSON.stringify(selectedErrorRecord, null, 2) }}</pre>
+            </div>
+          </ion-content>
+        </ion-modal>
+
     </ion-content>
   </ion-page>
 </template>
@@ -522,10 +592,10 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
+  IonFooter,
   IonFab,
   IonFabButton,
   IonHeader,
-  IonImg,
   IonIcon,
   IonInput,
   IonItem,
@@ -541,10 +611,11 @@ import {
   IonSegment,
   IonSegmentButton,
   IonSpinner,
-  IonThumbnail,
   IonTitle,
+  IonToggle,
   IonToolbar,
-  alertController
+  alertController,
+  modalController
 } from "@ionic/vue";
 import { closeOutline, refreshOutline, saveOutline } from "ionicons/icons";
 import cronstrue from "cronstrue";
@@ -554,6 +625,7 @@ import { computed, defineProps, onBeforeUnmount, ref, watch } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import ShopifyProductSyncReturningView from "@/components/ShopifyProductSyncReturningView.vue";
+import ShopifyProductSyncProductsModal from "@/components/ShopifyProductSyncProductsModal.vue";
 import ShopifyProductSyncWizardView from "@/components/ShopifyProductSyncWizardView.vue";
 import { ProductStoreService } from "@/services/ProductStoreService";
 import { ShopifyService } from "@/services/ShopifyService";
@@ -564,6 +636,7 @@ import {
   canStartProductSync,
   createProductSyncWizardDraft,
   getReviewImportAction,
+  getRawShopifyFileName,
   nextProductSyncStep,
   normalizeProductSyncStatus,
   previousProductSyncStep,
@@ -574,13 +647,14 @@ import {
   selectProductStore,
   shouldShowProductSyncProgress
 } from "@/utils/shopifyProductSyncWizard";
-import { hasError, showToast } from "@/utils";
+import { downloadTextFile, getDownloadFileContent, hasError, showToast } from "@/utils";
 import logger from "@/logger";
 import useServiceJob from "@/composables/useServiceJob";
 import { useDataManagerLog } from "@/composables/useDataManagerLog";
 import { useProductUpdateHistory } from "@/composables/useProductUpdateHistory";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
 import { getSystemMessageBulkOperationId } from "@/utils/shopifyBulkOperation";
+import { deleteErrorRecords } from "@/utils/storage";
 
 const props = defineProps(["id"]);
 const store = useStore();
@@ -591,11 +665,12 @@ const {
   fetchJobs,
   fetchJobDetail,
   fetchJobRuns,
+  fetchJobAuditHistory,
   fetchProductDetail,
   updateJob,
   runNow
 } = useServiceJob();
-const { fetchLogDetails, fetchMdmLogBySystemMessageId, fetchRecentLogsByConfigId, currentMdmLog, recentMdmLogs, errorLogs } = useDataManagerLog();
+const { downloadDataManagerFile, fetchLogDetails, fetchMdmLogBySystemMessageId, fetchRecentLogsByConfigId, currentMdmLog, recentMdmLogs, errorLogs, fetchAllRecentFailedRecords, clearStorage } = useDataManagerLog();
 const { productUpdateHistories, fetchProductUpdateHistory } = useProductUpdateHistory();
 const { currentSyncRun, fetchSyncRun } = useShopifyProductSyncRun();
 const PRODUCT_UPDATE_SYNC_SERVICE_NAME = "sync_ShopifyProductUpdates";
@@ -628,21 +703,22 @@ const latestConsumedSystemMessage = ref<any>(null);
 const lastProductUpdateSyncedAt = ref("");
 const currentTimeMs = ref(Date.now());
 const isLoading = ref(true);
+const isSecondaryLoading = ref(false);
 const loadErrorMessage = ref("");
 const isSaving = ref(false);
 const isReviewLoading = ref(false);
 const showModeModal = ref(false);
 const showMistakeModal = ref(false);
 const showStartSyncModal = ref(false);
-const showUnsyncedUpdatesModal = ref(false);
+const showResyncEntireCatalogModal = ref(false);
 const showSyncJobDetailsModal = ref(false);
 const showStepDetailsModal = ref(false);
-const isUnsyncedUpdatesLoading = ref(false);
 const isSyncJobDetailsLoading = ref(false);
 const isSyncJobDetailsSaving = ref(false);
 const isStepDetailsLoading = ref(false);
 const isSyncJobConfigLoaded = ref(false);
 const isSyncJobConfiguring = ref(false);
+const isResyncEntireCatalogStarting = ref(false);
 const syncJobConfigured = ref(false);
 const scheduledJobName = ref("");
 const currentStepDetail = ref<any>(null);
@@ -663,10 +739,14 @@ const relatedShops = ref<any[]>([]);
 const shopifyShopProductCount = ref(0);
 const pendingUpdateRequestsCount = ref(0);
 const pendingUpdateRequestsLastCreatedAt = ref("");
-const unsyncedProductUpdates = ref<any[]>([]);
+const errorRecordCount = ref(0);
 const syncJobDetails = ref<any>({});
 const syncJobDraftCronExpression = ref("");
+const syncJobDraftActive = ref(true);
 const syncJobDetailsRecentRuns = ref<any[]>([]);
+const syncJobAuditHistory = ref<any[]>([]);
+const isSyncJobAuditHistoryLoading = ref(false);
+const syncJobAuditHistoryError = ref("");
 const syncJobRecentRuns = ref<any[]>([]);
 const selectedSyncJobDetailsJob = ref<any>(null);
 const syncJobId = ref("");
@@ -699,6 +779,9 @@ const progressState = ref<any>({
   queuedJobsAhead: 0
 });
 const reconcileState = ref<any>({});
+const detailedErrorSearchQuery = ref("");
+const selectedErrorRecord = ref<any>(null);
+const showErrorDetailsModal = ref(false);
 let progressPoll: number | undefined;
 let nextSyncRefreshPoll: number | undefined;
 
@@ -781,14 +864,14 @@ const lastSyncLabel = computed(() => {
   const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConsumedSystemMessage.value?.initDate;
   return lastSyncedAt
     ? new Date(lastSyncedAt).toLocaleString()
-    : translate("Sync time");
+    : translate("No completed sync recorded");
 });
 const lastSyncRelativeLabel = computed(() => {
   const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConsumedSystemMessage.value?.initDate;
-  if (!lastSyncedAt) return translate("Sync time");
+  if (!lastSyncedAt) return translate("Not synced yet");
 
   const dateTime = parseDateTimeValue(lastSyncedAt);
-  if (!dateTime || !dateTime.isValid) return translate("Sync time");
+  if (!dateTime || !dateTime.isValid) return translate("Not synced yet");
 
   return dateTime.toRelative({ base: DateTime.fromMillis(currentTimeMs.value) });
 });
@@ -819,6 +902,10 @@ const systemMessageSendJobNextRunLabel = computed(() => {
 const bulkOperationPollJobNextRunLabel = computed(() => {
   return getJobNextRunLabel(bulkOperationPollJob.value);
 });
+const lastSyncTotalRecordCount = computed(() => {
+  const latestLog = recentMdmLogs.value[0];
+  return latestLog?.totalRecordCount || 0;
+});
 const stepDetailsTitle = computed(() => {
   if (currentStepDetail.value?.type === "systemMessage") return translate("System Message");
   if (currentStepDetail.value?.type === "bulkOperation") return translate("Bulk Operation");
@@ -830,6 +917,8 @@ const syncSummarySubtitle = computed(() => {
   if (isSyncJobPaused.value) return translate("Paused");
   return nextSyncLabel.value;
 });
+const resyncCatalogProductCountLabel = computed(() => formatCount(reviewStats.value.shopifyProductCount));
+const resyncCatalogVariantCountLabel = computed(() => formatCount(reviewStats.value.shopifyVariantCount));
 const syncJobDetailsTitle = computed(() => {
   const job = syncJobDetails.value?.jobName ? syncJobDetails.value : selectedSyncJobDetailsJob.value;
   if (isSelectedShopProductSyncJob(job)) {
@@ -865,7 +954,8 @@ const syncJobDetailsLastRunLabel = computed(() => {
   return translate("No recent runs");
 });
 const syncJobDetailsDirty = computed(() => {
-  return syncJobDraftCronExpression.value !== getSyncJobOriginalCronExpression();
+  return syncJobDraftCronExpression.value !== getSyncJobOriginalCronExpression() ||
+    syncJobDraftActive.value !== getSyncJobOriginalActive();
 });
 const isSyncJobDraftScheduleValid = computed(() => {
   if (!syncJobDraftCronExpression.value) return false;
@@ -1051,31 +1141,49 @@ function isSelectedShopProductSyncJob(job: any = {}) {
 }
 
 
-const recentSyncErrors = computed(() => {
-  if (errorLogs.value && errorLogs.value.length) {
-    return errorLogs.value.map((err: any, index: number) => ({
-      id: err.id || err.internalName || err.shopifyId || `sync-error-${index}`,
-      internalName: err.internalName || translate("Unknown product"),
-      shopifyId: err.shopifyId || err.id || "N/A",
-      updatedTime: err.updatedTime || currentMdmLog.value?.createdDate || translate("Recent"),
-      errorContent: err.errorString || err.error || err.message || JSON.stringify(err)
-    }));
-  }
-  return recentMdmLogs.value
-    .filter((log: any) => {
-      return Number(log.failedRecordCount || 0) > 0 || log.errorLogContentId || String(log.statusId || "").toLowerCase().includes("error");
-    })
-    .map((log: any) => ({
-      id: log.logId || [log.configId, log.createdDate].filter(Boolean).join("-"),
-      internalName: log.logId || translate("Data Manager log"),
-      shopifyId: `${translate("Config ID")}: ${log.configId || PRODUCT_SYNC_MDM_CONFIG_ID}`,
-      updatedTime: log.createdDate ? new Date(log.createdDate).toLocaleString() : translate("Recent"),
-      errorContent: translate("{failed} failed of {total} records.", {
-        failed: Number(log.failedRecordCount || 0),
-        total: Number(log.totalRecordCount || 0)
-      })
-    }));
+
+const filteredParsedErrorRecords = computed(() => {
+  const query = detailedErrorSearchQuery.value.trim().toLowerCase();
+  const records = errorLogs.value.map((err: any) => {
+    const product = err.virtualProduct || {};
+    const numericId = product.id ? product.id.split('/').pop() : '';
+    
+    // Robust extraction of SKU and Barcode (handles variants array, GraphQL edges, or top-level properties)
+    const variantsData = product.variants?.edges || (Array.isArray(product.variants) ? product.variants : []);
+    const firstVariant = variantsData[0]?.node || variantsData[0] || {};
+    const sku = firstVariant.sku || product.sku || err.sku || '';
+    const barcode = firstVariant.barcode || product.barcode || err.barcode || '';
+
+    const error = err.error || err._ERROR_MESSAGE_ || err.message || (typeof err === 'string' ? err : '');
+
+    return {
+      id: product.id || err.id,
+      numericId,
+      logId: currentMdmLog.value?.logId,
+      title: product.title || err.title || translate("Unknown product"),
+      vendor: product.vendor || err.vendor,
+      handle: product.handle,
+      productType: product.productType,
+      sku,
+      barcode,
+      error: error || translate("Unknown error"),
+      raw: err
+    }
+  });
+
+  if (!query) return records;
+
+  return records.filter((record: any) => 
+    record.numericId?.toLowerCase().includes(query) ||
+    record.title?.toLowerCase().includes(query) ||
+    record.handle?.toLowerCase().includes(query)
+  );
 });
+
+const pagedFilteredParsedErrorRecords = computed(() => {
+  return filteredParsedErrorRecords.value.slice(0, 100);
+});
+
 const preflightTitle = computed(() => {
   return requiresPreflightConfirmation(preflightResult.value)
     ? translate("Review possible catalog mismatch")
@@ -1119,38 +1227,19 @@ async function loadWizard() {
 
     await Promise.all([
       store.dispatch("productStore/fetchProductStores"),
-      store.dispatch("shopify/fetchShopifyTypeMappings", "SHOPIFY_PRODUCT_TYPE"),
-      fetchJobs({})
+      store.dispatch("shopify/fetchShopifyTypeMappings", "SHOPIFY_PRODUCT_TYPE")
     ]);
-
-
-    // Fetch details for product-update sync jobs to get parameters (needed to find the job for this shop)
-    const syncJobs = jobs.value.filter((job: any) => isProductUpdateSyncServiceJob(job) || (syncJobId.value && job.jobName === syncJobId.value));
-
-    await Promise.all(syncJobs.map(async (job: any) => {
-      const details = await fetchJobDetail(job.jobName);
-      Object.assign(job, details);
-    }));
-
-    await loadBulkOperationMonitoringJobs();
 
     if (shop.value.productStoreId) {
       await store.dispatch("productStore/fetchProductStoreDetails", shop.value.productStoreId);
     }
-
     await loadSelectedShopSystemMessageRemoteId();
-    await loadLatestSystemMessage();
-    await loadPendingUpdateRequests();
-    await loadShopifyShopProductCount();
-    await loadSyncJobLatestRun();
-    await loadBulkOperationSendJobLatestRun();
-    await loadBulkOperationPollJobLatestRun();
-    await loadRunningShopifyBulkOperation();
 
     setupState.value = await ShopifyProductSyncService.fetchSetupState({
       shopId: props.id,
       shop: shop.value,
-      productStore: selectedProductStore.value
+      productStore: selectedProductStore.value,
+      historyPageSize: 10
     });
     assertBackendDataAvailable(setupState.value, translate("Product sync setup is unavailable."));
 
@@ -1179,6 +1268,10 @@ async function loadWizard() {
     if (draft.value.selectedProductStoreId) {
       await loadProductStoreContext(draft.value.selectedProductStoreId);
     }
+
+    // Now kick off secondary data in background without blocking
+    loadSecondaryData().catch((e) => logger.error("Failed to load secondary data", e));
+
   } catch (error: any) {
     logger.error(error);
     loadErrorMessage.value = getErrorMessage(error, translate("Failed to load product sync"));
@@ -1186,6 +1279,60 @@ async function loadWizard() {
     stopProgressPolling();
   } finally {
     isLoading.value = false;
+  }
+}
+
+async function loadSecondaryData() {
+  isSecondaryLoading.value = true;
+  try {
+    // 1. Fetch dashboard summary (replaces loadLatestSystemMessage, loadPendingUpdateRequests, loadRunningShopifyBulkOperation)
+    const summary = await ShopifyProductSyncService.fetchDashboardSummary({
+      shopId: props.id,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      shop: shop.value
+    });
+
+    // Assign summary variables
+    latestSystemMessage.value = await selectTrackProgressSystemMessage(summary.syncRunState.systemMessages || []);
+    latestConfirmedSystemMessage.value = summary.syncRunState.latestConfirmedSystemMessage;
+    latestConsumedSystemMessage.value = summary.syncRunState.latestConsumedSystemMessage;
+    lastProductUpdateSyncedAt.value = summary.syncRunState.lastSyncedAt || "";
+
+    if (latestSystemMessage.value?.systemMessageId) {
+      await fetchSyncRun(latestSystemMessage.value.systemMessageId);
+    } else {
+      currentSyncRun.value = {} as any;
+    }
+
+    pendingUpdateRequestsCount.value = Number(summary.pendingRequests.count || 0);
+    pendingUpdateRequestsLastCreatedAt.value = summary.pendingRequests.latestSystemMessage?.initDate ||
+      summary.pendingRequests.latestSystemMessage?.createdDate ||
+      summary.pendingRequests.latestSystemMessage?.lastUpdatedStamp || "";
+
+    runningShopifyBulkOperation.value = summary.runningOperation;
+
+    // 2. Fetch jobs
+    await fetchJobs({});
+    const syncJobs = jobs.value.filter((job: any) => isProductUpdateSyncServiceJob(job) || (syncJobId.value && job.jobName === syncJobId.value));
+    await Promise.all(syncJobs.map(async (job: any) => {
+      const details = await fetchJobDetail(job.jobName);
+      Object.assign(job, details);
+    }));
+
+    await loadBulkOperationMonitoringJobs();
+
+    await Promise.all([
+      loadShopifyShopProductCount(),
+      loadSyncJobLatestRun(),
+      loadBulkOperationSendJobLatestRun(),
+      loadBulkOperationPollJobLatestRun(),
+      fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 }),
+      fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT)
+    ]);
+  } catch (error) {
+    logger.error("Error loading secondary data", error);
+  } finally {
+    isSecondaryLoading.value = false;
   }
 }
 
@@ -1221,21 +1368,6 @@ async function loadBulkOperationPollJobLatestRun() {
   } catch (error: any) {
     logger.error(error);
     bulkOperationPollJobRecentRuns.value = [];
-  }
-}
-
-async function loadRunningShopifyBulkOperation() {
-  try {
-    runningShopifyBulkOperation.value = await ShopifyProductSyncService.fetchRunningBulkOperation({
-      shopId: props.id,
-      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
-      shop: shop.value
-    });
-    runningShopifyBulkOperationError.value = "";
-  } catch (error: any) {
-    logger.error(error);
-    runningShopifyBulkOperation.value = null;
-    runningShopifyBulkOperationError.value = translate("Shopify request status unavailable");
   }
 }
 
@@ -1297,32 +1429,116 @@ async function loadPendingUpdateRequests() {
   }
 }
 
-async function loadUnsyncedProductUpdates() {
-  isUnsyncedUpdatesLoading.value = true;
+async function loadErrorRecordCount() {
   try {
-    unsyncedProductUpdates.value = await ShopifyProductSyncService.fetchUnsyncedProductUpdates({
+    errorRecordCount.value = await ShopifyProductSyncService.fetchErrorRecordCount({
       shopId: props.id,
-      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
-      lastSyncedAt: lastProductUpdateSyncedAt.value,
-      shop: shop.value,
-      pageSize: 100
+      configId: PRODUCT_SYNC_MDM_CONFIG_ID
     });
-  } catch (error: any) {
-    logger.error(error);
-    unsyncedProductUpdates.value = [];
-    showToast(translate("Failed to load un-synced product updates."));
+  } catch (error) {
+    logger.error("Failed to load error record count", error);
+    errorRecordCount.value = 0;
   }
-  isUnsyncedUpdatesLoading.value = false;
 }
 
 async function openUnsyncedUpdatesModal() {
-  showUnsyncedUpdatesModal.value = true;
-  await loadUnsyncedProductUpdates();
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product search is unavailable for this shop."));
+    return;
+  }
+
+  const productsModal = await modalController.create({
+    component: ShopifyProductSyncProductsModal,
+    componentProps: {
+      mode: "unsynced",
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      lastSyncedAt: lastProductUpdateSyncedAt.value,
+      shopifyShopProductCount: shopifyShopProductCount.value
+    },
+    showBackdrop: true,
+    swipeToClose: true
+  });
+
+  await productsModal.present();
+  const { data } = await productsModal.onDidDismiss();
+  handleSelectedProductsForSync(data);
 }
 
-function formatShopifyDate(value: string) {
-  if (!value) return translate("Recent");
-  return new Date(value).toLocaleString();
+async function openSpecificProductsSyncModal() {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product search is unavailable for this shop."));
+    return;
+  }
+
+  const productsModal = await modalController.create({
+    component: ShopifyProductSyncProductsModal,
+    componentProps: {
+      mode: "search",
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
+    },
+    showBackdrop: true,
+    swipeToClose: true
+  });
+
+  await productsModal.present();
+  const { data } = await productsModal.onDidDismiss();
+  handleSelectedProductsForSync(data);
+}
+
+async function openResyncEntireCatalogModal() {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product sync is unavailable for this shop."));
+    return;
+  }
+
+  showResyncEntireCatalogModal.value = true;
+  if (!reviewStats.value.loaded && !isReviewLoading.value) {
+    await loadReviewStats();
+  }
+}
+
+async function handleSelectedProductsForSync(data: any) {
+  const shopifyProductIds = getSelectedShopifyProductIds(data);
+  if (!shopifyProductIds.length) return;
+
+  isSaving.value = true;
+  try {
+    const result = await ShopifyProductSyncService.syncShopifyProductsOnDemand({
+      shopId: props.id,
+      shopifyProductIds
+    });
+
+    showToast(getSelectedProductSyncResultMessage(result, shopifyProductIds.length));
+    await loadLatestSystemMessage();
+    await loadPendingUpdateRequests();
+  } catch (error: any) {
+    logger.error(error);
+    showToast(getErrorMessage(error, translate("Failed to sync selected products.")));
+  } finally {
+    isSaving.value = false;
+  }
+}
+
+function getSelectedShopifyProductIds(data: any) {
+  const legacyResourceIds = Array.isArray(data?.legacyResourceIds) ? data.legacyResourceIds : [];
+  const productIds = legacyResourceIds.length ? legacyResourceIds : (data?.productIds || []).map(getShopifyProductLegacyId);
+
+  return productIds
+    .map((productId: any) => String(productId || "").trim())
+    .filter((productId: string, index: number, list: string[]) => /^\d+$/.test(productId) && list.indexOf(productId) === index);
+}
+
+function getShopifyProductLegacyId(productId: string) {
+  return String(productId || "").split("/").pop() || "";
+}
+
+function getSelectedProductSyncResultMessage(result: any, requestedCount: number) {
+  return translate("Selected product sync completed: {synced} synced, {failed} failed, {rejected} rejected.", {
+    synced: Number(result?.syncedCount || 0),
+    failed: Number(result?.failedCount || 0),
+    rejected: Number(result?.rejectedCount || 0),
+    requested: requestedCount
+  });
 }
 
 async function loadLatestSystemMessage() {
@@ -1345,8 +1561,98 @@ async function loadLatestSystemMessage() {
 
   await Promise.all([
     fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 }),
-    fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT)
+    fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT),
+    loadErrorRecordCount()
   ]);
+  
+  if (recentMdmLogs.value.length) {
+    await fetchAllRecentFailedRecords(PRODUCT_SYNC_MDM_CONFIG_ID, recentMdmLogs.value);
+  }
+}
+
+async function downloadRawFile(item: any) {
+  try {
+    const configId = item.configId || PRODUCT_SYNC_MDM_CONFIG_ID;
+    const logContentId = item.logContentId;
+
+    if (!configId || !logContentId) {
+      showToast(translate("Raw file is not available"));
+      return;
+    }
+
+    const response = await downloadDataManagerFile(configId, logContentId);
+    const fileContent = getDownloadFileContent(response?.data);
+
+    if (!fileContent) {
+      throw new Error("No file content returned");
+    }
+
+    downloadTextFile(fileContent, getRawShopifyFileName(item));
+    showToast(translate("File downloaded successfully"));
+  } catch (error) {
+    logger.error(`Failed to download raw file for ${item.id}`, error);
+    showToast(translate("Failed to download raw file"));
+  }
+}
+
+async function viewErrorDetails(item: any) {
+  const logId = item.logId;
+  if (!logId) {
+    showToast(translate("Log ID is not available"));
+    return;
+  }
+
+  try {
+    await fetchLogDetails(logId);
+    if (!errorLogs.value.length) {
+       showToast(translate("No detailed error records found in this log"));
+    }
+  } catch (error) {
+    logger.error(`Failed to fetch log details for ${logId}`, error);
+    showToast(translate("Failed to fetch detailed error records"));
+  }
+}
+
+function openErrorDetailsModal(record: any) {
+  selectedErrorRecord.value = record;
+  showErrorDetailsModal.value = true;
+}
+
+async function refreshErrorRecords() {
+  await clearStorage();
+  errorLogs.value = [];
+  detailedErrorSearchQuery.value = "";
+  
+  // Re-fetch everything fresh
+  await fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT);
+  if (recentMdmLogs.value.length) {
+    await fetchAllRecentFailedRecords(PRODUCT_SYNC_MDM_CONFIG_ID, recentMdmLogs.value);
+  }
+}
+
+async function resyncProduct(record: any) {
+  const shopifyProductId = record.numericId;
+  if (!shopifyProductId) {
+    showToast(translate("Shopify product ID not available for resync."));
+    return;
+  }
+
+  isSaving.value = true;
+  try {
+    const result = await ShopifyProductSyncService.syncShopifyProductsOnDemand({
+      shopId: props.id,
+      shopifyProductIds: [shopifyProductId]
+    });
+
+    showToast(getSelectedProductSyncResultMessage(result, 1));
+    await loadLatestSystemMessage();
+    await loadPendingUpdateRequests();
+  } catch (error: any) {
+    logger.error(error);
+    showToast(getErrorMessage(error, translate("Failed to resync product.")));
+  } finally {
+    isSaving.value = false;
+  }
 }
 
 async function selectTrackProgressSystemMessage(systemMessages: any[]) {
@@ -1562,6 +1868,9 @@ function handleSyncJobDetailsDidDismiss() {
   selectedSyncJobDetailsJob.value = null;
   syncJobDetails.value = {};
   syncJobDetailsRecentRuns.value = [];
+  syncJobAuditHistory.value = [];
+  syncJobAuditHistoryError.value = "";
+  isSyncJobAuditHistoryLoading.value = false;
 }
 
 async function canDismissSyncJobDetailsModal() {
@@ -1586,7 +1895,7 @@ async function saveSyncJobDetails() {
     await updateSyncJob({
       jobName: selectedSyncJobDetailsJob.value.jobName,
       cronExpression: syncJobDraftCronExpression.value,
-      paused: isJobPaused(syncJobDetails.value) ? "Y" : "N"
+      paused: syncJobDraftActive.value ? "N" : "Y"
     }, translate("Sync job updated successfully."));
   } finally {
     isSyncJobDetailsSaving.value = false;
@@ -1597,6 +1906,8 @@ async function refreshSyncJobDetails() {
   if (!selectedSyncJobDetailsJob.value?.jobName) return;
 
   isSyncJobDetailsLoading.value = true;
+  syncJobAuditHistory.value = [];
+  syncJobAuditHistoryError.value = "";
   try {
     const [jobDetails, jobRuns] = await Promise.all([
       fetchJobDetail(selectedSyncJobDetailsJob.value.jobName),
@@ -1610,10 +1921,13 @@ async function refreshSyncJobDetails() {
     if (jobDetails?.instanceOfProductId && !products.value?.[jobDetails.instanceOfProductId]) {
       await fetchProductDetail(jobDetails.instanceOfProductId);
     }
+    void loadSyncJobAuditHistory(jobDetails.jobName);
   } catch (error: any) {
     logger.error(error);
     syncJobDetails.value = {};
     syncJobDetailsRecentRuns.value = [];
+    syncJobAuditHistory.value = [];
+    syncJobAuditHistoryError.value = "";
     resetSyncJobDetailsDraft();
     showToast(translate("Failed to load sync job details."));
   } finally {
@@ -1621,16 +1935,43 @@ async function refreshSyncJobDetails() {
   }
 }
 
+async function loadSyncJobAuditHistory(jobName: string) {
+  if (!jobName) return;
+
+  isSyncJobAuditHistoryLoading.value = true;
+  syncJobAuditHistoryError.value = "";
+  try {
+    syncJobAuditHistory.value = await fetchJobAuditHistory(jobName, { pageSize: 10, pageIndex: 0 });
+  } catch (error: any) {
+    logger.warn("Failed to load service job audit history", error);
+    syncJobAuditHistory.value = [];
+    syncJobAuditHistoryError.value = translate("EntityAuditLog is not exposed through an API yet.");
+  } finally {
+    isSyncJobAuditHistoryLoading.value = false;
+  }
+}
+
 function getSyncJobOriginalCronExpression() {
   return syncJobDetails.value?.cronExpression || selectedSyncJobDetailsJob.value?.cronExpression || "";
 }
 
+function getSyncJobOriginalActive() {
+  const job = syncJobDetails.value?.jobName ? syncJobDetails.value : selectedSyncJobDetailsJob.value;
+  return !isJobPaused(job);
+}
+
 function setSyncJobDetailsDraft(jobDetails: any = {}) {
   syncJobDraftCronExpression.value = jobDetails?.cronExpression || selectedSyncJobDetailsJob.value?.cronExpression || "";
+  syncJobDraftActive.value = !isJobPaused(jobDetails?.jobName ? jobDetails : selectedSyncJobDetailsJob.value);
 }
 
 function resetSyncJobDetailsDraft() {
   syncJobDraftCronExpression.value = getSyncJobOriginalCronExpression();
+  syncJobDraftActive.value = getSyncJobOriginalActive();
+}
+
+function handleSyncJobActiveChange(isActive: boolean) {
+  syncJobDraftActive.value = isActive;
 }
 
 async function confirmDiscardSyncJobDetailsChanges() {
@@ -1639,7 +1980,7 @@ async function confirmDiscardSyncJobDetailsChanges() {
   return new Promise<boolean>((resolve) => {
     alertController.create({
       header: translate("Unsaved changes"),
-      message: translate("You have unsaved schedule changes. Discard them?"),
+      message: translate("You have unsaved job changes. Discard them?"),
       backdropDismiss: false,
       buttons: [
         {
@@ -1904,7 +2245,10 @@ async function startProductSync() {
   isSaving.value = true;
   try {
     const result = await ShopifyProductSyncService.startInitialImport({
-      shopId: props.id
+      shopId: props.id,
+      productStoreId: draft.value.selectedProductStoreId,
+      productIdentifierEnumId: draft.value.selectedIdentifierEnumId,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
     });
     assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
 
@@ -1927,6 +2271,44 @@ async function startProductSync() {
     showToast(translate("Failed to start product sync"));
   }
   isSaving.value = false;
+}
+
+async function startResyncEntireCatalog() {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shopify product sync is unavailable for this shop."));
+    return;
+  }
+
+  isResyncEntireCatalogStarting.value = true;
+  try {
+    const result = await ShopifyProductSyncService.startInitialImport({
+      shopId: props.id,
+      productStoreId: draft.value.selectedProductStoreId,
+      productIdentifierEnumId: draft.value.selectedIdentifierEnumId,
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
+    });
+    assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
+
+    if (shouldShowProductSyncProgress(result)) {
+      syncJobId.value = result.syncJobId || result.progress?.syncJobId;
+      progressState.value = result.progress || progressState.value;
+      if (progressState.value.systemMessageId) {
+        await fetchSyncRun(progressState.value.systemMessageId);
+      }
+      showResyncEntireCatalogModal.value = false;
+      currentStep.value = "progress";
+      const loadedProgress = await loadProgress();
+      if (loadedProgress) startProgressPolling();
+      showToast(translate("Full catalog re-sync started."));
+    } else {
+      showToast(result.error || translate("Product sync could not be started."));
+    }
+  } catch (error: any) {
+    logger.error(error);
+    showToast(translate("Failed to start product sync"));
+  } finally {
+    isResyncEntireCatalogStarting.value = false;
+  }
 }
 
 async function loadProgress() {
@@ -2093,6 +2475,13 @@ function formatDateTime(value: string) {
   return new Date(value).toLocaleString();
 }
 
+function formatCount(value: unknown) {
+  if (value === undefined || value === null || value === "") return translate("Unavailable");
+  const count = Number(value);
+  if (Number.isNaN(count)) return translate("Unavailable");
+  return count.toLocaleString();
+}
+
 function formatParameterValue(value: unknown) {
   if (value === undefined || value === null || value === "") return translate("Unavailable");
   if (Array.isArray(value)) return value.join(", ");
@@ -2100,8 +2489,46 @@ function formatParameterValue(value: unknown) {
   return String(value);
 }
 
-function getSyncJobStatusLabel(job: any) {
-  return job?.statusId || job?.status || (isJobPaused(job) ? translate("Paused") : translate("Active"));
+function getSyncJobAuditHistoryKey(auditLog: any) {
+  return auditLog.auditHistorySeqId ||
+    [auditLog.changedEntityName, auditLog.pkPrimaryValue, auditLog.changedFieldName, auditLog.changedDate].filter(Boolean).join("-");
+}
+
+function getSyncJobAuditFieldLabel(auditLog: any) {
+  return formatAuditFieldName(auditLog.changedFieldName || translate("Field"));
+}
+
+function getSyncJobAuditChangedAt(auditLog: any) {
+  return auditLog.changedDate || auditLog.lastUpdatedStamp || auditLog.createdStamp || "";
+}
+
+function getSyncJobAuditChangedBy(auditLog: any) {
+  return auditLog.changedByUserId || auditLog.userId || auditLog.lastUpdatedByUserId || "";
+}
+
+function getSyncJobAuditChangeLabel(auditLog: any) {
+  const oldValue = auditLog.oldValueText ?? auditLog.oldValue ?? "";
+  const newValue = auditLog.newValueText ?? auditLog.newValue ?? "";
+
+  if (oldValue !== "" && newValue !== "") {
+    return `${translate("Previous value")}: ${formatParameterValue(oldValue)} · ${translate("New value")}: ${formatParameterValue(newValue)}`;
+  }
+  if (newValue !== "") {
+    return `${translate("New value")}: ${formatParameterValue(newValue)}`;
+  }
+  if (oldValue !== "") {
+    return `${translate("Previous value")}: ${formatParameterValue(oldValue)}`;
+  }
+  return translate("Value unavailable");
+}
+
+function formatAuditFieldName(fieldName: string) {
+  if (!fieldName) return translate("Field");
+  const spaced = String(fieldName)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 function getSyncJobRunKey(run: any) {
@@ -2237,6 +2664,7 @@ function parseDateTimeValue(value: string | number) {
   }
 
   const candidates = [
+    DateTime.fromFormat(value, "yyyy-MM-dd'T'HH:mm:ssZZ"),
     DateTime.fromFormat(value, "yyyy-MM-dd HH:mm:ss.SSS"),
     DateTime.fromSQL(value),
     DateTime.fromISO(value),
