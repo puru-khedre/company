@@ -39,7 +39,7 @@
         </ion-item>
         <ion-item button detail @click="emit('open-unsynced-updates')">
           <ion-label>{{ translate("Un-synced updates") }}</ion-label>
-          <ion-badge slot="end" color="medium">{{ unsyncedUpdatesCount }}</ion-badge>
+          <ion-spinner v-if="isSecondaryLoading" name="crescent" slot="end"></ion-spinner><ion-badge v-else slot="end" color="medium">{{ unsyncedUpdatesCount }}</ion-badge>
         </ion-item>
         <ion-item>
           <ion-label>{{ translate("Product store") }}</ion-label>
@@ -144,7 +144,7 @@
             {{ translate("Pending update requests")}}
             <p>{{ pendingUpdateRequestsSubtitle }}</p>
           </ion-label>
-          <ion-label slot="end">{{ pendingUpdateRequestsCount }}</ion-label>
+          <ion-spinner v-if="isSecondaryLoading" name="crescent" slot="end"></ion-spinner><ion-label v-else slot="end">{{ pendingUpdateRequestsCount }}</ion-label>
         </ion-item>
         <ion-item>
           <ion-label>
@@ -208,6 +208,8 @@
       <ion-searchbar v-model="updatesQuery" :placeholder="translate('Search by internal name')" />
     </div>
     <div class="stat-data">
+      <ion-spinner v-if="isSecondaryLoading" name="crescent"></ion-spinner>
+      <template v-else>
       <ion-card v-for="item in filteredUpdates" :key="item.id">
         <ion-list lines="full">
           <ion-item>
@@ -279,6 +281,8 @@
       <ion-searchbar v-model="errorsQuery" :placeholder="translate('Search by internal name')" />
     </div>
     <div class="stat-data">
+      <ion-spinner v-if="isSecondaryLoading" name="crescent"></ion-spinner>
+      <template v-else>
       <ion-card v-for="item in filteredErrors" :key="item.id">
       <ion-list lines="full">
         <ion-item>
@@ -307,6 +311,7 @@
         </ion-item>
       </ion-list>
     </ion-card>
+          </template>
     </div>
   </section>
 
@@ -330,7 +335,8 @@ import {
   IonLabel,
   IonList,
   IonNote,
-  IonSearchbar
+  IonSearchbar,
+  IonSpinner
 } from "@ionic/vue";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps, ref } from "vue";
@@ -377,6 +383,7 @@ const props = defineProps<{
   currentShopifyRequestStatusColor: string
   hasCurrentShopifyRequest?: boolean
   syncJobObj?: any
+  isSecondaryLoading?: boolean
 }>();
 const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job"]);
 
