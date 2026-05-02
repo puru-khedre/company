@@ -117,6 +117,13 @@ const routes: Array<RouteRecordRaw> = [
     beforeEnter: authGuard,
   },
   {
+    path: '/shopify-connection-details/:id/product-sync/upgrade-assistant',
+    name: 'ShopifyProductSyncUpgradeAssistant',
+    component: () => import('@/views/ShopifyProductSyncUpgradeAssistant.vue'),
+    props: true,
+    beforeEnter: authGuard,
+  },
+  {
     path: '/shopify-connection-details/:id/instance-details',
     name: 'ShopifyInstanceDetails',
     component: () => import('@/views/ShopifyShopDetails.vue'),

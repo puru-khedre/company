@@ -44,7 +44,7 @@
 
         <div class="ion-margin-top">
           <h1>{{ translate("Products and Inventory") }}</h1>
-          <ion-card class="widget product-sync" button @click="openProductSync()">
+          <ion-card class="widget product-sync" button @click="openProductSyncEntry()">
             <ion-card-header>
               <ion-card-title>{{ translate("Product sync") }}</ion-card-title>
               <ion-card-subtitle>{{ productSyncCardSubtitle }}</ion-card-subtitle>
@@ -133,8 +133,8 @@
             </div>
           </ion-card>
           <section>
-            <ion-item detail class="item-box" lines="none" button @click="openProductSync()">
-              <ion-label>{{ translate("Download products") }}</ion-label>
+            <ion-item detail class="item-box" lines="none" button @click="openProductSyncEntry()">
+              <ion-label>{{ productSyncEntryLabel }}</ion-label>
             </ion-item>
             <ion-item detail class="item-box" lines="none" button @click="openShopifyLocations()">
               <ion-label>{{ translate("Inventory locations") }}</ion-label>
@@ -175,6 +175,7 @@ import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import ShopifyProductStoreModal from "@/components/ShopifyProductStoreModal.vue";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
+import { ShopifyProductSyncMigrationService } from "@/services/ShopifyProductSyncMigrationService";
 import { useDataManagerLog } from "@/composables/useDataManagerLog";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
 import logger from "@/logger";
@@ -205,9 +206,44 @@ const productSyncRecordsProcessed = ref(0);
 const productSyncUnsyncedCount = ref(0);
 const productSyncActivityHistory = ref<any[]>([]);
 const hasProductSyncSummaryError = ref(false);
+const productSyncMigrationEligibility = ref({
+  componentRelease: "",
+  minimumComponentRelease: "",
+  isEligible: false
+});
 
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
+const hasCurrentProductSyncMessages = computed(() => {
+  return !!productSyncSummary.value.syncRunState?.latestSystemMessage || !!productSyncSummary.value.syncRunState?.systemMessages?.length;
+});
+const productSyncEntryAction = computed(() => {
+  return ShopifyProductSyncMigrationService.resolveEntryAction({
+    hasNewProductSyncMessages: hasCurrentProductSyncMessages.value,
+    isEligible: productSyncMigrationEligibility.value.isEligible
+  });
+});
+const productSyncEntryLabel = computed(() => {
+  if (productSyncEntryAction.value === "current") {
+    return translate("Download products");
+  }
+
+  if (productSyncEntryAction.value === "setup") {
+    return translate("Setup new product sync");
+  }
+
+  return translate("Request upgrade to new product sync");
+});
 const productSyncCardSubtitle = computed(() => {
+  if (!hasCurrentProductSyncMessages.value) {
+    if (productSyncEntryAction.value === "setup") {
+      return translate("This shop is eligible to move to the new product sync.");
+    }
+
+    if (productSyncEntryAction.value === "request-upgrade") {
+      return translate("A backend upgrade is required before the new product sync can be set up.");
+    }
+  }
+
   if (hasProductSyncSummaryError.value) {
     return translate("Open product sync to inspect the latest sync status.");
   }
@@ -357,6 +393,11 @@ onIonViewWillEnter(async () => {
 
 async function loadProductsInventorySummary() {
   hasProductSyncSummaryError.value = false;
+  productSyncMigrationEligibility.value = {
+    componentRelease: "",
+    minimumComponentRelease: "",
+    isEligible: false
+  };
   productSyncSummary.value = {
     syncRunState: {
       lastSyncedAt: "",
@@ -374,6 +415,12 @@ async function loadProductsInventorySummary() {
   currentSyncRun.value = {} as any;
 
   if (!props.id) return;
+
+  try {
+    productSyncMigrationEligibility.value = await ShopifyProductSyncMigrationService.fetchEligibility();
+  } catch (error) {
+    logger.warn("Failed to load product sync migration eligibility", error);
+  }
 
   try {
     const systemMessageRemoteId = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
@@ -466,8 +513,13 @@ async function openProductStoreModal() {
   modal.present();
 }
 
-function openProductSync() {
-  router.push(`/shopify-connection-details/${props.id}/product-sync`);
+function openProductSyncEntry() {
+  if (productSyncEntryAction.value === "current") {
+    router.push(`/shopify-connection-details/${props.id}/product-sync`);
+    return;
+  }
+
+  router.push(`/shopify-connection-details/${props.id}/product-sync/upgrade-assistant`);
 }
 
 function openShopDetails() {

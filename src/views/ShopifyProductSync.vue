@@ -2233,11 +2233,18 @@ async function checkSyncJobConfig() {
 async function configureSyncJob() {
   isSyncJobConfiguring.value = true;
   try {
-    const shopifyShopId = props.id; 
-    await ShopifyProductSyncService.configureSyncJob({ shopifyShopId });
+    const shopifyShopId = shop.value?.shopifyShopId;
+    if (!shopifyShopId) throw new Error("Shopify shop ID not available");
+
+    await ShopifyProductSyncService.configureSyncJob({
+      shopifyShopId,
+      productStoreId: draft.value.selectedProductStoreId,
+      productIdentifierEnumId: draft.value.selectedIdentifierEnumId
+    });
     
     syncJobConfigured.value = true;
     showToast(translate("Product sync job scheduled successfully."));
+    await fetchJobs(); // Refresh job list
     await checkSyncJobConfig(); // Refresh state
   } catch (error) {
     logger.error("Failed to configure sync job", error);
@@ -2257,28 +2264,39 @@ async function startProductSync() {
   if (!canStartProductSync(draft.value.startConfirmed)) return;
   isSaving.value = true;
   try {
-    const result = await ShopifyProductSyncService.startInitialImport({
-      shopId: props.id,
-      productStoreId: draft.value.selectedProductStoreId,
-      productIdentifierEnumId: draft.value.selectedIdentifierEnumId,
-      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
-    });
-    assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
-
-    if (shouldShowProductSyncProgress(result)) {
-      syncJobId.value = result.syncJobId || result.progress?.syncJobId;
-      progressState.value = result.progress || progressState.value;
-      if (progressState.value.systemMessageId) {
-        await fetchSyncRun(progressState.value.systemMessageId);
-      }
-      draft.value.syncStarted = true;
-      showStartSyncModal.value = false;
-      currentStep.value = "progress";
-      const loadedProgress = await loadProgress();
-      if (loadedProgress) startProgressPolling();
-    } else {
-      showToast(result.error || translate("Product sync could not be started."));
+    const job = syncJobObj.value;
+    const shopifyShopId = shop.value?.shopifyShopId;
+    if (!job || !shopifyShopId) {
+      throw new Error("Sync job or shop ID not found");
     }
+
+    // 1. Update job parameters to ensure they match current wizard selections
+    await updateJob({
+      ...job,
+      serviceJobParameters: [
+        { parameterName: "shopifyShopId", parameterValue: shopifyShopId },
+        { parameterName: "productStoreIds", parameterValue: draft.value.selectedProductStoreId },
+        { parameterName: "shopifyProductIdentifier", parameterValue: draft.value.selectedIdentifierEnumId }
+      ]
+    });
+
+    // 2. Run the job now
+    await runNow(job.jobName);
+
+    draft.value.syncStarted = true;
+    showStartSyncModal.value = false;
+    currentStep.value = "progress";
+    
+    // 3. Initialize progress state
+    progressState.value = {
+      syncJobId: job.jobName,
+      status: "queued",
+      systemMessageState: "SmsgProduced",
+      completed: false
+    };
+
+    const loadedProgress = await loadProgress();
+    if (loadedProgress) startProgressPolling();
   } catch (error: any) {
     logger.error(error);
     showToast(translate("Failed to start product sync"));
@@ -2294,28 +2312,27 @@ async function startResyncEntireCatalog() {
 
   isResyncEntireCatalogStarting.value = true;
   try {
-    const result = await ShopifyProductSyncService.startInitialImport({
-      shopId: props.id,
-      productStoreId: draft.value.selectedProductStoreId,
-      productIdentifierEnumId: draft.value.selectedIdentifierEnumId,
-      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value
-    });
-    assertBackendDataAvailable(result, translate("Product sync import backend is unavailable."));
+    const job = syncJobObj.value;
+    if (!job) throw new Error("Sync job not found");
 
-    if (shouldShowProductSyncProgress(result)) {
-      syncJobId.value = result.syncJobId || result.progress?.syncJobId;
-      progressState.value = result.progress || progressState.value;
-      if (progressState.value.systemMessageId) {
-        await fetchSyncRun(progressState.value.systemMessageId);
-      }
-      showResyncEntireCatalogModal.value = false;
-      currentStep.value = "progress";
-      const loadedProgress = await loadProgress();
-      if (loadedProgress) startProgressPolling();
-      showToast(translate("Full catalog re-sync started."));
-    } else {
-      showToast(result.error || translate("Product sync could not be started."));
-    }
+    // For full re-sync, we just run the job. 
+    // It will fetch all products based on the configured identifiers.
+    await runNow(job.jobName);
+
+    showResyncEntireCatalogModal.value = false;
+    currentStep.value = "progress";
+    
+    // Initialize progress state
+    progressState.value = {
+      syncJobId: job.jobName,
+      status: "queued",
+      systemMessageState: "SmsgProduced",
+      completed: false
+    };
+
+    const loadedProgress = await loadProgress();
+    if (loadedProgress) startProgressPolling();
+    showToast(translate("Full catalog re-sync started."));
   } catch (error: any) {
     logger.error(error);
     showToast(translate("Failed to start product sync"));
@@ -2325,17 +2342,24 @@ async function startResyncEntireCatalog() {
 }
 
 async function loadProgress() {
-  if (!syncJobId.value) return false;
+  if (!selectedShopSystemMessageRemoteId.value) return false;
   try {
-    const progress = await ShopifyProductSyncService.fetchProgress({
-      shopId: props.id,
-      syncJobId: syncJobId.value
-    });
-    assertBackendDataAvailable(progress, translate("Product sync progress is unavailable."));
-    progressState.value = progress;
+    const syncRunState = await ShopifyProductSyncService.fetchProductUpdateSyncRunState(selectedShopSystemMessageRemoteId.value);
+    assertBackendDataAvailable(syncRunState, translate("Product sync run state is unavailable."));
 
-    if (progressState.value.systemMessageId) {
-      await fetchSyncRun(progressState.value.systemMessageId);
+    const latestMessage = syncRunState.latestSystemMessage;
+    if (latestMessage) {
+      progressState.value = {
+        syncJobId: syncJobId.value || "",
+        status: normalizeProductSyncStatus({ systemMessageState: latestMessage.statusId }),
+        systemMessageState: latestMessage.statusId,
+        completed: ["SmsgConfirmed", "SmsgCancelled", "SmsgError"].includes(latestMessage.statusId),
+        systemMessageId: latestMessage.systemMessageId
+      } as any;
+
+      if (latestMessage.systemMessageId) {
+        await fetchSyncRun(latestMessage.systemMessageId);
+      }
     }
 
     if (reconcileAvailable.value) {
@@ -2348,9 +2372,8 @@ async function loadProgress() {
     progressState.value = {
       ...progressState.value,
       status: "error",
-      error: getErrorMessage(error, translate("Failed to load product sync progress"))
-    };
-    showToast(translate("Failed to load product sync progress"));
+      completed: true
+    } as any;
     return false;
   }
 }

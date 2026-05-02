@@ -483,7 +483,7 @@
             <ion-card-subtitle>{{ translate("Incorrect Shopify store to Product Store mapping can corrupt catalog state.") }}</ion-card-subtitle>
           </ion-card-header>
           <ion-item lines="full" button @click="$emit('toggle-start-confirmation')">
-            <ion-checkbox :checked="draft.startConfirmed" label-placement="end" data-testid="start-sync-confirmation">
+            <ion-checkbox :checked="draft.startConfirmed" label-placement="start" data-testid="start-sync-confirmation">
               {{ translate("I understand and want to start the first product sync.") }}
             </ion-checkbox>
           </ion-item>

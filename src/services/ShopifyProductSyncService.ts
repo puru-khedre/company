@@ -459,52 +459,6 @@ function buildProductStoreContext(payload: any): any {
   });
 }
 
-function validateProgress(response: any, requestedSyncJobId?: string): ShopifyProductSyncProgressState {
-  const context = "Product sync progress";
-  assertPlainObject(response, context);
-  assertStringField(response.syncJobId, "syncJobId", context);
-  assertStringField(response.status, "status", context);
-  if (!PRODUCT_SYNC_PROGRESS_STATUSES.includes(response.status)) {
-    throw new Error(`${context} response returned unsupported status ${response.status}.`);
-  }
-  assertStringField(response.systemMessageState, "systemMessageState", context);
-  assertBooleanField(response.completed, "completed", context);
-  if (requestedSyncJobId && response.syncJobId !== requestedSyncJobId) {
-    throw new Error(`${context} response returned syncJobId ${response.syncJobId} for requested syncJobId ${requestedSyncJobId}.`);
-  }
-  return response as ShopifyProductSyncProgressState;
-}
-
-function validateInitialImport(response: any): any {
-  const context = "Product sync initial import";
-  assertPlainObject(response, context);
-  const syncJobId = response.syncJobId || response.progress?.syncJobId;
-  assertStringField(syncJobId, "syncJobId", context);
-  if (typeof response.success !== "undefined" && response.success !== true) {
-    throw new Error(`${context} response did not confirm success.`);
-  }
-  if (typeof response.progress !== "undefined") {
-    validateProgress(response.progress, syncJobId);
-  }
-  return {
-    ...response,
-    syncJobId
-  };
-}
-
-function validateReconcile(response: any): any {
-  const context = "Product sync reconcile";
-  assertPlainObject(response, context);
-  assertBooleanField(response.completed, "completed", context);
-  return response;
-}
-
-function validateHistory(response: any): ShopifyProductSyncHistoryState {
-  const context = "Product sync history";
-  assertPlainObject(response, context);
-  assertArrayField(response.runs, "runs", context);
-  return response as ShopifyProductSyncHistoryState;
-}
 
 function getRequiredCount(payload: any, key: string, context: string): number {
   const value = payload?.[key]?.count ?? payload?.response?.[key]?.count ?? payload?.data?.[key]?.count;
@@ -1103,62 +1057,6 @@ const fetchPreflight = async (payload: any): Promise<any[]> => {
   }
 };
 
-const startInitialImport = async (payload: any): Promise<any> => {
-  const { shopId, productStoreId, productIdentifierEnumId, systemMessageRemoteId } = payload;
-  if (!systemMessageRemoteId) {
-    throw new Error("Shopify product sync import requires systemMessageRemoteId.");
-  }
-
-  const response = await requestBackend<any>({
-    url: `oms/shopifyShops/${shopId}/productSync/imports`,
-    method: "post",
-    data: {
-      productStoreId,
-      productIdentifierEnumId,
-      systemMessageRemoteId
-    }
-  }, "Shopify product sync import endpoint");
-  return validateInitialImport(response);
-};
-
-const fetchProgress = async (payload: any): Promise<ShopifyProductSyncProgressState> => {
-  if (!payload.syncJobId) {
-    throw new Error("Shopify product sync progress requires syncJobId.");
-  }
-
-  const response = await requestBackend<ShopifyProductSyncProgressState>({
-    url: `oms/shopifyShops/${payload.shopId}/productSync/imports/${payload.syncJobId}`,
-    method: "get"
-  }, "Shopify product sync progress endpoint");
-  return validateProgress(response, payload.syncJobId);
-};
-
-const fetchReconcile = async (payload: any): Promise<any> => {
-  const response = await requestBackend<any>({
-    url: `oms/shopifyShops/${payload.shopId}/productSync/reconcile`,
-    method: "get",
-    params: {
-      productStoreId: payload.productStoreId,
-      syncJobId: payload.syncJobId
-    }
-  }, "Shopify product sync reconcile endpoint");
-  return validateReconcile(response);
-};
-
-const fetchHistory = async (payload: any): Promise<ShopifyProductSyncHistoryState> => {
-  const history = validateHistory(await requestBackend<ShopifyProductSyncHistoryState>({
-    url: `oms/shopifyShops/${payload.shopId}/productSync/history`,
-    method: "get",
-    params: {
-      limit: 20
-    }
-  }, "Shopify product sync history endpoint"));
-
-  return {
-    ...history,
-    runs: history.runs.slice(0, 20)
-  };
-};
 
 const fetchSyncJobConfig = async (payload: any): Promise<{ isConfigured: boolean; jobName: string }> => {
   const shopifyShopId = payload.shopifyShopId;
@@ -1191,7 +1089,7 @@ const fetchSyncJobConfig = async (payload: any): Promise<{ isConfigured: boolean
 };
 
 const configureSyncJob = async (payload: any): Promise<any> => {
-  const shopifyShopId = payload.shopifyShopId;
+  const { shopifyShopId, productStoreId, productIdentifierEnumId } = payload;
   const newJobName = `sync_ShopifyProductUpdates_${shopifyShopId}`;
   
   await api({
@@ -1200,16 +1098,32 @@ const configureSyncJob = async (payload: any): Promise<any> => {
     data: { newJobName }
   });
 
+  const serviceJobParameters = [{
+    parameterName: "shopifyShopId",
+    parameterValue: shopifyShopId
+  }];
+
+  if (productStoreId) {
+    serviceJobParameters.push({
+      parameterName: "productStoreIds",
+      parameterValue: productStoreId
+    });
+  }
+
+  if (productIdentifierEnumId) {
+    serviceJobParameters.push({
+      parameterName: "shopifyProductIdentifier",
+      parameterValue: productIdentifierEnumId
+    });
+  }
+
   return await api({
     url: `admin/serviceJobs/${newJobName}`,
     method: "PUT",
     data: {
       jobName: newJobName,
       paused: "Y",
-      serviceJobParameters: [{
-        parameterName: "shopifyShopId",
-        parameterValue: shopifyShopId
-      }]
+      serviceJobParameters
     }
   });
 };
@@ -1275,10 +1189,6 @@ export const ShopifyProductSyncService = {
   fetchProductStoreContext,
   fetchReviewStats,
   fetchPreflight,
-  startInitialImport,
-  fetchProgress,
-  fetchReconcile,
-  fetchHistory,
   fetchSyncJobConfig,
   configureSyncJob,
   fetchErrorRecordCount
