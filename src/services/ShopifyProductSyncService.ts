@@ -1244,6 +1244,22 @@ const fetchErrorRecordCount = async (payload: any): Promise<number> => {
   }
 };
 
+const fetchDashboardSummary = async (payload: any): Promise<any> => {
+  const { shopId, systemMessageRemoteId, shop } = payload;
+  
+  const [syncRunState, pendingRequests, runningOperation] = await Promise.all([
+    fetchProductUpdateSyncRunState(systemMessageRemoteId),
+    fetchPendingProductUpdateRequests(systemMessageRemoteId),
+    fetchRunningBulkOperation({ shopId, systemMessageRemoteId, shop })
+  ]);
+
+  return {
+    syncRunState,
+    pendingRequests,
+    runningOperation
+  };
+};
+
 export const ShopifyProductSyncService = {
   fetchDashboardSummary,
   fetchShopSystemMessageRemoteId,
