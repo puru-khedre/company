@@ -267,6 +267,7 @@
           </ion-item>
         </ion-list>
       </ion-card>
+      </template>
     </div>
   </section>
 
