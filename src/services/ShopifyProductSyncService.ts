@@ -1214,27 +1214,34 @@ const configureSyncJob = async (payload: any): Promise<any> => {
   });
 };
 
+const fetchErrorRecordCount = async (payload: any): Promise<number> => {
+  const { shopId, configId } = payload;
+  const finishDateTimeFrom = Date.now() - (24 * 60 * 60 * 1000); // 24 hours ago in ms
 
+  try {
+    const response = await requestBackend<any>({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "DATA_MANAGER_LOG_AND_PARAMETER",
+        customParametersMap: {
+          configId: configId || "SYNC_SHOPIFY_PRODUCT",
+          parameterName: "shopId",
+          parameterValue: shopId,
+          failedRecordCount: 0,
+          failedRecordCount_op: "equals",
+          failedRecordCount_not: "true",
+          finishDateTime_from: finishDateTimeFrom.toString()
+        },
+        fieldsToSelect: "failedRecordCount"
+      }
+    });
 
-export interface ShopifyProductSyncDashboardSummary {
-  syncRunState: ShopifyProductUpdateSyncRunState;
-  pendingRequests: ShopifyPendingProductUpdateRequestsState;
-  runningOperation: ShopifyRunningBulkOperation | null;
-}
-
-const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDashboardSummary> => {
-  const systemMessageRemoteId = typeof payload === "string" ? payload : resolveSystemMessageRemoteId(payload);
-  if (!systemMessageRemoteId) {
-    throw new Error("Shopify systemMessageRemoteId is required for dashboard summary.");
+    return Number(response?.entityValueList?.[0]?.failedRecordCount || 0);
+  } catch (error) {
+    logger.warn("Failed to fetch error record count using dataDocumentView", error);
+    return 0;
   }
-
-  const [syncRunState, pendingRequests, runningOperation] = await Promise.all([
-    fetchProductUpdateSyncRunState(systemMessageRemoteId),
-    fetchPendingProductUpdateRequests(systemMessageRemoteId),
-    fetchRunningBulkOperation(systemMessageRemoteId)
-  ]);
-
-  return { syncRunState, pendingRequests, runningOperation };
 };
 
 export const ShopifyProductSyncService = {
@@ -1257,5 +1264,6 @@ export const ShopifyProductSyncService = {
   fetchReconcile,
   fetchHistory,
   fetchSyncJobConfig,
-  configureSyncJob
+  configureSyncJob,
+  fetchErrorRecordCount
 };
