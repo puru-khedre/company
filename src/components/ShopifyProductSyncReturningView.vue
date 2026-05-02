@@ -279,6 +279,7 @@
           <h2>{{ translate("Parsed error details") }}</h2>
           <p style="margin-top: 2px;">{{ failedRecords.length }} {{ translate("of") }} {{ totalDetailedErrorsCount }} {{ translate("failed objects") }}</p>
         </ion-label>
+        <ion-spinner v-if="isErrorLogsLoading" name="crescent" class="ion-margin-start" />
       </ion-item>
       <ion-buttons slot="end" v-if="hasDetailedErrors">
         <ion-button color="medium" @click="emit('refresh-errors')">
@@ -313,7 +314,6 @@
         </ion-card-content>
       </ion-card>
       
-      <!-- Load More at the end of carousel -->
       </div>
     <div class="stat-data" v-else>
       <ion-card>
@@ -399,6 +399,7 @@ const props = defineProps<{
   hasCurrentShopifyRequest?: boolean
   syncJobObj?: any
   isSecondaryLoading?: boolean
+  isErrorLogsLoading?: boolean
   errorRecordCount: number | string
   failedRecords: Array<{ id: string, numericId?: string, logId?: string, title: string, vendor?: string, handle?: string, productType?: string, sku?: string, barcode?: string, error: string }>
   detailedErrorQuery: string

@@ -100,32 +100,19 @@ export function useSystemMessage() {
     return { systemMessages: [], systemMessagesCount: 0 };
   };
 
-  const fetchSystemMessageLogDetailsPage = async (params: any) => {
+  const fetchSystemMessageLogDetailsPage = async (payload: any) => {
     state.loading = true;
     try {
       const response = await api({
-        url: "admin/systemMessages/logDetails",
-        method: "GET",
-        params
+        url: "oms/dataDocumentView",
+        method: "POST",
+        data: payload
       }) as any;
 
       const data = response?.data;
-      if (Array.isArray(data)) {
-        return {
-          systemMessageLogDetails: data,
-          systemMessageLogDetailsCount: data.length
-        };
-      }
-
       return {
-        systemMessageLogDetails: data?.systemMessageLogDetails ||
-          data?.systemMessageAndDataManagerLogDetails ||
-          data?.systemMessages ||
-          [],
-        systemMessageLogDetailsCount: Number(data?.systemMessageLogDetailsCount ||
-          data?.systemMessageAndDataManagerLogDetailsCount ||
-          data?.systemMessagesCount ||
-          0)
+        systemMessageLogDetails: data?.entityValueList || [],
+        systemMessageLogDetailsCount: Number(data?.entityValueListCount || 0)
       };
     } catch (err) {
       logger.error(`Failed to fetch system message log details`, err);

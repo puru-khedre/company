@@ -587,37 +587,39 @@ const fetchShopSystemMessageRemoteId = async (payload: any): Promise<any> => {
       });
   }
 
-  // Check candidates in parallel, pick first valid one, otherwise fallback to first
-  const validRemoteIdPromises = candidates.map(async (candidate: any) => {
-    try {
-      const systemMessagesResponse = await requestBackend<SystemMessagesResponse>({
-        url: "admin/systemMessages",
-        method: "get",
-        params: {
-          systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
-          systemMessageRemoteId: candidate.systemMessageRemoteId,
-          pageSize: 1,
-          pageIndex: 0
-        }
-      });
-      if (Number(systemMessagesResponse?.systemMessagesCount || 0) > 0) {
-        return candidate.systemMessageRemoteId;
+  // Extract unique remote IDs from candidates
+  const remoteIds = candidates
+    .map((candidate: any) => candidate.systemMessageRemoteId)
+    .filter((id: string, index: number, self: any[]) => id && self.indexOf(id) === index);
+
+  if (!remoteIds.length) return candidates[0]?.systemMessageRemoteId;
+
+  try {
+    const response = await requestBackend<SystemMessagesResponse>({
+      url: "admin/systemMessages",
+      method: "get",
+      params: {
+        systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
+        systemMessageRemoteId: remoteIds,
+        systemMessageRemoteId_op: "in",
+        pageSize: remoteIds.length
       }
-    } catch (e) {
-      // Ignore errors for this check and continue
+    });
+
+    const validRemoteIds = new Set(response?.systemMessages?.map((msg: any) => msg.systemMessageRemoteId));
+    // Pick the first remoteId from the original candidates list that is valid
+    const firstValid = remoteIds.find(id => validRemoteIds.has(id));
+
+    if (firstValid) {
+      return firstValid;
     }
-    return null;
-  });
-
-  const results = await Promise.all(validRemoteIdPromises);
-  const firstValid = results.find(id => id !== null);
-
-  if (firstValid) {
-    return firstValid;
+  } catch (e) {
+    logger.error("Failed to resolve system message remote IDs in bulk", e);
   }
 
   return candidates[0].systemMessageRemoteId;
 };
+
 
 function getLatestSystemMessage(systemMessages: any[], dateFields: string[]) {
   return systemMessages.reduce((latest: any, systemMessage: any) => {
@@ -634,8 +636,9 @@ function getLatestSystemMessage(systemMessages: any[], dateFields: string[]) {
 
 const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProductUpdateSyncRunState> => {
   const systemMessageRemoteId = typeof payload === "string" ? payload : resolveSystemMessageRemoteId(payload);
-  if (!systemMessageRemoteId) {
-    throw new Error("Shopify systemMessageRemoteId is required to find product update sync system messages.");
+  const shopId = payload.shopId || payload.shop?.shopId;
+  if (!shopId) {
+    throw new Error("Shop ID is required to find product update sync system messages.");
   }
 
   const pageSize = 1000;
@@ -644,27 +647,34 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
   let totalCount = pageSize;
 
   while (systemMessages.length < totalCount) {
-    const response = await requestBackend<SystemMessagesResponse>({
-      url: "admin/systemMessages",
-      method: "get",
-      params: {
-        systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
-        systemMessageRemoteId,
+    const response = await requestBackend<any>({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
+        customParametersMap: {
+          systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+          remoteInternalId: shopId,
+          remoteInternalIdType: "HOTWAX_SHOP_ID"
+        },
         pageSize,
         pageIndex
       }
     });
-    const page = response?.systemMessages || [];
+
+    const page = response?.entityValueList || [];
+    totalCount = Number(response?.entityValueListCount || 0);
     systemMessages = systemMessages.concat(page);
-    totalCount = Number(response?.systemMessagesCount || systemMessages.length);
-    if (!page.length) break;
-    pageIndex += 1;
+    pageIndex++;
+
+    if (page.length < pageSize) break;
   }
 
-  const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed");
+  const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed" || systemMessage.statusId === "SmsgConsumed");
   const consumedMessages = systemMessages.filter((systemMessage: any) => {
     const statusId = String(systemMessage.statusId || "").toLowerCase();
-    return statusId === "smsgconsumed" || statusId === "consumed" || statusId === "smsgconfirmed" || statusId === "confirmed";
+    const isConsumed = statusId === "smsgconsumed" || statusId === "consumed" || statusId === "smsgconfirmed" || statusId === "confirmed";
+    return isConsumed && systemMessage.logId;
   });
   const latestConfirmedSystemMessage = getLatestSystemMessage(confirmedMessages, ["processedDate", "lastUpdatedStamp", "initDate"]);
   const latestConsumedSystemMessage = getLatestSystemMessage(consumedMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
@@ -681,27 +691,31 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
 };
 
 const fetchPendingProductUpdateRequests = async (payload: any): Promise<ShopifyPendingProductUpdateRequestsState> => {
-  const systemMessageRemoteId = typeof payload === "string" ? payload : resolveSystemMessageRemoteId(payload);
-  if (!systemMessageRemoteId) {
-    throw new Error("Shopify systemMessageRemoteId is required to count pending product update requests.");
+  const shopId = payload.shopId || payload.shop?.shopId;
+  if (!shopId) {
+    throw new Error("Shop ID is required to count pending product update requests.");
   }
 
-  const response = await requestBackend<SystemMessagesResponse>({
-    url: "admin/systemMessages",
-    method: "get",
-    params: {
-      systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
-      systemMessageRemoteId,
-      statusId: "SmsgProduced",
+  const response = await requestBackend<any>({
+    url: "oms/dataDocumentView",
+    method: "post",
+    data: {
+      dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
+      customParametersMap: {
+        systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+        remoteInternalId: shopId,
+        remoteInternalIdType: "HOTWAX_SHOP_ID",
+        statusId: "SmsgProduced"
+      },
       pageSize: payload.pageSize || 1,
       pageIndex: 0,
-      orderBy: "-initDate"
+      orderByField: "-initDate"
     }
   }, "Pending product update requests");
 
   return {
-    count: Number(response?.systemMessagesCount || 0),
-    latestSystemMessage: response?.systemMessages?.[0]
+    count: Number(response?.entityValueListCount || 0),
+    latestSystemMessage: response?.entityValueList?.[0]
   };
 };
 
@@ -1248,9 +1262,9 @@ const fetchDashboardSummary = async (payload: any): Promise<any> => {
   const { shopId, systemMessageRemoteId, shop } = payload;
   
   const [syncRunState, pendingRequests, runningOperation] = await Promise.all([
-    fetchProductUpdateSyncRunState(systemMessageRemoteId),
-    fetchPendingProductUpdateRequests(systemMessageRemoteId),
-    fetchRunningBulkOperation({ shopId, systemMessageRemoteId, shop })
+    fetchProductUpdateSyncRunState(payload),
+    fetchPendingProductUpdateRequests(payload),
+    fetchRunningBulkOperation(payload)
   ]);
 
   return {
