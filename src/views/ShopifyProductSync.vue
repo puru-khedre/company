@@ -1412,8 +1412,6 @@ function handleSelectedProductsForSync(data: any) {
   showToast(translate("Immediate product sync request API is not available yet."));
 }
 
-}
-
 async function selectTrackProgressSystemMessage(systemMessages: any[]) {
   if (!systemMessages.length) return null;
 
