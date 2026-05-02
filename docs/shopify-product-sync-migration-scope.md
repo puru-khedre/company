@@ -6,7 +6,7 @@ This document defines the migration scope for moving a Shopify shop from the leg
 
 The goal is to make the implementation work off a concrete inventory of:
 
-- legacy data that must be removed or deactivated
+- legacy data that must be deprecated, removed, or deactivated
 - new data that must exist after migration
 - IDs and job names the app code must check for
 - the ownership boundary between deployment seed data and app-created runtime data
@@ -29,7 +29,7 @@ Two classes of data are involved:
 
 The app or PWA owns the code that:
 
-- tears down legacy product-sync data
+- deprecates, tears down, or deactivates legacy product-sync data
 - creates or activates shop-specific runtime data for the new sync
 - cancels or deactivates legacy in-flight work
 - verifies that expected shop-specific runtime records exist after migration
@@ -56,23 +56,39 @@ The implementation should use a two-part gate:
 
 ### Version or release gate
 
-The app should read deployment release metadata from backend deployment/version data before exposing migration actions.
+The app should read deployment release metadata from the Maarg admin endpoint before exposing migration actions.
 
-Confirmed local source:
+Current backend contract example:
 
-- `co.hotwax.util.UtilityServices.index#DeploymentData` indexes component release information into the `instanceDetails` core.
-- The indexed payload includes `componentName`, `version`, `revision`, and remote URL metadata for installed components.
+- `GET /rest/s1/admin/maarg`
+- Response path for the release gate: `instanceInfo.componentRelease`
+
+Sample response shape:
+
+```json
+{
+  "instanceInfo": {
+    "instancePurpose": "dev",
+    "instanceName": "devhc1",
+    "omsInstanceUrl": "https://localhost:8443",
+    "componentRelease": "UpcomingRelease"
+  },
+  "components": [
+    {
+      "name": "OFBizMigrate",
+      "version": "unknown"
+    }
+  ]
+}
+```
 
 Implementation guidance:
 
 - Add a single minimum compatible release constant in the app, for example `MIN_PRODUCT_SYNC_MIGRATION_RELEASE`.
-- Compare the deployed release against that minimum.
+- For now, document the placeholder minimum release as `ProductSyncMigrationGate_2026_05`.
+- Compare `instanceInfo.componentRelease` against that minimum.
 - Do not allow migration when the backend release is lower than the minimum.
-
-Current gap:
-
-- The exact minimum compatible release is not encoded in the local Company source yet.
-- This document treats it as a required implementation input: `TBD_MIN_COMPATIBLE_RELEASE`.
+- Replace the placeholder value with the real release name before implementation ships.
 
 ### Artifact verification gate
 
@@ -183,20 +199,38 @@ The app or PWA must remove or deactivate the old implementation before enabling 
 
 ### Required teardown checks
 
-1. Remove old product-sync system message type data.
-2. Remove old product-sync service jobs for every shop that queued legacy system messages.
-3. Remove the old queue job if it is product-sync-specific.
-4. Remove the old poll job for the old path.
-5. Remove the old sender job only if it is dedicated to the old product-sync path.
+1. Deprecate old product-sync system message types in place.
+2. Disable or remove old product-sync service jobs for every shop that queued legacy system messages.
+3. Disable or remove the old queue job if it is product-sync-specific.
+4. Disable or remove the old poll job for the old path.
+5. Disable or remove the old sender job only if it is dedicated to the old product-sync path.
 6. Cancel old typed system messages that have not reached their terminal confirmed state.
 7. Delete old product-sync-only enumerations that are no longer needed.
 
 ### Teardown behavior rules
 
+- Do not delete legacy system message types if historical references depend on them.
+- Deprecate each legacy product-sync system message type by renaming it with a clear deprecated label.
+- Clear service bindings from deprecated legacy product-sync system message types so they cannot run accidentally.
+- Do not assume legacy service jobs can always be deleted cleanly because referential integrity may prevent removal.
+- When a legacy product-sync service job cannot be deleted, clear its service execution fields so that an accidental run becomes a no-op.
 - Do not delete shared jobs blindly.
 - For a shared sender or poller, first inspect its parameters to determine whether it serves only the old product-sync types or also serves other message-type families.
-- If a shared job serves broader system-message behavior, keep the job and remove only the obsolete product-sync types and shop-specific jobs.
+- If a shared job serves broader system-message behavior, keep the job and remove or disable only the obsolete product-sync types and shop-specific jobs.
 - When cancelling old system messages, treat `SmsgConfirmed` as terminal and leave those records alone unless product later decides historical cleanup is acceptable.
+
+Suggested deprecation convention:
+
+- Prefix or suffix the legacy type description or name with `Deprecated`.
+- Keep the primary ID stable so existing historical records still resolve cleanly.
+- Null out or clear service-related fields that would otherwise allow the type to be produced, sent, polled, or consumed again.
+
+Suggested service job deactivation convention:
+
+- First try to delete legacy product-sync-only jobs when the data model allows it.
+- If delete is blocked or risky, rename the job with a `Deprecated` marker and clear the service name or equivalent execution fields.
+- Also clear or neutralize parameters that could still target a legacy product-sync path.
+- Prefer deactivation over speculative hard deletion when the live tenant model is uncertain.
 
 ### Legacy system message statuses to inspect
 
@@ -253,14 +287,14 @@ This is the matrix the app code should follow when implemented.
 
 | Category | ID or pattern | Legacy/New | Expected owner | App action |
 | --- | --- | --- | --- | --- |
-| SystemMessageType | `ShopifyNewProductsFeed` | Legacy | Tenant runtime from old bridge seeds | remove if present |
-| SystemMessageType | `ShopifyUpdateProductsFeed` | Legacy | Tenant runtime from old bridge seeds | remove if present |
-| SystemMessageType | `ShopifyProductUpdatesFeed` | Legacy | Tenant runtime from old bridge seeds | remove if present |
-| SystemMessageType | `GenerateOMSUpdateProductsFeed` | Legacy | Tenant runtime from old bridge seeds | remove if present |
-| SystemMessageType | `GenerateOMSUpdateProductsFeedNew` | Legacy/intermediate | Tenant runtime from old bridge seeds | remove if present |
-| ServiceJob | `poll_SystemMessageFileSftp_ShopifyNewProductsFeed` | Legacy | Tenant runtime | remove if present |
-| ServiceJob | `poll_SystemMessageFileSftp_ShopifyUpdateProductsFeed` | Legacy | Tenant runtime | remove if present |
-| ServiceJob | `poll_BulkOperationResult_ShopifyBulkQuery` | Older bulk-query | Deployment/runtime depending on upgrade path | remove or replace with current poller |
+| SystemMessageType | `ShopifyNewProductsFeed` | Legacy | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
+| SystemMessageType | `ShopifyUpdateProductsFeed` | Legacy | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
+| SystemMessageType | `ShopifyProductUpdatesFeed` | Legacy | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
+| SystemMessageType | `GenerateOMSUpdateProductsFeed` | Legacy | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
+| SystemMessageType | `GenerateOMSUpdateProductsFeedNew` | Legacy/intermediate | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
+| ServiceJob | `poll_SystemMessageFileSftp_ShopifyNewProductsFeed` | Legacy | Tenant runtime | delete if safe, otherwise rename as deprecated and clear execution fields |
+| ServiceJob | `poll_SystemMessageFileSftp_ShopifyUpdateProductsFeed` | Legacy | Tenant runtime | delete if safe, otherwise rename as deprecated and clear execution fields |
+| ServiceJob | `poll_BulkOperationResult_ShopifyBulkQuery` | Older bulk-query | Deployment/runtime depending on upgrade path | replace with current poller or deactivate safely |
 | SystemMessageType | `BulkQueryShopifyProductUpdates` | New | Deployment seed | verify exists |
 | ServiceJob | `sync_ShopifyProductUpdates` | New | Deployment seed | verify exists |
 | ServiceJob | `sync_ShopifyProductUpdates_{shopifyShopId}` | New | App-created runtime | create or verify |
@@ -272,6 +306,104 @@ This is the matrix the app code should follow when implemented.
 | Data document | `SERVICE_JOB_PARAMETER` | New shared | Deployment seed | verify exists |
 | Data document | `DATA_MANAGER_LOG_AND_PARAMETER` | New shared | Deployment seed | verify exists |
 | Data document | `PROD_STORE_PRODUCTS_COUNT` | New shared | Deployment seed | verify exists |
+
+## App Migration Config Plan
+
+The app should keep the migration identifiers in a single config file rather than scattering IDs across services and views.
+
+Suggested file:
+
+- `src/config/productSyncMigration.ts`
+
+The goal of this file is to define:
+
+- the minimum compatible backend release
+- the legacy IDs the app should search for and tear down
+- the target IDs the app should verify or create
+- the explicit mappings between outgoing legacy IDs and incoming replacement IDs
+
+### Suggested config shape
+
+```ts
+export const PRODUCT_SYNC_MIGRATION_CONFIG = {
+  minimumComponentRelease: "ProductSyncMigrationGate_2026_05",
+  outgoing: {
+    systemMessageTypes: [
+      "ShopifyNewProductsFeed",
+      "GenerateOMSNewProductsFeed",
+      "SendOMSNewProductsFeed",
+      "ShopifyUpdateProductsFeed",
+      "GenerateOMSUpdateProductsFeed",
+      "SendOMSUpdateProductsFeed",
+      "ShopifyProductUpdatesFeed",
+      "GenerateOMSUpdateProductsFeedNew"
+    ],
+    serviceJobs: [
+      "poll_SystemMessageFileSftp_ShopifyNewProductsFeed",
+      "poll_SystemMessageFileSftp_ShopifyUpdateProductsFeed",
+      "poll_BulkOperationResult_ShopifyBulkQuery"
+    ],
+    enumerations: [
+      "ShopifyNewProductsFeed",
+      "GenerateOMSNewProductsFeed",
+      "SendOMSNewProductsFeed",
+      "ShopifyUpdateProductsFeed",
+      "GenerateOMSUpdateProductsFeed",
+      "SendOMSUpdateProductsFeed",
+      "ShopifyProductUpdatesFeed",
+      "ProductUpdatesFeed",
+      "NewProductsFeed",
+      "GenerateOMSUpdateProductsFeedNew",
+      "ProductUpdatesFeedNew"
+    ]
+  },
+  incoming: {
+    systemMessageTypes: {
+      productSync: "BulkQueryShopifyProductUpdates",
+      webhook: "BulkOperationsFinish",
+      webhookParent: "ShopifyWebhook"
+    },
+    serviceJobs: {
+      baseSync: "sync_ShopifyProductUpdates",
+      perShopPattern: "sync_ShopifyProductUpdates_{shopifyShopId}",
+      send: "send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery",
+      poll: "poll_ShopifyBulkOperationResult"
+    },
+    dataManagerConfig: "SYNC_SHOPIFY_PRODUCT",
+    dataDocuments: [
+      "SERVICE_JOB_PARAMETER",
+      "DATA_MANAGER_LOG_AND_PARAMETER",
+      "PROD_STORE_PRODUCTS_COUNT"
+    ],
+    webhookTopic: "bulk_operations/finish"
+  },
+  mappings: {
+    systemMessageTypeReplacement: {
+      ShopifyNewProductsFeed: "BulkQueryShopifyProductUpdates",
+      ShopifyUpdateProductsFeed: "BulkQueryShopifyProductUpdates",
+      ShopifyProductUpdatesFeed: "BulkQueryShopifyProductUpdates"
+    },
+    jobReplacement: {
+      poll_BulkOperationResult_ShopifyBulkQuery: "poll_ShopifyBulkOperationResult"
+    }
+  }
+} as const
+```
+
+### Config rules
+
+- `outgoing` should list the legacy IDs the migration must remove, cancel, or inspect.
+- `incoming` should list the target IDs the migration must verify or create.
+- `mappings` should capture only true replacement relationships, not every artifact in the flow.
+- Shop-specific runtime patterns should stay parameterized, for example `sync_ShopifyProductUpdates_{shopifyShopId}`.
+- If a legacy runtime job cannot be identified by a stable ID, add a discovery rule next to the config rather than hardcoding guessed names in feature code.
+
+### Why this should live in config
+
+- It gives the app one source of truth for migration behavior.
+- It keeps implementation code focused on verification and actions rather than constants.
+- It makes it easier to update legacy coverage if more old tenant variants are discovered later.
+- It allows tests to assert migration behavior against one stable definition.
 
 ## Implementation Notes
 
