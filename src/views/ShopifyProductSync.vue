@@ -402,7 +402,7 @@
                           <ion-label>
                             {{ getSyncJobAuditFieldLabel(auditLog) }}
                             <p>{{ formatDateTime(getSyncJobAuditChangedAt(auditLog)) }}</p>
-                            <p v-if="getSyncJobAuditChangedBy(auditLog)">{{ translate("Changed by") }}: {{ getSyncJobAuditChangedBy(auditLog) }}</p>
+                            <p v-if="getSyncJobAuditChangedBy(auditLog)">{{ translate("Changed by") }}: {{ getSyncJobAuditChangedByLabel(auditLog) }}</p>
                             <p>{{ getSyncJobAuditChangeLabel(auditLog) }}</p>
                           </ion-label>
                         </ion-item>
@@ -630,6 +630,7 @@ import ShopifyProductSyncWizardView from "@/components/ShopifyProductSyncWizardV
 import { ProductStoreService } from "@/services/ProductStoreService";
 import { ShopifyService } from "@/services/ShopifyService";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
+import { UserService } from "@/services/UserService";
 import {
   canAdvanceProductSyncStep,
   canShowProductSyncReconcile,
@@ -745,6 +746,7 @@ const syncJobDraftCronExpression = ref("");
 const syncJobDraftActive = ref(true);
 const syncJobDetailsRecentRuns = ref<any[]>([]);
 const syncJobAuditHistory = ref<any[]>([]);
+const syncJobAuditUsers = ref<Record<string, any>>({});
 const isSyncJobAuditHistoryLoading = ref(false);
 const syncJobAuditHistoryError = ref("");
 const syncJobRecentRuns = ref<any[]>([]);
@@ -1942,6 +1944,7 @@ async function loadSyncJobAuditHistory(jobName: string) {
   syncJobAuditHistoryError.value = "";
   try {
     syncJobAuditHistory.value = await fetchJobAuditHistory(jobName, { pageSize: 10, pageIndex: 0 });
+    await loadSyncJobAuditUsers(syncJobAuditHistory.value);
   } catch (error: any) {
     logger.warn("Failed to load service job audit history", error);
     syncJobAuditHistory.value = [];
@@ -2504,6 +2507,44 @@ function getSyncJobAuditChangedAt(auditLog: any) {
 
 function getSyncJobAuditChangedBy(auditLog: any) {
   return auditLog.changedByUserId || auditLog.userId || auditLog.lastUpdatedByUserId || "";
+}
+
+async function loadSyncJobAuditUsers(auditLogs: any[]) {
+  const userLoginIds = Array.from(new Set(auditLogs.map(getSyncJobAuditChangedBy).filter(Boolean)));
+  const missingUserLoginIds = userLoginIds.filter((userLoginId) => !syncJobAuditUsers.value[userLoginId]);
+
+  if (!missingUserLoginIds.length) return;
+
+  const responses = await Promise.allSettled(missingUserLoginIds.map(async (userLoginId) => {
+    const resp = await UserService.getPersonByUserLoginId(userLoginId);
+    return { userLoginId, data: resp?.data || {} };
+  }));
+
+  const auditUsers = { ...syncJobAuditUsers.value };
+  responses.forEach((response) => {
+    if (response.status === "fulfilled") {
+      auditUsers[response.value.userLoginId] = response.value.data;
+      return;
+    }
+
+    const rejectedUserLoginId = missingUserLoginIds[responses.indexOf(response)];
+    auditUsers[rejectedUserLoginId] = { userLoginId: rejectedUserLoginId };
+    logger.warn("Failed to load audit user details", response.reason);
+  });
+  syncJobAuditUsers.value = auditUsers;
+}
+
+function getSyncJobAuditChangedByLabel(auditLog: any) {
+  const userLoginId = getSyncJobAuditChangedBy(auditLog);
+  if (!userLoginId) return "";
+
+  const userDetails = syncJobAuditUsers.value[userLoginId];
+  if (!userDetails) return userLoginId;
+
+  const fullName = [userDetails.firstName, userDetails.middleName, userDetails.lastName].filter(Boolean).join(" ").trim() || userDetails.fullName;
+  const primaryLabel = fullName || userDetails.groupName || userDetails.partyId || userLoginId;
+
+  return primaryLabel === userLoginId ? userLoginId : `${primaryLabel} (${userLoginId})`;
 }
 
 function getSyncJobAuditChangeLabel(auditLog: any) {
