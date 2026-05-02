@@ -35,6 +35,7 @@
       <template v-else>
         <shopify-product-sync-returning-view
           v-if="activeExperienceMode === 'returning'"
+          :is-secondary-loading="isSecondaryLoading"
           :is-sync-scheduled="isSyncScheduled"
           :is-sync-paused="isSyncJobPaused"
           :last-sync-label="lastSyncLabel"

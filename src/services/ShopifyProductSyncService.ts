@@ -680,7 +680,7 @@ const fetchPendingProductUpdateRequests = async (payload: any): Promise<ShopifyP
       systemMessageTypeId: PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID,
       systemMessageRemoteId,
       statusId: "SmsgProduced",
-      pageSize,
+      pageSize: payload.pageSize || 1,
       pageIndex: 0,
       orderBy: "-initDate"
     }
@@ -953,7 +953,7 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
       data: {
         dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
         pageIndex: 0,
-        pageSize,
+        pageSize: 1,
         customParametersMap: {
           productStoreId: payload.productStoreId,
           isVirtual: "Y"
@@ -968,7 +968,7 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
       data: {
         dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
         pageIndex: 0,
-        pageSize,
+        pageSize: 1,
         customParametersMap: {
           productStoreId: payload.productStoreId,
           isVariant: "Y"
@@ -1131,7 +1131,7 @@ const fetchSyncJobConfig = async (payload: any): Promise<{ isConfigured: boolean
       data: {
         dataDocumentId: "SERVICE_JOB_PARAMETER",
         pageIndex: 0,
-        pageSize,
+        pageSize: 1,
         customParametersMap: {
           parameterName: "shopifyShopId",
           parameterValue: shopifyShopId,
