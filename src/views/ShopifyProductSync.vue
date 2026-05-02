@@ -1730,7 +1730,7 @@ async function refreshSyncJobDetails() {
     if (jobDetails?.instanceOfProductId && !products.value?.[jobDetails.instanceOfProductId]) {
       await fetchProductDetail(jobDetails.instanceOfProductId);
     }
-    void loadSyncJobAuditHistory(selectedSyncJobDetailsJob.value.jobName);
+    void loadSyncJobAuditHistory(jobDetails.jobName);
   } catch (error: any) {
     logger.error(error);
     syncJobDetails.value = {};
