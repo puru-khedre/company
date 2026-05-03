@@ -157,7 +157,7 @@
           <ion-label>
             {{ translate("Update files to process")}}
           </ion-label>
-          <ion-label slot="end">1</ion-label>
+          <ion-label slot="end">{{ updateFilesToProcessCount }}</ion-label>
         </ion-item>
         <ion-item>
           <ion-label>
@@ -405,6 +405,7 @@ const props = defineProps<{
   detailedErrorQuery: string
   hasDetailedErrors: boolean
   totalDetailedErrorsCount: number
+  updateFilesToProcessCount: number | string
 }>();
 const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job", "download-file", "view-error-details", "update:detailed-error-query", "show-error-modal", "refresh-errors", "resync-product"]);
 

@@ -66,6 +66,7 @@
           :sync-job-obj="syncJobObj"
           :is-error-logs-loading="isErrorLogsLoading"
           :error-record-count="errorRecordCount"
+          :update-files-to-process-count="updateFilesToProcessCount"
           :last-sync-total-record-count="lastSyncTotalRecordCount"
           :failed-records="pagedFilteredParsedErrorRecords"
           :total-detailed-errors-count="filteredParsedErrorRecords.length"
@@ -727,6 +728,7 @@ const draft = ref(createProductSyncWizardDraft());
 const relatedShops = ref<any[]>([]);
 const shopifyShopProductCount = ref(0);
 const pendingUpdateRequestsCount = ref(0);
+const updateFilesToProcessCount = ref(0);
 const pendingUpdateRequestsLastCreatedAt = ref("");
 const errorRecordCount = computed(() => {
   return recentMdmLogs.value.reduce((acc: number, log: any) => acc + Number(log.failedRecordCount || 0), 0);
@@ -1357,6 +1359,7 @@ function applyDashboardSummary(summary: ShopifyProductSyncDashboardSummary) {
     "";
   runningShopifyBulkOperation.value = summary.runningOperation;
   shopifyShopProductCount.value = Number(summary.unsyncedUpdates?.count || 0);
+  updateFilesToProcessCount.value = Number(summary.updateFilesToProcess || 0);
 }
 
 async function loadBulkOperationMonitoringJobs() {

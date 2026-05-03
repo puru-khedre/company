@@ -65,6 +65,7 @@ export interface ShopifyProductSyncDashboardSummary {
   pendingRequests: ShopifyPendingProductUpdateRequestsState;
   runningOperation: ShopifyRunningBulkOperation | null;
   unsyncedUpdates: ShopifyShopProductCount;
+  updateFilesToProcess: number;
 }
 
 export interface ShopifyRunningBulkOperation {
@@ -1172,13 +1173,41 @@ const fetchErrorRecordCount = async (payload: any): Promise<number> => {
   }
 };
 
+const fetchUpdateFilesToProcessCount = async (payload: any): Promise<number> => {
+  const { shopId, configId } = payload;
+  try {
+    const response = await requestBackend<any>({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "DATA_MANAGER_LOG_AND_PARAMETER",
+        pageSize: 1,
+        pageIndex: 0,
+        customParametersMap: {
+          configId: configId || "SYNC_SHOPIFY_PRODUCT",
+          parameterName: "shopId",
+          parameterValue: shopId,
+          statusId: ["DmlSuccess", "DmlError", "DmlCancelled"],
+          statusId_op: "not_in"
+        }
+      }
+    });
+
+    return Number(response?.entityValueListCount || 0);
+  } catch (error: any) {
+    logger.warn("Failed to fetch update files to process count using dataDocumentView", error);
+    return 0;
+  }
+};
+
 const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDashboardSummary> => {
   const { shopId, systemMessageRemoteId, shop } = payload;
   
-  const [syncRunState, pendingRequests, runningOperation] = await Promise.all([
+  const [syncRunState, pendingRequests, runningOperation, updateFilesToProcess] = await Promise.all([
     fetchProductUpdateSyncRunState(payload),
     fetchPendingProductUpdateRequests(payload),
-    fetchRunningBulkOperation(payload)
+    fetchRunningBulkOperation(payload),
+    fetchUpdateFilesToProcessCount(payload)
   ]);
   const unsyncedUpdates = await fetchShopifyShopProductCount({
     ...payload,
@@ -1190,7 +1219,8 @@ const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDa
     syncRunState,
     pendingRequests,
     runningOperation,
-    unsyncedUpdates
+    unsyncedUpdates,
+    updateFilesToProcess
   };
 };
 
@@ -1211,5 +1241,6 @@ export const ShopifyProductSyncService = {
   fetchPreflight,
   fetchSyncJobConfig,
   configureSyncJob,
-  fetchErrorRecordCount
+  fetchErrorRecordCount,
+  fetchUpdateFilesToProcessCount
 };
