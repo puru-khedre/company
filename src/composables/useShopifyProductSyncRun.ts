@@ -19,7 +19,7 @@ export function useShopifyProductSyncRun() {
   const getStatusColor = (status: string) => {
     if (!status) return "medium";
     const s = status.toLowerCase();
-    if (s.includes("success") || s.includes("completed") || s.includes("consumed") || s.includes("finished") || s === "dmlsuccess") return "success";
+    if (s.includes("success") || s.includes("completed") || s.includes("consumed") || s.includes("confirmed") || s.includes("finished") || s === "dmlsuccess") return "success";
     if (s.includes("error") || s.includes("failed") || s.includes("rejected") || s === "dmlerror") return "danger";
     if (s.includes("running") || s.includes("sent") || s.includes("produced") || s.includes("smsg")) return "primary";
     return "medium";

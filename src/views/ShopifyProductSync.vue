@@ -64,6 +64,7 @@
           :current-shopify-request-status-color="currentShopifyRequestStatusColor"
           :has-current-shopify-request="hasRunningShopifyBulkOperation"
           :sync-job-obj="syncJobObj"
+          :is-error-logs-loading="isErrorLogsLoading"
           :error-record-count="errorRecordCount"
           :last-sync-total-record-count="lastSyncTotalRecordCount"
           :failed-records="pagedFilteredParsedErrorRecords"
@@ -74,7 +75,6 @@
           @show-error-modal="openErrorDetailsModal"
           @refresh-errors="refreshErrorRecords"
           @resync-product="resyncProduct"
-          @load-more-errors="loadMoreErrorRecords"
           @open-history="openHistory"
           @open-sync-job-details="openSyncJobDetailsModal"
           @schedule-sync="scheduleSyncJob"
@@ -669,7 +669,7 @@ const {
   updateJob,
   runNow
 } = useServiceJob();
-const { downloadDataManagerFile, fetchLogDetails, fetchMdmLogBySystemMessageId, fetchRecentLogsByConfigId, currentMdmLog, recentMdmLogs, errorLogs, fetchAllRecentFailedRecords, clearStorage } = useDataManagerLog();
+const { downloadDataManagerFile, fetchLogDetails, fetchMdmLogBySystemMessageId, fetchRecentLogsByConfigId, currentMdmLog, recentMdmLogs, errorLogs, fetchAllRecentFailedRecords, clearStorage, loading: isErrorLogsLoading } = useDataManagerLog();
 const { productUpdateHistories, fetchProductUpdateHistory } = useProductUpdateHistory();
 const { currentSyncRun, fetchSyncRun } = useShopifyProductSyncRun();
 const PRODUCT_UPDATE_SYNC_SERVICE_NAME = "sync_ShopifyProductUpdates";
@@ -677,7 +677,7 @@ const BULK_OPERATION_SEND_JOB_NAME = "send_ProducedBulkOperationSystemMessage_Sh
 const BULK_OPERATION_POLL_JOB_NAME = "poll_ShopifyBulkOperationResult";
 const PRODUCT_SYNC_MDM_CONFIG_ID = "SYNC_SHOPIFY_PRODUCT";
 const PRODUCT_SYNC_ERROR_LOG_LIMIT = 10;
-const SYSTEM_MESSAGE_CONSUMED_STATUSES = ["smsgconsumed", "consumed"];
+const SYSTEM_MESSAGE_CONSUMED_STATUSES = ["smsgconsumed", "consumed", "smsgconfirmed", "confirmed"];
 const SYSTEM_MESSAGE_RECEIVED_STATUSES = ["smsgreceived", "received"];
 const SYSTEM_MESSAGE_SENT_STATUSES = ["smsgsent", "sent"];
 const SYSTEM_MESSAGE_PRODUCED_STATUSES = ["smsgproduced", "produced"];
@@ -738,7 +738,9 @@ const relatedShops = ref<any[]>([]);
 const shopifyShopProductCount = ref(0);
 const pendingUpdateRequestsCount = ref(0);
 const pendingUpdateRequestsLastCreatedAt = ref("");
-const errorRecordCount = ref(0);
+const errorRecordCount = computed(() => {
+  return recentMdmLogs.value.reduce((acc: number, log: any) => acc + Number(log.failedRecordCount || 0), 0);
+});
 const syncJobDetails = ref<any>({});
 const syncJobDraftCronExpression = ref("");
 const syncJobDraftActive = ref(true);
@@ -747,7 +749,6 @@ const syncJobAuditHistory = ref<any[]>([]);
 const syncJobAuditUsers = ref<Record<string, any>>({});
 const isSyncJobAuditHistoryLoading = ref(false);
 const syncJobAuditHistoryError = ref("");
-const syncJobRecentRuns = ref<any[]>([]);
 const selectedSyncJobDetailsJob = ref<any>(null);
 const syncJobId = ref("");
 const selectedShopSystemMessageRemoteId = ref("");
@@ -779,6 +780,7 @@ const progressState = ref<any>({
   queuedJobsAhead: 0
 });
 const reconcileState = ref<any>({});
+const syncJobRecentRuns = ref<any[]>([]);
 const detailedErrorSearchQuery = ref("");
 const selectedErrorRecord = ref<any>(null);
 const showErrorDetailsModal = ref(false);
@@ -903,10 +905,10 @@ const bulkOperationPollJobNextRunLabel = computed(() => {
   return getJobNextRunLabel(bulkOperationPollJob.value);
 });
 const lastSyncTotalRecordCount = computed(() => {
-  const latestLog = recentMdmLogs.value[0];
-  return latestLog?.totalRecordCount || 0;
+  return latestConsumedSystemMessage.value?.totalRecordCount || 0;
 });
 const stepDetailsTitle = computed(() => {
+
   if (currentStepDetail.value?.type === "systemMessage") return translate("System Message");
   if (currentStepDetail.value?.type === "bulkOperation") return translate("Bulk Operation");
   if (currentStepDetail.value?.type === "mdmLog") return translate("Data Manager Log");
@@ -1171,7 +1173,7 @@ const filteredParsedErrorRecords = computed(() => {
     return {
       id: product.id || err.id,
       numericId,
-      logId: currentMdmLog.value?.logId,
+      logId: err.logId || currentMdmLog.value?.logId,
       title: product.title || err.title || translate("Unknown product"),
       vendor: product.vendor || err.vendor,
       handle: product.handle,
@@ -1297,7 +1299,6 @@ async function loadWizard() {
 async function loadSecondaryData() {
   isSecondaryLoading.value = true;
   try {
-    // 1. Fetch dashboard summary (replaces loadLatestSystemMessage, loadPendingUpdateRequests, loadRunningShopifyBulkOperation)
     const summary = await ShopifyProductSyncService.fetchDashboardSummary({
       shopId: props.id,
       systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
@@ -1308,6 +1309,7 @@ async function loadSecondaryData() {
     latestSystemMessage.value = await selectTrackProgressSystemMessage(summary.syncRunState.systemMessages || []);
     latestConfirmedSystemMessage.value = summary.syncRunState.latestConfirmedSystemMessage;
     latestConsumedSystemMessage.value = summary.syncRunState.latestConsumedSystemMessage;
+    recentMdmLogs.value = summary.syncRunState.systemMessages;
     lastProductUpdateSyncedAt.value = summary.syncRunState.lastSyncedAt || "";
 
     if (latestSystemMessage.value?.systemMessageId) {
@@ -1338,9 +1340,12 @@ async function loadSecondaryData() {
       loadSyncJobLatestRun(),
       loadBulkOperationSendJobLatestRun(),
       loadBulkOperationPollJobLatestRun(),
-      fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 }),
-      fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT)
+      fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 })
     ]);
+
+    if (recentMdmLogs.value.length) {
+      await fetchAllRecentFailedRecords(PRODUCT_SYNC_MDM_CONFIG_ID, recentMdmLogs.value);
+    }
   } catch (error) {
     logger.error("Error loading secondary data", error);
   } finally {
@@ -1438,18 +1443,6 @@ async function loadPendingUpdateRequests() {
     logger.error(error);
     pendingUpdateRequestsCount.value = 0;
     pendingUpdateRequestsLastCreatedAt.value = "";
-  }
-}
-
-async function loadErrorRecordCount() {
-  try {
-    errorRecordCount.value = await ShopifyProductSyncService.fetchErrorRecordCount({
-      shopId: props.id,
-      configId: PRODUCT_SYNC_MDM_CONFIG_ID
-    });
-  } catch (error) {
-    logger.error("Failed to load error record count", error);
-    errorRecordCount.value = 0;
   }
 }
 
@@ -1560,7 +1553,7 @@ async function loadLatestSystemMessage() {
     shop: shop.value
   });
 
-  latestSystemMessage.value = await selectTrackProgressSystemMessage(syncRunState.systemMessages || []);
+  latestSystemMessage.value = selectTrackProgressSystemMessage(syncRunState.systemMessages || []);
   latestConfirmedSystemMessage.value = syncRunState.latestConfirmedSystemMessage || null;
   latestConsumedSystemMessage.value = syncRunState.latestConsumedSystemMessage || null;
   lastProductUpdateSyncedAt.value = syncRunState.lastSyncedAt || "";
@@ -1573,8 +1566,7 @@ async function loadLatestSystemMessage() {
 
   await Promise.all([
     fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 }),
-    fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT),
-    loadErrorRecordCount()
+    fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT)
   ]);
   
   if (recentMdmLogs.value.length) {
@@ -1667,15 +1659,14 @@ async function resyncProduct(record: any) {
   }
 }
 
-async function selectTrackProgressSystemMessage(systemMessages: any[]) {
+function selectTrackProgressSystemMessage(systemMessages: any[]) {
   if (!systemMessages.length) return null;
 
   const consumedMessages = systemMessages.filter((message) => hasSystemMessageStatus(message, SYSTEM_MESSAGE_CONSUMED_STATUSES));
   const oldestConsumedMessages = sortSystemMessagesOldestFirst(consumedMessages);
 
   for (const message of oldestConsumedMessages) {
-    const mdmLog = await fetchMdmLogBySystemMessageId(message.systemMessageId);
-    if (mdmLog?.logId && !isTerminalMdmLogStatus(mdmLog.statusId)) {
+    if (message.logId && !isTerminalMdmLogStatus(message.logStatusId)) {
       return message;
     }
   }
@@ -1930,9 +1921,7 @@ async function refreshSyncJobDetails() {
     syncJobDetailsRecentRuns.value = Array.isArray(jobRuns) ? jobRuns : [];
     setSyncJobDetailsDraft(syncJobDetails.value);
 
-    if (jobDetails?.instanceOfProductId && !products.value?.[jobDetails.instanceOfProductId]) {
-      await fetchProductDetail(jobDetails.instanceOfProductId);
-    }
+
     void loadSyncJobAuditHistory(jobDetails.jobName);
   } catch (error: any) {
     logger.error(error);

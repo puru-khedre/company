@@ -338,16 +338,21 @@ function getSystemMessagesCount(response: any, page: any[]) {
 }
 
 function getSystemMessageParams() {
-  const params: any = {
-    systemMessageTypeId: 'BulkQueryShopifyProductUpdates',
-    systemMessageRemoteId: systemMessageRemoteIds.value.join(","),
-    systemMessageRemoteId_op: "in",
+  const payload: any = {
+    dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
+    customParametersMap: {
+      logId_op: "empty",
+      logId_not: "true",
+      systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+      remoteInternalId: props.id,
+      remoteInternalIdType: "HOTWAX_SHOP_ID"
+    },
     orderByField: getSystemMessageOrderByField()
   };
 
-  if (filters.statusId) params.statusId = filters.statusId;
+  if (filters.statusId) payload.customParametersMap.statusId = filters.statusId;
 
-  return params;
+  return payload;
 }
 
 function getSystemMessageOrderByField() {

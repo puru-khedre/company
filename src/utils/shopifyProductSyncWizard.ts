@@ -14,6 +14,7 @@ export type ProductSyncMessageState =
   | "SmsgProduced"
   | "SmsgSent"
   | "SmsgConfirmed"
+  | "SmsgConsumed"
   | "SmsgCancelled"
   | "SmsgError";
 
@@ -158,6 +159,7 @@ export function normalizeProductSyncStatus(progress: ProductSyncProgressSnapshot
     case "SmsgSent":
       return "running";
     case "SmsgConfirmed":
+    case "SmsgConsumed":
       return "completed";
     case "SmsgCancelled":
       return "cancelled";

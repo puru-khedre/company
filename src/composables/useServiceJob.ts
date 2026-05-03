@@ -57,137 +57,166 @@ const defaultJobFetchParams = {
   instanceOfProductId_not: "Y"
 };
 
+const pendingRequests = {} as any;
+const fetchDeduplicated = async (key: string, fetchFn: () => Promise<any>) => {
+  if (pendingRequests[key]) return pendingRequests[key];
+  pendingRequests[key] = fetchFn().finally(() => delete pendingRequests[key]);
+  return pendingRequests[key];
+};
+
 export default function useServiceJob() {
 
+
   const fetchJobs = async (params: Record<string, any> = defaultJobFetchParams) => {
-    state.loading = true;
-    try {
-      let total = 0;
-      let pageIndex = 0;
-      let allJobs = [] as any[];
-      do {
-        const resp = await api({
-          url: "admin/serviceJobs",
-          method: "GET",
-          params: {
-            pageSize: 250,
-            pageIndex,
-            ...params
-          }
-        }) as any;
+    // Normalize params to ensure stable keying (especially for empty objects vs defaults)
+    const normalizedParams = (params && Object.keys(params).length > 0) ? params : {};
+    const key = `jobs_${JSON.stringify(normalizedParams)}`;
 
-        const respJobs = getServiceJobs(resp?.data).map((job: any) => ({
-          ...job,
-          cronString: job.cronExpression ? getCronString(job.cronExpression) : ''
-        }));
+    return fetchDeduplicated(key, async () => {
+      state.loading = true;
+      try {
+        let total = 0;
+        let pageIndex = 0;
+        let allJobs = [] as any[];
+        do {
+          const resp = await api({
+            url: "admin/serviceJobs",
+            method: "GET",
+            params: {
+              pageSize: 250,
+              pageIndex,
+              ...normalizedParams
+            }
+          }) as any;
 
-        total = respJobs.length;
-        allJobs = pageIndex > 0 ? allJobs.concat(respJobs) : respJobs;
-        pageIndex++;
-      } while(total === 250);
-      
-      state.jobs = allJobs;
-    } catch(err) {
-      logger.error("Failed to fetch jobs", err);
-      throw err;
-    } finally {
-      state.loading = false;
-    }
+
+          const respJobs = getServiceJobs(resp?.data).map((job: any) => ({
+            ...job,
+            cronString: job.cronExpression ? getCronString(job.cronExpression) : ''
+          }));
+
+          total = respJobs.length;
+          allJobs = pageIndex > 0 ? allJobs.concat(respJobs) : respJobs;
+          pageIndex++;
+        } while(total === 250);
+        
+        state.jobs = allJobs;
+      } catch(err) {
+        logger.error("Failed to fetch jobs", err);
+        throw err;
+      } finally {
+        state.loading = false;
+      }
+    });
   };
 
   const fetchServiceParams = async (serviceName: string) => {
     const encodedServiceName = encodeURIComponent(serviceName);
-    let parameters = [];
-    try {
-      const resp = await api({
-        url: `admin/services/${encodedServiceName}/parameters`,
-        method: "GET",
-        params: {
-          pageSize: 1000
-        }
-      }) as any;
-      parameters = resp?.data?.serviceInParameters || [];
-    } catch(err) {
-      logger.error("Failed to fetch service parameters", err);
-      throw err;
-    }
-    return parameters;
+    return fetchDeduplicated(`service_params_${encodedServiceName}`, async () => {
+      let parameters = [];
+      try {
+        const resp = await api({
+          url: `admin/services/${encodedServiceName}/parameters`,
+          method: "GET",
+          params: {
+            pageSize: 1000
+          }
+        }) as any;
+        parameters = resp?.data?.serviceInParameters || [];
+      } catch(err) {
+        logger.error("Failed to fetch service parameters", err);
+        throw err;
+      }
+      return parameters;
+    });
   };
 
   const fetchProductDetail = async (productId: string) => {
-    try {
-      const resp = await api({
-        url: `oms/products/${productId}`,
-        method: "GET"
-      }) as any;
-      if (resp?.data) {
-        state.products[productId] = resp.data;
+    if (state.products[productId]) return;
+    return fetchDeduplicated(`product_${productId}`, async () => {
+      try {
+        const resp = await api({
+          url: `oms/products/${productId}`,
+          method: "GET"
+        }) as any;
+        if (resp?.data) {
+          state.products[productId] = resp.data;
+        }
+      } catch(err) {
+        logger.error("Failed to fetch product detail", err);
+        throw err;
       }
-    } catch(err) {
-      logger.error("Failed to fetch product detail", err);
-      throw err;
-    }
+    });
   };
 
   const fetchJobDetail = async (jobName: string) => {
-    let jobDetails: Record<string, any> = {};
-    try {
-      const resp = await api({
-        url: `admin/serviceJobs/${jobName}`,
-        method: "GET",
-        params: {
-          pageSize: 1000
-        }
-      }) as any;
-      const job = resp?.data?.jobDetail || {};
+    return fetchDeduplicated(`job_detail_${jobName}`, async () => {
+      let jobDetails: Record<string, any> = {};
+      try {
+        const resp = await api({
+          url: `admin/serviceJobs/${jobName}`,
+          method: "GET",
+          params: {
+            pageSize: 1000
+          }
+        }) as any;
+        const job = resp?.data?.jobDetail || {};
 
-      const isJobProductStoreDependent = () => job.serviceJobParameters?.some((param: any) => param.parameterName === "productStoreIds");
+        const isJobProductStoreDependent = () => job.serviceJobParameters?.some((param: any) => param.parameterName === "productStoreIds");
 
-      if (isJobProductStoreDependent()) {
-        const jobProductStore = job.serviceJobParameters.find((param: any) => param.parameterName === "productStoreIds");
-        // get productStoreId from store
-        const currentProductStoreId = store.getters["productStore/getCurrent"]?.productStoreId; 
-        
-        if (jobProductStore?.parameterName && jobProductStore.parameterValue === currentProductStoreId) {
+        if (isJobProductStoreDependent()) {
+          const jobProductStore = job.serviceJobParameters.find((param: any) => param.parameterName === "productStoreIds");
+          // get productStoreId from store
+          const currentProductStoreId = store.getters["productStore/getCurrent"]?.productStoreId; 
+          
+          if (jobProductStore?.parameterName && jobProductStore.parameterValue === currentProductStoreId) {
+            jobDetails = job;
+          } else if (!jobProductStore?.parameterName) {
+            jobDetails = { ...job, isDraftJob: true };
+          }
+        } else {
           jobDetails = job;
-        } else if (!jobProductStore?.parameterName) {
-          jobDetails = { ...job, isDraftJob: true };
         }
-      } else {
-        jobDetails = job;
+      } catch(err) {
+        logger.error("Failed to fetch job details", err);
+        throw err;
       }
-    } catch(err) {
-      logger.error("Failed to fetch job details", err);
-      throw err;
-    }
 
-    if (!Object.keys(jobDetails || {}).length) {
-      throw new Error(`Service job detail is unavailable for ${jobName}.`);
-    }
+      if (!Object.keys(jobDetails || {}).length) {
+        throw new Error(`Service job detail is unavailable for ${jobName}.`);
+      }
 
-    const job = getNormalizedJobDetail(jobDetails);
-    if (job.instanceOfProductId && !state.products[job.instanceOfProductId]) {
-      await fetchProductDetail(job.instanceOfProductId);
-    }
-    return job;
+      const job = getNormalizedJobDetail(jobDetails);
+      if (job.instanceOfProductId && !state.products[job.instanceOfProductId]) {
+        await fetchProductDetail(job.instanceOfProductId);
+      }
+      return job;
+    });
   };
 
-  const fetchJobRuns = async (jobName: string, payload = { pageSize: 250, pageIndex: 0 }) => {
-    let jobRuns = [] as any;
-    try {
-      const resp = await api({
-        url: `admin/serviceJobs/${jobName}/runs`,
-        method: "GET",
-        params: {
-          ...payload
-        }
-      }) as any;
-      jobRuns = resp?.data || [];
-    } catch(err) {
-      logger.error("Failed to fetch job runs", err);
-      throw err;
+  const fetchJobRuns = async (jobName: string, payload: any) => {
+    const params = {
+      pageSize: 250,
+      pageIndex: 0,
+      orderByField: "-endTime",
+      ...payload
     }
-    return Array.isArray(jobRuns) ? jobRuns : [];
+    const key = `job_runs_${jobName}_${JSON.stringify(params)}`;
+    return fetchDeduplicated(key, async () => {
+      let jobRuns = [] as any;
+      try {
+        const resp = await api({
+          url: `admin/serviceJobs/${jobName}/runs`,
+          method: "GET",
+          params
+        }) as any;
+        jobRuns = resp?.data || [];
+      } catch(err) {
+        logger.error("Failed to fetch job runs", err);
+        throw err;
+      }
+      return Array.isArray(jobRuns) ? jobRuns : [];
+    });
   };
 
   const fetchJobAuditHistory = async (jobName: string, payload = { pageSize: 10, pageIndex: 0 }) => {
