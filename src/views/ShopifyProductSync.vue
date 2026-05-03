@@ -1141,14 +1141,14 @@ function getLoadedServiceJob(jobName: string) {
 }
 
 function isSelectedShopProductSyncJob(job: any = {}) {
-  const selectedShopifyShopIds = [
-    shop.value.shopifyShopId,
+  const selectedShopIds = [
+    shop.value.shopId,
     props.id
   ].filter(Boolean).map(String);
 
-  return selectedShopifyShopIds.length > 0 &&
+  return selectedShopIds.length > 0 &&
     isProductUpdateSyncServiceJob(job) &&
-    selectedShopifyShopIds.includes(String(getServiceJobParameterValue(job, "shopifyShopId")));
+    (selectedShopIds.includes(String(getServiceJobParameterValue(job, "shopId"))) || selectedShopIds.includes(String(getServiceJobParameterValue(job, "shopifyShopId"))));
 }
 
 
@@ -2131,8 +2131,8 @@ async function openStartSyncModal() {
 async function checkSyncJobConfig() {
   isSyncJobConfigLoaded.value = false;
   try {
-    const shopifyShopId = props.id; 
-    const result = await ShopifyProductSyncService.fetchSyncJobConfig({ shopifyShopId });
+    const shopId = props.id; 
+    const result = await ShopifyProductSyncService.fetchSyncJobConfig({ shopId });
     
     syncJobConfigured.value = result.isConfigured;
     if (result.isConfigured) {
@@ -2148,11 +2148,11 @@ async function checkSyncJobConfig() {
 async function configureSyncJob() {
   isSyncJobConfiguring.value = true;
   try {
-    const shopifyShopId = shop.value?.shopifyShopId;
-    if (!shopifyShopId) throw new Error("Shopify shop ID not available");
+    const shopId = shop.value?.shopId;
+    if (!shopId) throw new Error("Shop ID not available");
 
     await ShopifyProductSyncService.configureSyncJob({
-      shopifyShopId,
+      shopId,
       productStoreId: draft.value.selectedProductStoreId,
       productIdentifierEnumId: draft.value.selectedIdentifierEnumId
     });
@@ -2180,8 +2180,8 @@ async function startProductSync() {
   isSaving.value = true;
   try {
     const job = syncJobObj.value;
-    const shopifyShopId = shop.value?.shopifyShopId;
-    if (!job || !shopifyShopId) {
+    const shopId = shop.value?.shopId;
+    if (!job || !shopId) {
       throw new Error("Sync job or shop ID not found");
     }
 
@@ -2189,7 +2189,7 @@ async function startProductSync() {
     await updateJob({
       ...job,
       serviceJobParameters: [
-        { parameterName: "shopifyShopId", parameterValue: shopifyShopId },
+        { parameterName: "shopId", parameterValue: shopId },
         { parameterName: "productStoreIds", parameterValue: draft.value.selectedProductStoreId },
         { parameterName: "shopifyProductIdentifier", parameterValue: draft.value.selectedIdentifierEnumId }
       ]

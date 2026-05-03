@@ -437,10 +437,10 @@
                 {{ syncJobObj.jobName }}
               </ion-label>
             </ion-item>
-            <ion-item v-if="shopifyShopIdParameter" lines="none">
+            <ion-item v-if="shopIdParameter" lines="none">
               <ion-label>
-                <p>{{ translate("Shopify Shop ID") }}</p>
-                {{ shopifyShopIdParameter.parameterValue }}
+                <p>{{ translate("Shop ID") }}</p>
+                {{ shopIdParameter.parameterValue }}
               </ion-label>
             </ion-item>
             <ion-item lines="none">
@@ -621,8 +621,8 @@ const systemMessageCreatedTime = computed(() => {
   return formatDateTime(date);
 });
 
-const shopifyShopIdParameter = computed(() => {
-  return (props.syncJobObj?.serviceJobParameters || []).find((param: any) => param.parameterName === "shopifyShopId");
+const shopIdParameter = computed(() => {
+  return (props.syncJobObj?.serviceJobParameters || []).find((param: any) => param.parameterName === "shopId" || param.parameterName === "shopifyShopId");
 });
 
 const systemMessageStatusLabel = computed(() => {

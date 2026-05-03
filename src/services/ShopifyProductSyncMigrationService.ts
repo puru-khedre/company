@@ -29,8 +29,8 @@ export interface ProductSyncMigrationAssistantState {
   artifactChecks: ProductSyncMigrationArtifactCheck[];
 }
 
-function getShopifyShopId(payload: any) {
-  return String(payload?.shopifyShopId || payload?.shopId || payload?.id || payload?.shop?.shopId || "").trim();
+function getShopId(payload: any) {
+  return String(payload?.shopId || payload?.id || payload?.shop?.shopId || payload?.shopifyShopId || "").trim();
 }
 
 async function fetchMaargInfo() {
@@ -86,7 +86,7 @@ async function fetchServiceJobCheck(jobName: string, label: string, note: string
 
 async function fetchAssistantState(payload: any): Promise<ProductSyncMigrationAssistantState> {
   const eligibility = await fetchEligibility();
-  const shopifyShopId = getShopifyShopId(payload);
+  const shopId = getShopId(payload);
   let systemMessageRemoteId = "";
   let hasNewProductSyncMessages = false;
   let syncJobConfigured = false;
@@ -110,9 +110,9 @@ async function fetchAssistantState(payload: any): Promise<ProductSyncMigrationAs
     )
   ];
 
-  if (shopifyShopId) {
+  if (shopId) {
     try {
-      const syncJobConfig = await ShopifyProductSyncService.fetchSyncJobConfig({ shopifyShopId });
+      const syncJobConfig = await ShopifyProductSyncService.fetchSyncJobConfig({ shopId });
       syncJobConfigured = syncJobConfig.isConfigured;
       syncJobName = syncJobConfig.jobName || "";
     } catch (error) {

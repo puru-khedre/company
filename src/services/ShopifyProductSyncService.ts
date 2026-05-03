@@ -1073,7 +1073,7 @@ const fetchPreflight = async (payload: any): Promise<any[]> => {
 
 
 const fetchSyncJobConfig = async (payload: any): Promise<{ isConfigured: boolean; jobName: string }> => {
-  const shopifyShopId = payload.shopifyShopId;
+  const shopId = payload.shopId;
   
   try {
     const resp = await api({
@@ -1084,8 +1084,8 @@ const fetchSyncJobConfig = async (payload: any): Promise<{ isConfigured: boolean
         pageIndex: 0,
         pageSize: 1,
         customParametersMap: {
-          parameterName: "shopifyShopId",
-          parameterValue: shopifyShopId,
+          parameterName: "shopId",
+          parameterValue: shopId,
           parentJobName: "sync_ShopifyProductUpdates"
         }
       }
@@ -1103,8 +1103,8 @@ const fetchSyncJobConfig = async (payload: any): Promise<{ isConfigured: boolean
 };
 
 const configureSyncJob = async (payload: any): Promise<any> => {
-  const { shopifyShopId, productStoreId, productIdentifierEnumId } = payload;
-  const newJobName = `sync_ShopifyProductUpdates_${shopifyShopId}`;
+  const { shopId, productStoreId, productIdentifierEnumId } = payload;
+  const newJobName = `sync_ShopifyProductUpdates_${shopId}`;
   
   await api({
     url: "admin/serviceJobs/sync_ShopifyProductUpdates/clone",
@@ -1113,8 +1113,8 @@ const configureSyncJob = async (payload: any): Promise<any> => {
   });
 
   const serviceJobParameters = [{
-    parameterName: "shopifyShopId",
-    parameterValue: shopifyShopId
+    parameterName: "shopId",
+    parameterValue: shopId
   }];
 
   if (productStoreId) {

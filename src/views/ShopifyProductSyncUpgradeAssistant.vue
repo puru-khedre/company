@@ -331,9 +331,7 @@ async function loadAssistant() {
     }
 
     assistantState.value = await ShopifyProductSyncMigrationService.fetchAssistantState({
-      id: props.id,
       shopId: props.id,
-      shopifyShopId: props.id,
       shop: shop.value
     });
   } catch (error: any) {
