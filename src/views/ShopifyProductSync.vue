@@ -130,6 +130,9 @@
           :is-sync-job-config-loaded="isSyncJobConfigLoaded"
           :is-sync-job-configuring="isSyncJobConfiguring"
           :sync-job-configured="syncJobConfigured"
+          :sync-job-obj="syncJobObj"
+          :sync-job-audit-history="syncJobAuditHistory"
+          :latest-sync-job-audit-label="latestSyncJobAuditLabel"
           @accept-preflight-and-open-start-sync="acceptPreflightAndOpenStartSync"
           @close-mistake-modal="showMistakeModal = false"
           @close-start-sync-modal="showStartSyncModal = false"
@@ -140,6 +143,7 @@
           @load-progress="loadProgress"
           @open-mistake-modal="openMistakeModal"
           @open-start-sync-modal="openStartSyncModal"
+          :is-preflight-loading="isPreflightLoading"
           @product-store-change="handleProductStoreChange"
           @start-product-sync="startProductSync"
           @toggle-preflight-warning-confirmation="togglePreflightWarningConfirmation"
@@ -649,7 +653,7 @@ import {
   selectProductStore,
   shouldShowProductSyncProgress
 } from "@/utils/shopifyProductSyncWizard";
-import { downloadTextFile, getDownloadFileContent, hasError, showToast } from "@/utils";
+import { downloadTextFile, formatDateTime, getDownloadFileContent, hasError, parseDateTimeValue, showToast } from "@/utils";
 import logger from "@/logger";
 import useServiceJob from "@/composables/useServiceJob";
 import { useDataManagerLog } from "@/composables/useDataManagerLog";
@@ -691,6 +695,7 @@ const isSecondaryLoading = ref(false);
 const loadErrorMessage = ref("");
 const isSaving = ref(false);
 const isReviewLoading = ref(false);
+const isPreflightLoading = ref(false);
 const showModeModal = ref(false);
 const showMistakeModal = ref(false);
 const showStartSyncModal = ref(false);
@@ -850,7 +855,7 @@ const activeExperienceModeLabel = computed(() => {
 const lastSyncLabel = computed(() => {
   const lastSyncedAt = lastProductUpdateSyncedAt.value || latestConsumedSystemMessage.value?.initDate;
   return lastSyncedAt
-    ? new Date(lastSyncedAt).toLocaleString()
+    ? formatDateTime(lastSyncedAt)
     : translate("No completed sync recorded");
 });
 const lastSyncRelativeLabel = computed(() => {
@@ -868,7 +873,9 @@ const syncJobObj = computed(() => {
     if (job && isSelectedShopProductSyncJob(job)) return job;
   }
 
-  return jobs.value.find(isSelectedShopProductSyncJob);
+  const matchedJobs = jobs.value.filter(isSelectedShopProductSyncJob);
+  // Prioritize more specific jobs (e.g. sync_ShopifyProductUpdates_10000)
+  return matchedJobs.find((job: any) => job.jobName.includes(props.id)) || matchedJobs[0];
 });
 const isSyncScheduled = computed(() => {
   return !!(syncJobObj.value?.cronExpression || syncJobObj.value?.cronString);
@@ -906,6 +913,11 @@ const syncSummarySubtitle = computed(() => {
 });
 const resyncCatalogProductCountLabel = computed(() => formatCount(reviewStats.value.shopifyProductCount));
 const resyncCatalogVariantCountLabel = computed(() => formatCount(reviewStats.value.shopifyVariantCount));
+const latestSyncJobAuditLabel = computed(() => {
+  if (!syncJobAuditHistory.value.length) return translate("No audit history found");
+  const latest = syncJobAuditHistory.value[0];
+  return `${getSyncJobAuditFieldLabel(latest)}: ${getSyncJobAuditChangeLabel(latest)}`;
+});
 const syncJobDetailsTitle = computed(() => {
   const job = syncJobDetails.value?.jobName ? syncJobDetails.value : selectedSyncJobDetailsJob.value;
   if (isSelectedShopProductSyncJob(job)) {
@@ -1066,7 +1078,7 @@ const recentSyncUpdates = computed(() => {
     id: [history.shopId, history.productId, history.lastUpdatedStamp].filter(Boolean).join("-"),
     internalName: history.diffs?.title || history.diffs?.handle || history.productId,
     shopifyId: getShopifyProductReference(history),
-    updatedTime: history.lastUpdatedStamp ? new Date(history.lastUpdatedStamp).toLocaleString() : translate("Recent"),
+    updatedTime: formatDateTime(history.lastUpdatedStamp) || translate("Recent"),
     details: history.details || []
   }));
 });
@@ -2071,31 +2083,44 @@ async function loadPreflight() {
 }
 
 async function openMistakeModal() {
+  showMistakeModal.value = true;
+  if (preflightLoaded.value) return;
+
+  isPreflightLoading.value = true;
   try {
     await loadPreflight();
-    showMistakeModal.value = true;
   } catch (error: any) {
     logger.error(error);
     showToast(translate("Failed to load preflight review."));
+  } finally {
+    isPreflightLoading.value = false;
   }
 }
 
 async function openStartSyncModal() {
   try {
     if (!preflightLoaded.value) {
-      await loadPreflight();
+      isPreflightLoading.value = true;
+      try {
+        await loadPreflight();
+      } finally {
+        isPreflightLoading.value = false;
+      }
     }
 
-    if (preflightRequiresConfirmation.value && !preflightAccepted.value) {
-      showMistakeModal.value = true;
-      return;
-    }
 
     const action = getReviewImportAction();
     if (action.opensStartConfirmation) {
       draft.value.startConfirmed = false;
       showStartSyncModal.value = true;
-      await checkSyncJobConfig();
+      
+      const jobName = syncJobObj.value?.jobName;
+      if (jobName) {
+        await Promise.all([
+          checkSyncJobConfig(),
+          loadSyncJobAuditHistory(jobName)
+        ]);
+      }
     }
   } catch (error: any) {
     logger.error(error);
@@ -2359,7 +2384,7 @@ function getNextRunDateTime(job: any) {
   if (nextExecutionDateTime) {
     const parsed = DateTime.fromISO(nextExecutionDateTime);
     if (parsed.isValid) return parsed;
-    const parsedJsDate = DateTime.fromJSDate(new Date(nextExecutionDateTime));
+    const parsedJsDate = parseDateTimeValue(nextExecutionDateTime);
     if (parsedJsDate.isValid) return parsedJsDate;
   }
 
@@ -2368,7 +2393,7 @@ function getNextRunDateTime(job: any) {
   try {
     const interval = CronExpressionParser.parse(job.cronExpression, {
       tz: userProfile.value?.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      currentDate: new Date(currentTimeMs.value)
+      currentDate: parseDateTimeValue(currentTimeMs.value)?.toJSDate()
     });
     return DateTime.fromMillis(interval.next().getTime());
   } catch (error) {
@@ -2396,10 +2421,7 @@ function getJobNextRunLabel(job: any) {
   return `${nextRun.toLocaleString(DateTime.DATETIME_SHORT)} (${getRelativeNextRunLabel(job)})`;
 }
 
-function formatDateTime(value: string) {
-  if (!value) return translate("Unavailable");
-  return new Date(value).toLocaleString();
-}
+// Moved formatDateTime to @/utils
 
 function formatCount(value: unknown) {
   if (value === undefined || value === null || value === "") return translate("Unavailable");
@@ -2618,24 +2640,7 @@ function formatSyncJobRunMessageValue(value: any): string {
   return String(value).trim();
 }
 
-function parseDateTimeValue(value: string | number) {
-  if (!value) return null;
-
-  if (typeof value === "number") {
-    const dateTime = DateTime.fromMillis(value);
-    return dateTime.isValid ? dateTime : null;
-  }
-
-  const candidates = [
-    DateTime.fromFormat(value, "yyyy-MM-dd'T'HH:mm:ssZZ"),
-    DateTime.fromFormat(value, "yyyy-MM-dd HH:mm:ss.SSS"),
-    DateTime.fromSQL(value),
-    DateTime.fromISO(value),
-    DateTime.fromJSDate(new Date(value))
-  ];
-
-  return candidates.find((candidate) => candidate.isValid) || null;
-}
+// Moved parseDateTimeValue to @/utils
 
 function getErrorMessage(error: any, defaultMessage: string) {
   const message = error?.response?.data?.error ||

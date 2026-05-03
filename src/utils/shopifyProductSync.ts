@@ -1,3 +1,4 @@
+import { parseDateTimeValue } from ".";
 
 export interface SystemMessage {
   systemMessageId: string;
@@ -24,8 +25,8 @@ export function getSystemMessageTime(systemMessage: SystemMessage) {
   const value = systemMessage?.initDate || systemMessage?.lastUpdatedStamp || systemMessage?.processedDate;
   if (!value) return 0;
   if (typeof value === "number") return value;
-  const parsed = new Date(value).getTime();
-  return isNaN(parsed) ? 0 : parsed;
+  const parsed = parseDateTimeValue(value);
+  return parsed?.toMillis() || 0;
 }
 
 export function sortSystemMessagesOldestFirst(systemMessages: SystemMessage[]) {

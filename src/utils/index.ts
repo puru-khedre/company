@@ -44,4 +44,32 @@ const downloadTextFile = (content: string, fileName: string) => {
   URL.revokeObjectURL(url);
 }
 
-export { generateInternalId, hasError, showToast ,getCurrentTime, getDownloadFileContent, downloadTextFile}
+const formatDateTime = (value: any, format?: string) => {
+  if (!value) return "";
+  
+  const dateTime = parseDateTimeValue(value);
+  if (!dateTime || !dateTime.isValid) return "";
+
+  return format ? dateTime.toFormat(format) : dateTime.toLocaleString(DateTime.DATETIME_MED);
+}
+
+const parseDateTimeValue = (value: string | number) => {
+  if (!value) return null;
+
+  if (typeof value === "number") {
+    const dateTime = DateTime.fromMillis(value);
+    return dateTime.isValid ? dateTime : null;
+  }
+
+  const candidates = [
+    DateTime.fromFormat(value, "yyyy-MM-dd'T'HH:mm:ssZZ"),
+    DateTime.fromFormat(value, "yyyy-MM-dd HH:mm:ss.SSS"),
+    DateTime.fromSQL(value),
+    DateTime.fromISO(value),
+    DateTime.fromJSDate(new Date(value))
+  ];
+
+  return candidates.find((candidate) => candidate.isValid) || null;
+}
+
+export { generateInternalId, hasError, showToast ,getCurrentTime, getDownloadFileContent, downloadTextFile, formatDateTime, parseDateTimeValue}

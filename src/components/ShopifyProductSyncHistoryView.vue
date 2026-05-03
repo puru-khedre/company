@@ -153,6 +153,7 @@ import {
 } from "@ionic/vue";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps, ref } from "vue";
+import { formatDateTime } from "@/utils";
 import {
   alertCircleOutline,
   checkmarkCircleOutline,
@@ -164,7 +165,6 @@ import {
   serverOutline,
   syncCircleOutline
 } from "ionicons/icons";
-import { parseSystemMessageDateTime } from "@/utils/systemMessageHistory";
 
 defineProps<{
   runs: any[]
@@ -181,8 +181,7 @@ const selectedQueryContent = computed(() => {
 });
 
 function formatTime(time: any) {
-  const dateTime = parseSystemMessageDateTime(time);
-  return dateTime ? dateTime.toFormat("LLL d, yyyy HH:mm") : translate("Unavailable");
+  return formatDateTime(time) || translate("Unavailable");
 }
 
 function openQueryModal(run: any) {

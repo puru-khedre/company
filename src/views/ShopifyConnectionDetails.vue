@@ -170,6 +170,8 @@
 import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonSkeletonText, IonTitle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
 import api from "@/api";
 import { translate } from "@/i18n";
+import { formatDateTime, hasError, showToast } from "@/utils";
+import { DateTime } from "luxon";
 import { computed, defineProps, ref } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
@@ -314,20 +316,17 @@ const productSyncActivityHours = computed(() => {
   }, {});
 
   const hours = [] as Array<{ key: string; label: string; count: number }>;
-  const endHour = new Date();
-  endHour.setMinutes(0, 0, 0);
+  const endHour = DateTime.now().startOf("hour");
 
   for (let index = PRODUCT_SYNC_ACTIVITY_HOUR_COUNT - 1; index >= 0; index--) {
-    const hour = new Date(endHour);
-    hour.setHours(endHour.getHours() - index);
+    const hour = endHour.minus({ hours: index });
     const key = getHourKey(hour);
     hours.push({
       key,
-      label: hour.toLocaleString([], { month: "short", day: "numeric", hour: "numeric" }),
+      label: hour.toLocaleString({ month: "short", day: "numeric", hour: "numeric" }),
       count: countsByHour[key] || 0
     });
   }
-
   return hours;
 });
 const activityGraphPeakCount = computed(() => {
@@ -452,7 +451,7 @@ async function loadProductsInventorySummary() {
 async function loadProductSyncActivityHistory() {
   try {
     const pageSize = 1000;
-    const hourWindowStart = new Date(Date.now() - (PRODUCT_SYNC_ACTIVITY_HOUR_COUNT * 60 * 60 * 1000));
+    const hourWindowStart = DateTime.now().minus({ hours: PRODUCT_SYNC_ACTIVITY_HOUR_COUNT }).toJSDate();
     const histories = [] as any[];
     let pageIndex = 0;
     let keepLoading = true;
@@ -475,12 +474,12 @@ async function loadProductSyncActivityHistory() {
       }
 
       const inWindowRecords = page.filter((history: any) => {
-        const timestamp = new Date(history?.lastUpdatedStamp || 0).getTime();
+        const timestamp = parseDateTimeValue(history?.lastUpdatedStamp)?.toMillis() || 0;
         return timestamp >= hourWindowStart.getTime();
       });
       histories.push(...inWindowRecords);
 
-      const oldestTimestamp = new Date(page[page.length - 1]?.lastUpdatedStamp || 0).getTime();
+      const oldestTimestamp = parseDateTimeValue(page[page.length - 1]?.lastUpdatedStamp)?.toMillis() || 0;
       if (page.length < pageSize || !oldestTimestamp || oldestTimestamp < hourWindowStart.getTime()) {
         keepLoading = false;
       } else {
@@ -539,9 +538,7 @@ function openProductTypes() {
   router.push(`/shopify-connection-details/${props.id}/product-types`);
 }
 
-function formatDateTime(value: string) {
-  return value ? new Date(value).toLocaleString() : translate("Unavailable");
-}
+// Moved formatDateTime to @/utils
 
 async function selectTrackProgressSystemMessage(systemMessages: any[]) {
   if (!systemMessages.length) return null;
@@ -585,22 +582,16 @@ function sortSystemMessagesNewestFirst(systemMessages: any[]) {
 
 function getSystemMessageTime(systemMessage: any) {
   const value = systemMessage?.initDate || systemMessage?.lastUpdatedStamp || systemMessage?.processedDate;
-  return value ? new Date(value).getTime() : 0;
+  return parseDateTimeValue(value)?.toMillis() || 0;
 }
 
 function normalizeStatusValue(statusId: string) {
   return String(statusId || "").toLowerCase().replace(/[_\-\s]/g, "");
 }
 
-function getHourKey(value: string | Date) {
-  const date = value instanceof Date ? new Date(value) : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  const hour = `${date.getHours()}`.padStart(2, "0");
-  return `${year}-${month}-${day}T${hour}`;
+function getHourKey(value: any) {
+  const dt = parseDateTimeValue(value);
+  return dt?.toFormat("yyyy-MM-dd'T'HH") || "";
 }
 
 function getProductUpdateHistoryPayload(data: any): any[] {

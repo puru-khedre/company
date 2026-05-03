@@ -128,7 +128,7 @@ import ShopifyProductSyncHistoryView from "@/components/ShopifyProductSyncHistor
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
 import { useSystemMessage } from "@/composables/useSystemMessage";
 import { useDataManagerLog } from "@/composables/useDataManagerLog";
-import { downloadTextFile, getDownloadFileContent, showToast } from "@/utils";
+import { downloadTextFile, getDownloadFileContent, parseDateTimeValue, showToast } from "@/utils";
 import {
   getSystemMessageTime,
   hasMoreForwardSystemMessagePages,
@@ -409,8 +409,7 @@ function matchesCreatedDateFilters(systemMessage: any) {
 
 function getFilterTimestamp(value: string) {
   if (!value) return 0;
-  const timestamp = new Date(value).getTime();
-  return Number.isNaN(timestamp) ? 0 : timestamp;
+  return parseDateTimeValue(value)?.toMillis() || 0;
 }
 
 function getInitialHistoryRun(msg: any) {

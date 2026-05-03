@@ -152,7 +152,7 @@
         </ion-item>
       </ion-list>
       <ion-card-content>
-        <ion-button fill="clear" @click="$emit('go-back')">{{ translate("Back") }}</ion-button>
+        <ion-button expand="block" fill="clear" @click="$emit('go-back')">{{ translate("Back") }}</ion-button>
         <ion-button expand="block" :disabled="nextDisabled || isSaving" @click="$emit('go-next')"
           data-testid="identifier-next">
           {{ translate("Next") }}
@@ -181,56 +181,109 @@
         </ion-item>
       </ion-list>
       <ion-card-content>
-        <ion-button fill="clear" @click="$emit('go-back')">{{ translate("Back") }}</ion-button>
+        <ion-button expand="block" fill="clear" @click="$emit('go-back')">{{ translate("Back") }}</ion-button>
         <ion-button expand="block" :disabled="nextDisabled" @click="$emit('go-next')" data-testid="finish-configuration">
           {{ translate("Finish configuration") }}
         </ion-button>
       </ion-card-content>
     </ion-card>
 
-    <ion-card class="step" v-if="currentStep === 'review'">
-      <ion-card-header>
-        <ion-card-title>{{ translate("Review product import") }}</ion-card-title>
-        <ion-card-subtitle>{{ translate("Compare Shopify and HotWax catalog state before starting the first import.")
-          }}</ion-card-subtitle>
-      </ion-card-header>
-      <ion-card-content v-if="isReviewLoading">
-        <ion-spinner name="crescent" />
-      </ion-card-content>
-      <ion-list v-else lines="full">
-        <ion-item>
-          <ion-label>{{ translate("Shopify products") }}</ion-label>
-          <ion-note slot="end">{{ reviewStats.shopifyProductCount }}</ion-note>
+    <ion-item lines="none" class="circuit" button :disabled="!reviewReady" @click="$emit('open-mistake-modal')" v-if="currentStep === 'review'"
+      data-testid="mistake-check">
+      <ion-label>
+        <ion-icon slot="start" :icon="chipOutline" />
+        {{ translate("Am I making a mistake?") }}
+      </ion-label>
+    </ion-item>
+
+    <div class="step review" v-if="currentStep === 'review'">
+      <ion-item lines="none" class="section-header">
+        <ion-icon slot="start" :icon="pulseOutline" />
+        <ion-label>
+          {{ translate("Live Shopify stats") }}
+          <p>{{ translate("Connected to your Shopify store to fetch statistics") }}</p>
+        </ion-label>
+      </ion-item>
+
+      <ion-card>
+        <ion-card-content>
+          <p class="big-number">{{ formatCount(reviewStats.shopifyProductCount) }}</p>
+        </ion-card-content>
+        <ion-item lines="none">
+          <ion-label>
+            {{ translate("Products") }}
+          </ion-label>
         </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("Shopify variants") }}</ion-label>
-          <ion-note slot="end">{{ reviewStats.shopifyVariantCount }}</ion-note>
+      </ion-card>
+      <ion-card>
+        <ion-card-content>
+          <p class="big-number">{{ formatCount(reviewStats.shopifyVariantCount) }}</p>
+        </ion-card-content>
+        <ion-item lines="none">
+          <ion-label>
+            {{ translate("Variants") }}
+          </ion-label>
         </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("HotWax products") }}</ion-label>
-          <ion-note slot="end">{{ reviewStats.omsProductCount }}</ion-note>
+      </ion-card>
+      
+      <ion-item lines="none" class="section-header">
+        <ion-icon slot="start" :icon="shirtOutline" />
+        <ion-label>
+          {{ selectedProductStoreName }}
+          <p>{{ translate("Products already in HotWax and connected to this product store") }}</p>
+        </ion-label>
+      </ion-item>
+
+      <ion-card>
+        <ion-card-content>
+          <p class="big-number">{{ formatCount(reviewStats.omsProductCount) }}</p>
+        </ion-card-content>
+        <ion-item lines="none">
+          <ion-label>
+            {{ translate("Products") }}
+          </ion-label>
         </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("HotWax variants") }}</ion-label>
-          <ion-note slot="end">{{ reviewStats.omsVariantCount }}</ion-note>
+      </ion-card>
+      <ion-card>
+        <ion-card-content>
+          <p class="big-number">{{ formatCount(reviewStats.omsVariantCount) }}</p>
+        </ion-card-content>
+        <ion-item lines="none">
+          <ion-label>
+            {{ translate("Variants") }}
+          </ion-label>
         </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("Linked Shopify stores") }}</ion-label>
-          <ion-note slot="end">{{ reviewStats.linkedShopCount }}</ion-note>
+      </ion-card>
+      <ion-card>
+        <ion-card-content>
+          <p class="big-number">{{ formatCount(reviewStats.linkedShopCount) }}</p>
+        </ion-card-content>
+        <ion-item lines="none">
+          <ion-label>
+            {{ translate("Linked Shopify stores") }}
+          </ion-label>
         </ion-item>
-      </ion-list>
-      <ion-card-content>
-        <ion-button fill="clear" @click="$emit('go-back')">{{ translate("Back") }}</ion-button>
-        <ion-button expand="block" fill="outline" :disabled="!reviewReady" @click="$emit('open-mistake-modal')"
-          data-testid="mistake-check">
-          {{ translate("Am I making a mistake?") }}
-        </ion-button>
-        <ion-button expand="block" :disabled="!reviewReady" @click="$emit('open-start-sync-modal')"
-          data-testid="run-product-import">
-          {{ translate("Run product import") }}
-        </ion-button>
-      </ion-card-content>
-    </ion-card>
+      </ion-card>
+
+      <ion-card class="review-details">
+        <ion-card-header>
+          <ion-card-title>{{ translate("Review product import") }}</ion-card-title>
+          <ion-card-subtitle>{{ translate("Compare Shopify and HotWax catalog state before starting the first import.")
+            }}</ion-card-subtitle>
+        </ion-card-header>
+        <ion-card-content v-if="isReviewLoading">
+          <ion-spinner name="crescent" />
+        </ion-card-content>
+        <div v-else></div>
+        <ion-card-content>
+          <ion-button expand="block" fill="clear" @click="$emit('go-back')">{{ translate("Back") }}</ion-button>
+          <ion-button expand="block" :disabled="!reviewReady" @click="$emit('open-start-sync-modal')"
+            data-testid="run-product-import">
+            {{ translate("Run product import") }}
+          </ion-button>
+        </ion-card-content>
+      </ion-card>
+    </div>
 
     <template v-if="currentStep === 'progress'">
 
@@ -243,6 +296,7 @@
               {{ translate("Product export request payload") }}
               <p>{{ translate("Using Shopify’s bulk query API to export all products in the catalog.") }}</p>
               <p>{{ translate("System message id") }}: {{ systemMessageId }}</p>
+              <p v-if="systemMessageCreatedTime">{{ translate("Created") }}: {{ systemMessageCreatedTime }}</p>
             </ion-label>
             <ion-badge slot="end" :color="systemMessageStatusColor">{{ systemMessageStatusLabel }}</ion-badge>
           </ion-item>
@@ -271,7 +325,7 @@
               {{ translate("Bulk file process") }}
               <p>{{ bulkFileProcessDescription }}</p>
             </ion-label>
-            <ion-note :color="mdmLogStatusColor">{{ mdmLogStatusLabel }}</ion-note>
+            <ion-note slot="end" :color="mdmLogStatusColor">{{ mdmLogStatusLabel }}</ion-note>
           </ion-item>
         </ion-card>
       </div>
@@ -311,7 +365,18 @@
         </ion-toolbar>
       </ion-header>
       <ion-content>
-        <ion-card>
+        <ion-card v-if="isPreflightLoading">
+          <ion-card-header>
+            <ion-card-title>{{ translate("Reviewing Shopify catalog") }}</ion-card-title>
+            <ion-card-subtitle>{{ translate("Checking for potential data conflicts and mismatches.") }}</ion-card-subtitle>
+          </ion-card-header>
+          <ion-card-content class="ion-text-center">
+            <ion-spinner name="crescent" />
+            <p>{{ translate("This might take a moment...") }}</p>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card v-else>
           <ion-card-header>
             <ion-card-title>{{ preflightTitle }}</ion-card-title>
             <ion-card-subtitle>{{ preflightSubtitle }}</ion-card-subtitle>
@@ -359,29 +424,41 @@
             <ion-card-title>{{ translate("Background sync") }}</ion-card-title>
             <ion-card-subtitle>{{ translate("Manage background synchronization for this shop.") }}</ion-card-subtitle>
           </ion-card-header>
-          <ion-card-content>
-            <ion-list v-if="!isSyncJobConfigLoaded">
-              <ion-item lines="none">
-                <ion-spinner name="crescent" slot="start" />
-                <ion-label>{{ translate("Checking job status...") }}</ion-label>
-              </ion-item>
-            </ion-list>
-            <div v-else-if="syncJobConfigured">
-              <ion-item lines="none">
-                <ion-icon color="success" slot="start" :icon="checkmarkCircleOutline" />
-                <ion-label color="success" class="ion-text-wrap">{{ translate("Product sync job is scheduled.") }}</ion-label>
-              </ion-item>
-            </div>
-            <div v-else>
-              <ion-item lines="none">
-                <ion-label color="warning" class="ion-text-wrap">{{ translate("Product sync job not configured for this shop.") }}</ion-label>
-              </ion-item>
-              <ion-button fill="outline" expand="block" :disabled="isSyncJobConfiguring" @click="emit('configure-sync-job')">
-                <ion-spinner v-if="isSyncJobConfiguring" slot="start" name="crescent" />
-                {{ translate("Schedule Job") }}
-              </ion-button>
-            </div>
-          </ion-card-content>
+          <ion-list v-if="!isSyncJobConfigLoaded">
+            <ion-item lines="none">
+              <ion-spinner name="crescent" slot="start" />
+              <ion-label>{{ translate("Checking job status...") }}</ion-label>
+            </ion-item>
+          </ion-list>
+          <ion-list v-else-if="syncJobObj">
+            <ion-item lines="none">
+              <ion-label>
+                <p>{{ translate("Job name") }}</p>
+                {{ syncJobObj.jobName }}
+              </ion-label>
+            </ion-item>
+            <ion-item v-if="shopifyShopIdParameter" lines="none">
+              <ion-label>
+                <p>{{ translate("Shopify Shop ID") }}</p>
+                {{ shopifyShopIdParameter.parameterValue }}
+              </ion-label>
+            </ion-item>
+            <ion-item lines="none">
+              <ion-label>
+                <p>{{ translate("Most recent change") }}</p>
+                {{ latestSyncJobAuditLabel }}
+              </ion-label>
+            </ion-item>
+          </ion-list>
+          <div v-else>
+            <ion-item lines="none">
+              <ion-label color="warning" class="ion-text-wrap">{{ translate("Product sync job not found for this shop.") }}</ion-label>
+            </ion-item>
+            <ion-button fill="outline" expand="block" :disabled="isSyncJobConfiguring" @click="emit('configure-sync-job')">
+              <ion-spinner v-if="isSyncJobConfiguring" slot="start" name="crescent" />
+              {{ translate("Setup Job") }}
+            </ion-button>
+          </div>
         </ion-card>
 
         <ion-card>
@@ -442,10 +519,12 @@ import {
   sendOutline,
   serverOutline,
   syncCircleOutline,
-  checkmarkCircleOutline
+  checkmarkCircleOutline,
+  shirtOutline
 } from "ionicons/icons";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps } from "vue";
+import { formatDateTime } from "@/utils";
 import { getProductSyncBulkOperationProgress } from "@/utils/shopifyProductSyncWizard";
 
 
@@ -459,6 +538,7 @@ const props = defineProps<{
   identifierOptions: any[]
   importStatusBadgeColor: string
   importStatusLabel: string
+  isPreflightLoading: boolean
   isReviewLoading: boolean
   isSaving: boolean
   nextDisabled: boolean
@@ -491,6 +571,8 @@ const props = defineProps<{
   isSyncJobConfigLoaded: boolean
   isSyncJobConfiguring: boolean
   syncJobConfigured: boolean
+  syncJobObj: any
+  latestSyncJobAuditLabel: string
 }>();
 
 const emit = defineEmits([
@@ -531,6 +613,16 @@ const selectedIdentifier = computed(() => {
 
 const systemMessageId = computed(() => {
   return props.currentSyncRun?.systemMessageId || props.progressState?.systemMessageId || "";
+});
+
+const systemMessageCreatedTime = computed(() => {
+  const systemMessage = props.currentSyncRun?.systemMessage || {};
+  const date = systemMessage.initDate || systemMessage.createdDate || systemMessage.lastUpdatedStamp;
+  return formatDateTime(date);
+});
+
+const shopifyShopIdParameter = computed(() => {
+  return (props.syncJobObj?.serviceJobParameters || []).find((param: any) => param.parameterName === "shopifyShopId");
 });
 
 const systemMessageStatusLabel = computed(() => {
@@ -626,6 +718,10 @@ function isCompleteStatus(status = "") {
 .setup-wizard {
   display: grid;
   grid-template-areas: "tracker step";
+  grid-template-columns: 1fr 2fr;
+  grid-template-rows: min-content 1fr;
+  grid-column-gap: var(--spacer-base);
+  align-items: start;
 }
 
 .setup-tracker {
@@ -637,6 +733,7 @@ function isCompleteStatus(status = "") {
   grid-area: step;
   max-width: 75ch;
   justify-self: center;
+  width: 100%;
 }
 
 .bulk-steps {
@@ -651,5 +748,52 @@ function isCompleteStatus(status = "") {
 
 .bulk-steps ion-item {
   --background: transparent;
+}
+
+.big-number {
+  font-size: clamp(32px, 25cqw, 78px);
+  line-height: 1.2;
+  margin: 0;
+  color: rgba(var(--ion-text-color));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.step.review {
+  grid-area: step;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-row: span 2;
+  gap: var(--spacer-base);
+  align-items: start;
+  justify-self: stretch;
+  max-width: none;
+  width: 100%;
+}
+
+.section-header {
+  grid-column: 1 / -1;
+  --padding-start: 0;
+  margin-top: var(--spacer-base);
+}
+
+.step.review ion-card {
+  container-type: inline-size;
+  margin: 0;
+  height: 100%;
+}
+
+.review-details {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.circuit {
+  grid-column: 1;
+  grid-row: 2;
+  border: 1px solid var(--ion-color-medium);
+  --background: transparent;
+  border-radius: 8px;
 }
 </style>

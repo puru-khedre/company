@@ -156,7 +156,7 @@ import { closeOutline, refreshOutline } from "ionicons/icons";
 import { computed, defineProps, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { translate } from "@/i18n";
-import { showToast } from "@/utils";
+import { formatDateTime, showToast } from "@/utils";
 import logger from "@/logger";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
 import type { ShopifyProductSyncProductSearchResult } from "@/services/ShopifyProductSyncService";
@@ -354,7 +354,7 @@ function getProductId(product: ShopifyProductSyncProductSearchResult) {
 
 function formatShopifyDate(value: string) {
   if (!value) return translate("Recent");
-  return new Date(value).toLocaleString();
+  return formatDateTime(value);
 }
 
 function isProductSelected(productId: string) {
