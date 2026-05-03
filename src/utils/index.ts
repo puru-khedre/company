@@ -56,10 +56,14 @@ const formatDateTime = (value: any, format?: string) => {
 const parseDateTimeValue = (value: string | number) => {
   if (!value) return null;
 
+  if (DateTime.isDateTime(value)) return value;
+
   if (typeof value === "number") {
     const dateTime = DateTime.fromMillis(value);
     return dateTime.isValid ? dateTime : null;
   }
+
+  if (typeof value !== "string") return null;
 
   const candidates = [
     DateTime.fromFormat(value, "yyyy-MM-dd'T'HH:mm:ssZZ"),
@@ -72,4 +76,4 @@ const parseDateTimeValue = (value: string | number) => {
   return candidates.find((candidate) => candidate.isValid) || null;
 }
 
-export { generateInternalId, hasError, showToast ,getCurrentTime, getDownloadFileContent, downloadTextFile, formatDateTime, parseDateTimeValue}
+export { generateInternalId, hasError, showToast, getCurrentTime, getDownloadFileContent, downloadTextFile, formatDateTime, parseDateTimeValue }

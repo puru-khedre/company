@@ -2382,10 +2382,8 @@ function getCronDescription(cronExpression: string) {
 function getNextRunDateTime(job: any) {
   const nextExecutionDateTime = job?.nextExecutionDateTime || job?.nextRunTime || job?.nextRunDate || job?.nextRuntime;
   if (nextExecutionDateTime) {
-    const parsed = DateTime.fromISO(nextExecutionDateTime);
-    if (parsed.isValid) return parsed;
-    const parsedJsDate = parseDateTimeValue(nextExecutionDateTime);
-    if (parsedJsDate.isValid) return parsedJsDate;
+    const parsed = parseDateTimeValue(nextExecutionDateTime);
+    if (parsed?.isValid) return parsed;
   }
 
   if (!job?.cronExpression) return null;

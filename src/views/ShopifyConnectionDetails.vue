@@ -170,7 +170,7 @@
 import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonSkeletonText, IonTitle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
 import api from "@/api";
 import { translate } from "@/i18n";
-import { formatDateTime, hasError, showToast } from "@/utils";
+import { formatDateTime, hasError, parseDateTimeValue, showToast } from "@/utils";
 import { DateTime } from "luxon";
 import { computed, defineProps, ref } from "vue";
 import { useStore } from "vuex";

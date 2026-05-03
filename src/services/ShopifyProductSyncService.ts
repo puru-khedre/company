@@ -1,5 +1,6 @@
 import api from "@/api";
 import logger from "@/logger";
+import { parseDateTimeValue } from "@/utils";
 
 export interface ShopifyProductSyncSetupState {
   productUpdateHistory?: any[];
@@ -480,21 +481,11 @@ function escapeGraphqlString(value: string): string {
 }
 
 function getTimestampValue(value: any): number {
-  if (!value) return 0;
-  if (typeof value === "number") return value;
-  const timestamp = Number(value);
-  if (!Number.isNaN(timestamp)) return timestamp;
-  const parsedDate = new Date(value).getTime();
-  return Number.isNaN(parsedDate) ? 0 : parsedDate;
+  return parseDateTimeValue(value)?.toMillis() || 0;
 }
 
 function getTimestampDate(value: any): string | undefined {
-  const timestamp = getTimestampValue(value);
-  if (!timestamp) return undefined;
-  if (typeof value === "number") return new Date(value).toISOString();
-  if (!Number.isNaN(Number(value))) return new Date(timestamp).toISOString();
-  const parsedDate = new Date(value);
-  return Number.isNaN(parsedDate.getTime()) ? undefined : parsedDate.toISOString();
+  return parseDateTimeValue(value)?.toISO() || undefined;
 }
 
 function resolveSystemMessageRemoteId(payload: any): string {
