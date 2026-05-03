@@ -59,6 +59,13 @@ export interface ShopifyPendingProductUpdateRequestsState {
   latestSystemMessage?: any;
 }
 
+export interface ShopifyProductSyncDashboardSummary {
+  syncRunState: ShopifyProductUpdateSyncRunState;
+  pendingRequests: ShopifyPendingProductUpdateRequestsState;
+  runningOperation: ShopifyRunningBulkOperation | null;
+  unsyncedUpdates: ShopifyShopProductCount;
+}
+
 export interface ShopifyRunningBulkOperation {
   id: string;
   status: string;
@@ -762,7 +769,8 @@ const fetchShopifyShopProductCount = async (payload: any): Promise<ShopifyShopPr
     throw new Error("Shopify systemMessageRemoteId is required to fetch unsynced product update counts.");
   }
 
-  const lastSyncedAt = payload.lastSyncedAt || (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+  const lastSyncedAt = payload.lastSyncedAt || payload.syncRunState?.lastSyncedAt ||
+    (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
   const response = await requestBackend<ShopifyGraphqlResponse>({
     url: "shopify/graphql",
     method: "post",
@@ -789,7 +797,8 @@ const fetchUnsyncedProductUpdates = async (payload: any): Promise<ShopifyUnsynce
     throw new Error("Shopify systemMessageRemoteId is required to fetch unsynced product updates.");
   }
 
-  const lastSyncedAt = payload.lastSyncedAt || (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+  const lastSyncedAt = payload.lastSyncedAt || payload.syncRunState?.lastSyncedAt ||
+    (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
   const response = await requestBackend<ShopifyGraphqlResponse>({
     url: "shopify/graphql",
     method: "post",
@@ -1172,7 +1181,7 @@ const fetchErrorRecordCount = async (payload: any): Promise<number> => {
   }
 };
 
-const fetchDashboardSummary = async (payload: any): Promise<any> => {
+const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDashboardSummary> => {
   const { shopId, systemMessageRemoteId, shop } = payload;
   
   const [syncRunState, pendingRequests, runningOperation] = await Promise.all([
@@ -1180,11 +1189,17 @@ const fetchDashboardSummary = async (payload: any): Promise<any> => {
     fetchPendingProductUpdateRequests(payload),
     fetchRunningBulkOperation(payload)
   ]);
+  const unsyncedUpdates = await fetchShopifyShopProductCount({
+    ...payload,
+    systemMessageRemoteId,
+    syncRunState
+  });
 
   return {
     syncRunState,
     pendingRequests,
-    runningOperation
+    runningOperation,
+    unsyncedUpdates
   };
 };
 
