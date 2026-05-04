@@ -44,7 +44,7 @@ import { translate } from "@/i18n"
 import { useStore } from "vuex";
 import { computed, defineProps, onMounted, ref } from "vue";
 import { ShopifyService } from "@/services/ShopifyService";
-import { hasError, showToast } from "@/utils";
+import { getResponseErrorMessage, hasError, showToast } from "@/utils";
 import emitter from "@/event-bus";
 import logger from "@/logger";
 
@@ -81,7 +81,7 @@ async function updateProductStoreMapping() {
     }
   } catch (error: any) {
     logger.error(error);
-    showToast(translate("Failed to link product store"));
+    showToast(getResponseErrorMessage(error, translate("Failed to link product store")));
   }
   emitter.emit("dismissLoader");
 }

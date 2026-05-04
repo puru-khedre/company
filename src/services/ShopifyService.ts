@@ -10,8 +10,8 @@ const fetchShopifyShops = async (payload: any): Promise <any> => {
 
 const updateShopifyShop = async (payload: any): Promise <any> => {
   return api({
-    url: `admin/shopifyShops/${payload.shopId}`,
-    method: "post",
+    url: `oms/shopifyShops/shops/${payload.shopId}`,
+    method: "put",
     data: payload
   });
 }

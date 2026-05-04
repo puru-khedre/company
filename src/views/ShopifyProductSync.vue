@@ -114,8 +114,6 @@
           :preflight-warning-confirmed="preflightWarningConfirmed"
           :product-store-locked="productStoreLocked"
           :product-stores="productStores"
-          :product-type-mappings="productTypeMappings"
-          :product-type-mappings-label="productTypeMappingsLabel"
           :progress-badge-color="progressBadgeColor"
           :progress-state="progressState"
           :progress-status="progressStatus"
@@ -127,8 +125,20 @@
           :related-shops="relatedShops"
           :review-ready="reviewReady"
           :review-stats="reviewStats"
+          :is-completing-setup="isCompletingSetup"
+          :setup-completion-action-label="setupCompletionActionLabel"
           :selected-identifier-label="selectedIdentifierLabel"
+          :setup-completion-message="setupCompletionMessage"
+          :setup-completion-subtitle="setupCompletionSubtitle"
           :selected-product-store-name="selectedProductStoreName"
+          :send-update-request-last-run-label="bulkOperationSendJobLastRunLabel"
+          :import-completed-requests-last-run-label="bulkOperationPollJobLastRunLabel"
+          :setup-completion-action-disabled="!canCompleteSetup"
+          :setup-completion-schedule-label="setupCompletionScheduleLabel"
+          :shopify-access-badge-color="shopifyAccessBadgeColor"
+          :shopify-access-blocking-message="shopifyAccessBlockingMessage"
+          :shopify-access-detail="shopifyAccessDetail"
+          :shopify-access-label="shopifyAccessLabel"
           :shop-id="id"
           :show-mistake-modal="showMistakeModal"
           :show-start-sync-modal="showStartSyncModal"
@@ -152,10 +162,14 @@
           :is-preflight-loading="isPreflightLoading"
           @product-store-change="handleProductStoreChange"
           @start-product-sync="startProductSync"
+          @complete-setup="completeSetupAndOpenReturningView"
           @toggle-preflight-warning-confirmation="togglePreflightWarningConfirmation"
           @toggle-product-store-verification="toggleProductStoreVerification"
           @toggle-start-confirmation="toggleStartConfirmation"
           @open-step-details="openStepDetails"
+          @run-job-now="runJobNow"
+          :bulk-operation-send-job="bulkOperationSendJob"
+          :bulk-operation-poll-job="bulkOperationPollJob"
         />
       </template>
 
@@ -724,6 +738,7 @@ const isStepDetailsLoading = ref(false);
 const isSyncJobConfigLoaded = ref(false);
 const isSyncJobConfiguring = ref(false);
 const isResyncEntireCatalogStarting = ref(false);
+const isCompletingSetup = ref(false);
 const syncJobConfigured = ref(false);
 const scheduledJobName = ref("");
 const currentStepDetail = ref<any>(null);
@@ -763,6 +778,13 @@ const setupState = ref<any>({
   hasLinkedOmsProducts: false,
   productStoreLocked: false,
   identifierLocked: false,
+  shopifyAccessState: {
+    systemMessageRemoteId: "",
+    accessScopeEnumId: "",
+    hasWriteAccess: false,
+    status: "unavailable",
+    label: "Unavailable"
+  },
   backendAvailable: true
 });
 const reviewStats = ref<any>({
@@ -806,10 +828,6 @@ function getStatusDescription(statusId: string) {
   return statusItems.value[statusId]?.description || statusId;
 }
 const productStores = computed(() => store.getters["productStore/getProductStores"] || []);
-const productTypeMappings = computed(() => store.getters["shopify/getShopifyTypeMappings"]("SHOPIFY_PRODUCT_TYPE"));
-const productTypeMappingsLabel = computed(() => {
-  return productTypeMappings.value.length ? `${productTypeMappings.value.length} ${translate("mappings")}` : translate("Setup");
-});
 const selectedProductStore = computed(() => {
   return productStores.value.find((productStore: any) => productStore.productStoreId === draft.value.selectedProductStoreId) || {};
 });
@@ -844,6 +862,7 @@ const syncJobScheduleOptions = [
   { label: translate("Every hour"), expression: "0 0 * ? * *" },
   { label: translate("Every day at midnight"), expression: "0 0 0 ? * *" }
 ];
+const setupCompletionScheduleOption = syncJobScheduleOptions[0];
 
 const recommendedIdentifierEnumId = computed(() => {
   const skuIdentifier = identifierOptions.value.find((identifier: any) => {
@@ -860,6 +879,59 @@ const hasLinkedOmsProducts = computed(() => {
 });
 const productStoreHasLinkedProducts = computed(() => {
   return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);
+});
+const shopifyAccessState = computed(() => {
+  return setupState.value.shopifyAccessState || {
+    systemMessageRemoteId: "",
+    accessScopeEnumId: "",
+    hasWriteAccess: false,
+    status: "unavailable",
+    label: "Unavailable"
+  };
+});
+const hasShopifyWriteAccess = computed(() => {
+  return !!shopifyAccessState.value.hasWriteAccess;
+});
+const shopifyAccessLabel = computed(() => {
+  return shopifyAccessState.value.label || translate("Unavailable");
+});
+const shopifyAccessBadgeColor = computed(() => {
+  if (shopifyAccessState.value.status === "write") return "success";
+  if (shopifyAccessState.value.status === "update-required") return "warning";
+  if (shopifyAccessState.value.status === "read-only") return "warning";
+  return "medium";
+});
+const shopifyAccessDetail = computed(() => {
+  if (shopifyAccessState.value.status === "write") {
+    return translate("This Shopify connection can create the bulk query required for product sync.");
+  }
+
+  if (shopifyAccessState.value.status === "update-required") {
+    return translate("This Shopify connection uses a deprecated access scope enum. Update the remote configuration to SHOP_READ_WRITE_ACCESS before starting product sync.");
+  }
+
+  if (shopifyAccessState.value.status === "read-only") {
+    return translate("This Shopify connection has read-only access. Starting product sync requires write access to create a bulk query.");
+  }
+
+  return translate("Shopify access scope could not be verified for this connection.");
+});
+const shopifyAccessBlockingMessage = computed(() => {
+  const syncMessageText = String(currentSyncRun.value?.systemMessage?.messageText || latestSystemMessage.value?.messageText || "").trim();
+
+  if (isShopifyWriteAccessError(syncMessageText)) {
+    return translate("Product sync could not start. Shopify write access is required for bulk query creation.");
+  }
+
+  if (shopifyAccessState.value.status === "update-required") {
+    return translate("This Shopify connection uses deprecated access scope SHOP_RW_ACCESS. Update it to SHOP_READ_WRITE_ACCESS before starting product sync.");
+  }
+
+  if (!hasShopifyWriteAccess.value) {
+    return translate("This Shopify connection has read-only access. Starting product sync requires write access to create a bulk query.");
+  }
+
+  return "";
 });
 const productStoreLocked = computed(() => !!setupState.value.productStoreLocked || hasLinkedOmsProducts.value);
 const identifierLocked = computed(() => !!setupState.value.identifierLocked || productStoreHasLinkedProducts.value);
@@ -903,11 +975,37 @@ const isSyncScheduled = computed(() => {
 const isSyncJobPaused = computed(() => {
   return isJobPaused(syncJobObj.value);
 });
+const hasActiveSyncJob = computed(() => {
+  return !!syncJobObj.value?.jobName && isSyncScheduled.value && !isSyncJobPaused.value;
+});
 const nextSyncLabel = computed(() => {
   return syncJobObj.value?.cronString || translate("Not scheduled");
 });
 const nextSyncRelativeLabel = computed(() => {
   return getRelativeNextRunLabel(syncJobObj.value);
+});
+const setupCompletionScheduleLabel = computed(() => {
+  return setupCompletionScheduleOption?.label || translate("Every 15 minutes");
+});
+const canCompleteSetup = computed(() => {
+  return !!(syncJobObj.value?.jobName || scheduledJobName.value) && !isCompletingSetup.value;
+});
+const setupCompletionActionLabel = computed(() => {
+  return hasActiveSyncJob.value ? translate("Open sync page") : translate("Finish setup");
+});
+const setupCompletionMessage = computed(() => {
+  if (hasActiveSyncJob.value) {
+    return `${translate("Setup is complete.")} ${translate("Background sync is already scheduled to run")} ${nextSyncLabel.value}. ${translate("Continue to the regular sync page.")}`;
+  }
+
+  return `${translate("Setup is complete.")} ${translate("Schedule the recurring sync job to run")} ${setupCompletionScheduleLabel.value}, ${translate("then continue to the regular sync page.")}`;
+});
+const setupCompletionSubtitle = computed(() => {
+  if (hasActiveSyncJob.value) {
+    return translate("Initial import is complete. Background sync is already active for this shop.");
+  }
+
+  return translate("Initial import is complete. Schedule the recurring sync job to keep products in sync.");
 });
 const systemMessageSendJobNextRunLabel = computed(() => {
   return getJobNextRunLabel(bulkOperationSendJob.value);
@@ -972,6 +1070,9 @@ const mdmLogMetaLabel = computed(() => {
   }
   if (mdmLogId) return mdmLogId;
   if (startedAtLabel) return `${translate("Started")} ${startedAtLabel}`;
+  if (normalizeSyncStepStatus(currentSyncRun.value?.mdmLog?.statusId) === 'skipped') {
+    return translate("No updates received from Shopify");
+  }
   return translate("No import log details available");
 });
 const mdmLogProgressLabel = computed(() => {
@@ -985,6 +1086,10 @@ const mdmLogProgressLabel = computed(() => {
   const startedAtLabel = getRelativeOrAbsoluteLabel(getMdmLogStartedAt(currentSyncRun.value?.mdmLog));
   if (startedAtLabel) {
     return `${statusLabel} ${startedAtLabel}`;
+  }
+
+  if (normalizeSyncStepStatus(currentSyncRun.value?.mdmLog?.statusId) === 'skipped') {
+    return translate("Import skipped");
   }
 
   return statusLabel;
@@ -1147,7 +1252,7 @@ const nextDisabled = computed(() => {
     progressComplete: reconcileAvailable.value
   });
 });
-const startSyncDisabled = computed(() => !canStartProductSync(draft.value.startConfirmed));
+const startSyncDisabled = computed(() => !canStartProductSync(draft.value.startConfirmed) || !hasShopifyWriteAccess.value);
 const progressStatus = computed(() => normalizeProductSyncStatus(progressState.value));
 const reconcileAvailable = computed(() => canShowProductSyncReconcile(progressState.value));
 const importStatusLabel = computed(() => {
@@ -1398,6 +1503,10 @@ const pagedFilteredParsedErrorRecords = computed(() => {
 });
 
 const preflightTitle = computed(() => {
+  if (!hasShopifyWriteAccess.value) {
+    return translate("Shopify write access required");
+  }
+
   return requiresPreflightConfirmation(preflightResult.value)
     ? translate("Review possible catalog mismatch")
     : translate("Preflight sample looks matched");
@@ -1406,6 +1515,10 @@ const preflightRequiresConfirmation = computed(() => {
   return preflightLoaded.value && requiresPreflightConfirmation(preflightResult.value);
 });
 const preflightSubtitle = computed(() => {
+  if (!hasShopifyWriteAccess.value) {
+    return translate("This Shopify connection has read-only access. Starting product sync requires write access to create a bulk query.");
+  }
+
   return translate("Matched {matched} of {sampled} sampled products.", {
     matched: preflightResult.value.matched,
     sampled: preflightResult.value.sampled
@@ -1438,10 +1551,7 @@ async function loadWizard() {
     await store.dispatch("shopify/fetchShopifyShops");
     assertShopifyShopsLoaded();
 
-    await Promise.all([
-      store.dispatch("productStore/fetchProductStores"),
-      store.dispatch("shopify/fetchShopifyTypeMappings", "SHOPIFY_PRODUCT_TYPE")
-    ]);
+    await store.dispatch("productStore/fetchProductStores");
 
     if (shop.value.productStoreId) {
       await store.dispatch("productStore/fetchProductStoreDetails", shop.value.productStoreId);
@@ -2004,6 +2114,38 @@ async function scheduleSyncJob(cronExpression: string) {
   }, translate("Sync job updated successfully."));
 }
 
+async function completeSetupAndOpenReturningView() {
+  if (isCompletingSetup.value) return;
+
+  const jobName = syncJobObj.value?.jobName || scheduledJobName.value;
+  if (!jobName) {
+    showToast(translate("Product sync job not found for this shop."));
+    return;
+  }
+
+  isCompletingSetup.value = true;
+  try {
+    if (!hasActiveSyncJob.value) {
+      const updated = await updateSyncJob({
+        jobName,
+        cronExpression: setupCompletionScheduleOption?.expression || "0 */15 * ? * *",
+        paused: "N"
+      }, translate("Recurring product sync scheduled every 15 minutes."));
+
+      if (!updated) return;
+    }
+
+    await Promise.all([
+      loadSecondaryData(),
+      loadSyncJobLatestRun()
+    ]);
+
+    experienceMode.value = "returning";
+  } finally {
+    isCompletingSetup.value = false;
+  }
+}
+
 async function togglePauseSyncJob(shouldPause: boolean) {
   if (!syncJobObj.value?.jobName) return;
 
@@ -2270,7 +2412,7 @@ async function persistProductStoreSelection() {
     }
   } catch (error: any) {
     logger.error(error);
-    showToast(translate("Failed to link product store"));
+    showToast(getErrorMessage(error, translate("Failed to link product store")));
   }
   isSaving.value = false;
   return false;
@@ -2353,8 +2495,8 @@ async function loadPreflight() {
   preflightResult.value = {
     items: rawItems.map((item: any) => ({
       label: item.shopifyValue,
-      detail: item.omsValue || translate("Not found"),
-      status: item.isMatched ? "Matched" : (item.omsValue ? "Conflict" : "Not found")
+      detail: item.omsValue || translate("Not found in HotWax"),
+      status: item.isMatched ? "Matched" : (item.omsValue ? "Conflict" : "Not found in HotWax")
     })),
     matched: rawItems.filter((i: any) => i.isMatched).length,
     sampled: rawItems.length
@@ -2381,6 +2523,11 @@ async function openMistakeModal() {
 
 async function openStartSyncModal() {
   try {
+    if (!hasShopifyWriteAccess.value) {
+      showToast(shopifyAccessBlockingMessage.value);
+      return;
+    }
+
     if (!preflightLoaded.value) {
       isPreflightLoading.value = true;
       try {
@@ -2397,12 +2544,11 @@ async function openStartSyncModal() {
       showStartSyncModal.value = true;
       
       const jobName = syncJobObj.value?.jobName;
+      const promises: Promise<any>[] = [checkSyncJobConfig()];
       if (jobName) {
-        await Promise.all([
-          checkSyncJobConfig(),
-          loadSyncJobAuditHistory(jobName)
-        ]);
+        promises.push(loadSyncJobAuditHistory(jobName));
       }
+      await Promise.all(promises);
     }
   } catch (error: any) {
     logger.error(error);
@@ -2458,47 +2604,67 @@ function acceptPreflightAndOpenStartSync() {
 }
 
 async function startProductSync() {
-  if (!canStartProductSync(draft.value.startConfirmed)) return;
+  if (!canStartProductSync(draft.value.startConfirmed) || !hasShopifyWriteAccess.value) {
+    showToast(shopifyAccessBlockingMessage.value);
+    return;
+  }
   isSaving.value = true;
   try {
-    const job = syncJobObj.value;
-    const shopId = shop.value?.shopId;
-    if (!job || !shopId) {
-      throw new Error("Sync job or shop ID not found");
+    if (!selectedShopSystemMessageRemoteId.value) {
+      await loadSelectedShopSystemMessageRemoteId();
     }
 
-    // 1. Update job parameters to ensure they match current wizard selections
-    await updateJob({
-      ...job,
-      serviceJobParameters: [
-        { parameterName: "shopId", parameterValue: shopId },
-        { parameterName: "productStoreIds", parameterValue: draft.value.selectedProductStoreId },
-        { parameterName: "shopifyProductIdentifier", parameterValue: draft.value.selectedIdentifierEnumId }
-      ]
+    const resp: any = await ShopifyProductSyncService.syncShopifyProducts({ 
+      shopId: props.id,
+      includeAll: true 
     });
-
-    // 2. Run the job now
-    await runNow(job.jobName);
+    if (resp._ERROR_MESSAGE_ || resp._ERROR_MESSAGE_LIST_) {
+      throw resp;
+    }
 
     draft.value.syncStarted = true;
     showStartSyncModal.value = false;
-    currentStep.value = "progress";
-    
-    // 3. Initialize progress state
-    progressState.value = {
-      syncJobId: job.jobName,
-      status: "queued",
-      systemMessageState: "SmsgProduced",
-      completed: false
-    };
+    showToast(translate("Product sync started."));
 
-    const loadedProgress = await loadProgress();
-    if (loadedProgress) startProgressPolling();
-  } catch (error: any) {
-    logger.error(error);
-    showToast(translate("Failed to start product sync"));
+    // Keep the selected shop remote id stable. The sync endpoint returns a system message id,
+    // which is useful for progress state but cannot replace the shop-level remote id used by
+    // subsequent run-state and GraphQL lookups.
+    if (resp.systemMessageId) {
+      progressState.value = {
+        ...progressState.value,
+        systemMessageId: resp.systemMessageId,
+        systemMessageState: "SmsgProduced",
+        status: "queued",
+        completed: false
+      };
+      currentStep.value = "progress";
+      await loadProgress();
+      startProgressPolling();
+    } else {
+      // Fallback if no ID is returned
+      currentStep.value = "progress";
+      const loadedProgress = await loadProgress();
+      if (loadedProgress) startProgressPolling();
+    }
+  } catch (err) {
+    showToast(getErrorMessage(err, translate("Failed to start product sync.")));
+    logger.error(err);
+  } finally {
+    isSaving.value = false;
   }
-  isSaving.value = false;
+}
+
+async function runJobNow(job: any) {
+  if (!job?.jobName) return;
+  try {
+    await runNow(job.jobName);
+    showToast(translate("Job started."));
+    // Refresh progress after a short delay to reflect the job start
+    setTimeout(() => loadProgress(), 2000);
+  } catch (err) {
+    showToast(translate("Failed to start job."));
+    logger.error(err);
+  }
 }
 
 async function startResyncEntireCatalog() {
@@ -2539,10 +2705,46 @@ async function startResyncEntireCatalog() {
 }
 
 async function loadProgress() {
+
   if (!selectedShopSystemMessageRemoteId.value) return false;
+  let loadedRunState = false;
   try {
-    const syncRunState = await ShopifyProductSyncService.fetchProductUpdateSyncRunState(selectedShopSystemMessageRemoteId.value);
+    const [syncRunStateResult, sendJobResult, pollJobResult, sendJobRunsResult, pollJobRunsResult] = await Promise.allSettled([
+      ShopifyProductSyncService.fetchProductUpdateSyncRunState(selectedShopSystemMessageRemoteId.value),
+      fetchJobDetail(BULK_OPERATION_SEND_JOB_NAME),
+      fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME),
+      fetchJobRuns(BULK_OPERATION_SEND_JOB_NAME, { pageSize: 1, pageIndex: 0 }),
+      fetchJobRuns(BULK_OPERATION_POLL_JOB_NAME, { pageSize: 1, pageIndex: 0 })
+    ]);
+
+    if (sendJobResult.status === "fulfilled") {
+      bulkOperationSendJob.value = sendJobResult.value;
+    } else {
+      logger.error("Failed to fetch bulk operation send job details", sendJobResult.reason);
+      bulkOperationSendJob.value = {};
+    }
+
+    if (pollJobResult.status === "fulfilled") {
+      bulkOperationPollJob.value = pollJobResult.value;
+    } else {
+      logger.error("Failed to fetch bulk operation poll job details", pollJobResult.reason);
+      bulkOperationPollJob.value = {};
+    }
+
+    bulkOperationSendJobRecentRuns.value = sendJobRunsResult.status === "fulfilled" && Array.isArray(sendJobRunsResult.value)
+      ? sendJobRunsResult.value
+      : [];
+    bulkOperationPollJobRecentRuns.value = pollJobRunsResult.status === "fulfilled" && Array.isArray(pollJobRunsResult.value)
+      ? pollJobRunsResult.value
+      : [];
+
+    if (syncRunStateResult.status !== "fulfilled") {
+      throw syncRunStateResult.reason;
+    }
+
+    const syncRunState = syncRunStateResult.value;
     assertBackendDataAvailable(syncRunState, translate("Product sync run state is unavailable."));
+    loadedRunState = true;
 
     const latestMessage = syncRunState.latestSystemMessage;
     if (latestMessage) {
@@ -2565,13 +2767,15 @@ async function loadProgress() {
     return true;
   } catch (error: any) {
     logger.error(error);
-    stopProgressPolling();
-    progressState.value = {
-      ...progressState.value,
-      status: "error",
-      completed: true
-    } as any;
-    return false;
+    if (!loadedRunState) {
+      progressState.value = {
+        ...progressState.value,
+        status: "error",
+        completed: true
+      } as any;
+      stopProgressPolling();
+    }
+    return !!bulkOperationSendJob.value?.jobName || !!bulkOperationPollJob.value?.jobName;
   }
 }
 
@@ -3027,6 +3231,13 @@ function getErrorMessage(error: any, defaultMessage: string) {
     error?.message ||
     defaultMessage;
   return typeof message === "string" ? message : JSON.stringify(message);
+}
+
+function isShopifyWriteAccessError(message: string) {
+  const normalizedMessage = String(message || "").toLowerCase();
+  return normalizedMessage.includes("cannot post graphql mutation") ||
+    normalizedMessage.includes("only read access is enabled") ||
+    normalizedMessage.includes("write access is required");
 }
 
 function assertBackendDataAvailable(payload: any, message: string) {

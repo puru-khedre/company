@@ -22,6 +22,7 @@ export function useShopifyProductSyncRun() {
     if (s.includes("success") || s.includes("completed") || s.includes("consumed") || s.includes("confirmed") || s.includes("finished") || s === "dmlsuccess") return "success";
     if (s.includes("error") || s.includes("failed") || s.includes("rejected") || s === "dmlerror") return "danger";
     if (s.includes("running") || s.includes("sent") || s.includes("produced") || s.includes("smsg")) return "primary";
+    if (s === "skipped") return "warning";
     return "medium";
   };
 
@@ -36,8 +37,27 @@ export function useShopifyProductSyncRun() {
     if (s === "running") return translate("Running");
     if (s === "completed") return translate("Complete");
     if (s === "failed") return translate("Error");
-    if (s === "canceled") return translate("Canceled");
+    if (s === "canceled" || s === "cancelled") return translate("Canceled");
+    if (s === "skipped") return translate("Skipped");
     return status;
+  };
+
+  const getSystemMessageErrorText = (systemMessageErrors: any[]) => {
+    const errors = Array.isArray(systemMessageErrors) ? systemMessageErrors : [];
+    for (const error of errors) {
+      const messageCandidates = [
+        error?.errorText,
+        error?.errorMessage,
+        error?.message,
+        error?.reason,
+        error?.error,
+        error?.description
+      ];
+      const errorText = messageCandidates.find((message: any) => String(message || "").trim());
+      if (errorText) return errorText;
+    }
+
+    return "";
   };
 
   const fetchSyncRun = async (systemMessageId: string, systemMessageData?: any) => {
@@ -48,6 +68,7 @@ export function useShopifyProductSyncRun() {
       // Fetch System Message and related Shopify Bulk Operation
       const {
         systemMessage,
+        systemMessageErrors = [],
         shopifyBulkOperation,
         bulkOperationId,
         relatedSystemMessageIds = []
@@ -63,6 +84,8 @@ export function useShopifyProductSyncRun() {
         systemMessageId: syncRunSystemMessageId,
         systemMessage: {
           ...systemMessage,
+          systemMessageErrors,
+          errorText: getSystemMessageErrorText(systemMessageErrors),
           statusLabel: getStatusLabel(systemMessage?.statusId),
           statusColor: getStatusColor(systemMessage?.statusId)
         },
@@ -80,9 +103,9 @@ export function useShopifyProductSyncRun() {
         },
         mdmLog: {
           id: mdmLog?.logId,
-          statusId: mdmLog?.statusId,
-          statusLabel: getStatusLabel(mdmLog?.statusId),
-          statusColor: getStatusColor(mdmLog?.statusId),
+          statusId: mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : undefined),
+          statusLabel: getStatusLabel(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : undefined)),
+          statusColor: getStatusColor(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : undefined)),
           startDate: mdmLog?.startDate,
           endDate: mdmLog?.endDate,
           finishDateTime: mdmLog?.finishDateTime,
@@ -98,9 +121,9 @@ export function useShopifyProductSyncRun() {
           logContentId: mdmLog?.logContentId,
           fileName: mdmLog?.fileName
         },
-        status: getStatusLabel(mdmLog?.statusId || shopifyBulkOperation?.status || systemMessage?.statusId),
-        statusColor: getStatusColor(mdmLog?.statusId || shopifyBulkOperation?.status || systemMessage?.statusId),
-        completed: mdmLog?.statusId === "DmlSuccess" || mdmLog?.statusId === "DmlError"
+        status: getStatusLabel(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : shopifyBulkOperation?.status) || systemMessage?.statusId),
+        statusColor: getStatusColor(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : shopifyBulkOperation?.status) || systemMessage?.statusId),
+        completed: mdmLog?.statusId === "DmlSuccess" || mdmLog?.statusId === "DmlError" || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0)
       };
 
       state.currentSyncRun = syncRun;

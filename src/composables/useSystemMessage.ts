@@ -60,6 +60,28 @@ export function useSystemMessage() {
     return null;
   };
 
+  const fetchSystemMessageErrors = async (systemMessageId: string) => {
+    if (!systemMessageId) return [];
+
+    state.loading = true;
+    try {
+      const response = await api({
+        url: `admin/systemMessages/${encodeURIComponent(systemMessageId)}/errors`,
+        method: "GET",
+        params: {
+          pageSize: 50
+        }
+      }) as any;
+
+      return response?.data || [];
+    } catch (err) {
+      logger.error(`Failed to fetch system message errors for ${systemMessageId}`, err);
+      throw err;
+    } finally {
+      state.loading = false;
+    }
+  };
+
   const fetchSystemMessages = async (params: any) => {
     state.loading = true;
     try {
@@ -217,6 +239,7 @@ export function useSystemMessage() {
 
   const fetchShopifyBulkOperationBySystemMessageId = async (systemMessageId: string, systemMessageData?: any) => {
     const systemMessage = systemMessageData || await fetchSystemMessageById(systemMessageId);
+    const systemMessageErrors = await fetchSystemMessageErrors(systemMessageId).catch(() => []);
     
     if (systemMessageData) state.currentSystemMessage = systemMessageData;
 
@@ -225,7 +248,8 @@ export function useSystemMessage() {
     const systemMessageRemoteId = bulkOperationSource.systemMessage?.systemMessageRemoteId || systemMessage?.systemMessageRemoteId;
     if (systemMessage && bulkOperationSource.bulkOperationId && systemMessageRemoteId) {
       try {
-        shopifyBulkOperation = await fetchShopifyBulkOperation(bulkOperationSource.bulkOperationId, systemMessageRemoteId) || {};
+        const result = await fetchShopifyBulkOperation(bulkOperationSource.bulkOperationId, systemMessageRemoteId);
+        shopifyBulkOperation = result || { isStatusUnavailable: true };
       } catch (err) {
         shopifyBulkOperation = { isStatusUnavailable: true };
       }
@@ -235,6 +259,7 @@ export function useSystemMessage() {
     
     return {
       systemMessage: systemMessage || state.currentSystemMessage,
+      systemMessageErrors,
       shopifyBulkOperation: shopifyBulkOperation || state.currentShopifyBulkOperation,
       bulkOperationId: bulkOperationSource.bulkOperationId,
       relatedSystemMessageIds: bulkOperationSource.relatedSystemMessageIds
@@ -244,6 +269,7 @@ export function useSystemMessage() {
   return {
     ...toRefs(state),
     fetchSystemMessageById,
+    fetchSystemMessageErrors,
     fetchShopifyBulkOperation,
     fetchShopifyBulkOperationBySystemMessageId,
     fetchSystemMessageLogDetailsPage,

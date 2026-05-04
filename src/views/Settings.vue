@@ -213,7 +213,7 @@ const harmonizedFetchStatus = computed(() => [
   {
     label: translate("DBIC Countries"),
     status: fetchStatus.value.dbicCountries,
-    count: store.state.util.dbicCountries.list.length,
+    count: store.state.util.dbicCountries.list?.length,
     refresh: () => store.dispatch('util/fetchDBICCountries')
   },
   {

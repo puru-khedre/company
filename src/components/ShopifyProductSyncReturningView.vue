@@ -41,9 +41,9 @@
           <ion-label>{{ translate("Un-synced updates") }}</ion-label>
           <ion-badge slot="end" color="medium"><AnimatedNumber :value="Number(unsyncedUpdatesCount) || 0" /></ion-badge>
         </ion-item>
-        <ion-item>
+        <ion-item lines="none">
           <ion-label>{{ translate("Product store") }}</ion-label>
-          <ion-note slot="end">{{ selectedProductStoreName }}</ion-note>
+          <ion-label slot="end">{{ selectedProductStoreName }}</ion-label>
         </ion-item>
       </ion-list>
     </ion-card>
@@ -59,11 +59,23 @@
         </ion-buttons>
       </ion-card-header>
       <ion-list lines="full">
-        <template v-if="currentSyncRun && currentSyncRun.systemMessageId">
+        <template v-if="isSecondaryLoading">
+          <ion-item v-for="i in 3" :key="i">
+            <ion-label>
+              <ion-skeleton-text animated style="width: 30%" />
+              <p><ion-skeleton-text animated style="width: 70%" /></p>
+              <p><ion-skeleton-text animated style="width: 50%" /></p>
+            </ion-label>
+          </ion-item>
+        </template>
+        <template v-else-if="currentSyncRun && currentSyncRun.systemMessageId">
           <ion-item button detail @click="emit('open-step-details', { type: 'systemMessage', id: currentSyncRun.systemMessageId })">
             <ion-label>
               {{ translate("System message") }}
-              <p>{{ systemMessageMetaLabel }}</p>
+              <p>
+                {{ currentSyncRun.systemMessageId }} · {{ translate("Created") }} 
+                <AnimatedDuration :start-time="currentSyncRun.systemMessage?.initDate || currentSyncRun.systemMessage?.createdDate" />
+              </p>
               <p>{{ systemMessageProgressLabel }}</p>
             </ion-label>
             <ion-badge slot="end" :color="currentSyncRun.systemMessage?.statusColor || 'medium'">{{ currentSyncRun.systemMessage?.statusLabel || translate("Pending") }}</ion-badge>
@@ -72,23 +84,46 @@
             <ion-label>
               {{ translate("Shopify bulk operation") }}
               <p>{{ currentSyncRun.bulkOperation?.id || translate("Not started") }}</p>
-              <p>{{ bulkOperationProgressLabel }}</p>
+              <p v-if="currentSyncRun.bulkOperation?.createdAt">
+                {{ translate("Duration") }}: 
+                <AnimatedDuration 
+                  :start-time="currentSyncRun.bulkOperation.createdAt" 
+                  :end-time="currentSyncRun.bulkOperation.completedAt" 
+                />
+              </p>
+              <p v-else>{{ bulkOperationProgressLabel }}</p>
             </ion-label>
             <ion-note slot="end" v-if="currentSyncRun.bulkOperation?.objectCount">
               {{ currentSyncRun.bulkOperation.objectCount }} {{ translate("objects") }}
             </ion-note>
-            <ion-badge v-if="!currentSyncRun.bulkOperation?.isStatusUnavailable" slot="end" :color="currentSyncRun.bulkOperation?.statusColor || 'medium'">{{ currentSyncRun.bulkOperation?.statusLabel || translate("Pending") }}</ion-badge>
+            <ion-badge slot="end" :color="currentSyncRun.bulkOperation?.isStatusUnavailable ? 'medium' : (currentSyncRun.bulkOperation?.statusColor || 'medium')">
+              {{ currentSyncRun.bulkOperation?.isStatusUnavailable ? translate("Unavailable") : (currentSyncRun.bulkOperation?.statusLabel || translate("Pending")) }}
+            </ion-badge>
           </ion-item>
-          <ion-item button detail @click="emit('open-step-details', { type: 'mdmLog', id: currentSyncRun.mdmLog?.id })" :disabled="!currentSyncRun.mdmLog?.id">
+          <ion-item button detail @click="emit('open-step-details', { type: 'mdmLog', id: currentSyncRun.mdmLog?.id })" :disabled="!currentSyncRun.mdmLog?.id && normalizeSyncStepStatus(currentSyncRun.mdmLog?.statusId) !== 'skipped'">
             <ion-label>
               {{ translate("HotWax bulk import") }}
-              <p>{{ mdmLogMetaLabel }}</p>
-              <p>{{ mdmLogProgressLabel }}</p>
+              <p v-if="currentSyncRun.mdmLog?.id">
+                {{ currentSyncRun.mdmLog.id }} · {{ translate("Started") }} 
+                <AnimatedDuration 
+                  :start-time="currentSyncRun.mdmLog.startDate" 
+                />
+              </p>
+              <p v-else>{{ mdmLogMetaLabel }}</p>
+              <p v-if="currentSyncRun.mdmLog?.startDate">
+                {{ currentSyncRun.mdmLog?.statusLabel || translate("Pending") }} 
+                <AnimatedDuration 
+                  :start-time="currentSyncRun.mdmLog.startDate" 
+                  :end-time="currentSyncRun.mdmLog.finishDateTime || currentSyncRun.mdmLog.completedDate" 
+                />
+              </p>
+              <p v-if="mdmLogHasFailedRecords">{{ mdmLogFailedRecordsLabel }}</p>
+              <p v-else>{{ mdmLogProgressLabel }}</p>
             </ion-label>
-            <ion-note slot="end" v-if="currentSyncRun.mdmLog?.totalRecordCount">
+            <ion-note slot="end" v-if="currentSyncRun.mdmLog?.totalRecordCount && !mdmLogHasFailedRecords">
               {{ currentSyncRun.mdmLog.totalRecordCount }} {{ translate("records") }}
             </ion-note>
-            <ion-badge slot="end" :color="currentSyncRun.mdmLog?.statusColor || 'medium'">{{ currentSyncRun.mdmLog?.statusLabel || translate("Pending") }}</ion-badge>
+            <ion-badge slot="end" :color="mdmLogBadgeColor">{{ mdmLogBadgeLabel }}</ion-badge>
           </ion-item>
         </template>
         <ion-item v-else>
@@ -210,70 +245,95 @@
     </div>
     <div class="stat-data">
         <transition-group name="list" tag="div" class="list-transition-group">
-          <ion-card v-for="item in filteredUpdates" :key="item.id">
-            <ion-list lines="full">
-              <ion-item>
-                <ion-label class="ion-text-wrap">
-                  <h2>{{ item.parentTitle || item.internalName }}</h2>
-                  <p v-if="item.variantTitle && item.variantTitle !== item.parentTitle">{{ item.variantTitle }}</p>
-                  <p v-if="item.sku">{{ translate("SKU") }}: {{ item.sku }}</p>
-                  <ion-button
-                    v-if="item.shopifyAdminUrl"
-                    fill="clear"
-                    size="small"
-                    :href="item.shopifyAdminUrl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    @click.stop
-                  >
-                    {{ item.shopifyIdLabel }}
-                  </ion-button>
-                  <p v-else>{{ item.shopifyIdLabel || item.shopifyId }}</p>
-                </ion-label>
-                <ion-note slot="end">{{ item.updatedTime }}</ion-note>
-              </ion-item>
+          <template v-if="isSecondaryLoading">
+            <ion-card v-for="i in 4" :key="i">
+              <ion-list lines="full">
+                <ion-item>
+                  <ion-label>
+                    <ion-skeleton-text animated style="width: 60%" />
+                    <p><ion-skeleton-text animated style="width: 40%" /></p>
+                    <p><ion-skeleton-text animated style="width: 30%" /></p>
+                  </ion-label>
+                  <ion-note slot="end"><ion-skeleton-text animated style="width: 50px" /></ion-note>
+                </ion-item>
+                <ion-card-content>
+                  <ion-chip v-for="j in 2" :key="j">
+                    <ion-label><ion-skeleton-text animated style="width: 40px" /></ion-label>
+                  </ion-chip>
+                </ion-card-content>
+                <ion-item>
+                  <ion-label>
+                    <ion-skeleton-text animated style="width: 20%" />
+                  </ion-label>
+                </ion-item>
+              </ion-list>
+            </ion-card>
+          </template>
+          <template v-else-if="filteredUpdates.length">
+            <ion-card v-for="item in filteredUpdates" :key="item.id">
+              <ion-list lines="full">
+                <ion-item>
+                  <ion-label class="ion-text-wrap">
+                    <h2>{{ item.parentTitle || item.internalName }}</h2>
+                    <p v-if="item.variantTitle && item.variantTitle !== item.parentTitle">{{ item.variantTitle }}</p>
+                    <p v-if="item.sku">{{ translate("SKU") }}: {{ item.sku }}</p>
+                    <ion-button
+                      v-if="item.shopifyAdminUrl"
+                      fill="clear"
+                      size="small"
+                      :href="item.shopifyAdminUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      @click.stop
+                    >
+                      {{ item.shopifyIdLabel }}
+                    </ion-button>
+                    <p v-else>{{ item.shopifyIdLabel || item.shopifyId }}</p>
+                  </ion-label>
+                  <ion-note slot="end">{{ item.updatedTime }}</ion-note>
+                </ion-item>
 
-              <ion-card-content v-if="item.details.length">
-                <ion-chip v-for="label in getChangeSummary(item.details)" :key="label">
-                  <ion-label>{{ label }}</ion-label>
-                </ion-chip>
-              </ion-card-content>
+                <ion-card-content v-if="item.details.length">
+                  <ion-chip v-for="label in getChangeSummary(item.details)" :key="label">
+                    <ion-label>{{ label }}</ion-label>
+                  </ion-chip>
+                </ion-card-content>
 
-              <ion-accordion-group>
-                <ion-accordion :value="item.id">
-                  <ion-item slot="header">
-                    <ion-label>
-                      {{ translate("Changes") }}
-                      <p>{{ translate("Review field-level updates") }}</p>
-                    </ion-label>
-                    <ion-badge slot="end" color="medium">{{ item.details.length }}</ion-badge>
-                  </ion-item>
-                  <ion-list slot="content" lines="full">
-                    <ion-item v-for="(detail, index) in item.details" :key="index">
-                      <ion-label class="ion-text-wrap">
-                        <h3>{{ detail.label }}</h3>
-                        <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
-                          {{ getDetailActionLabel(detail.type) }}
-                        </p>
-                        <template v-if="detail.items?.length">
-                          <p v-for="(detailItem, detailItemIndex) in detail.items" :key="detailItemIndex">
-                            <template v-if="detailItem.label">{{ detailItem.label }}: </template>{{ detailItem.value }}
-                          </p>
-                        </template>
-                        <p v-else>{{ detail.value }}</p>
+                <ion-accordion-group>
+                  <ion-accordion :value="item.id">
+                    <ion-item slot="header">
+                      <ion-label>
+                        {{ translate("Changes") }}
+                        <p>{{ translate("Review field-level updates") }}</p>
                       </ion-label>
+                      <ion-badge slot="end" color="medium">{{ item.details.length }}</ion-badge>
                     </ion-item>
-                  </ion-list>
-                </ion-accordion>
-              </ion-accordion-group>
+                    <ion-list slot="content" lines="full">
+                      <ion-item v-for="(detail, index) in item.details" :key="index">
+                        <ion-label class="ion-text-wrap">
+                          <h3>{{ detail.label }}</h3>
+                          <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
+                            {{ getDetailActionLabel(detail.type) }}
+                          </p>
+                          <template v-if="detail.items?.length">
+                            <p v-for="(detailItem, detailItemIndex) in detail.items" :key="detailItemIndex">
+                              <template v-if="detailItem.label">{{ detailItem.label }}: </template>{{ detailItem.value }}
+                            </p>
+                          </template>
+                          <p v-else>{{ detail.value }}</p>
+                        </ion-label>
+                      </ion-item>
+                    </ion-list>
+                  </ion-accordion>
+                </ion-accordion-group>
 
-              <ion-item v-if="!item.details.length">
-                <ion-label>{{ translate("No details found for this update") }}</ion-label>
-              </ion-item>
-            </ion-list>
-          </ion-card>
-
-          <ion-card v-if="!filteredUpdates.length" key="no-updates-card">
+                <ion-item v-if="!item.details.length">
+                  <ion-label>{{ translate("No details found for this update") }}</ion-label>
+                </ion-item>
+              </ion-list>
+            </ion-card>
+          </template>
+          <ion-card v-else key="no-updates-card">
             <ion-list lines="full">
               <ion-item>
                 <ion-label>{{ translate("No recently synced product updates") }}</ion-label>
@@ -364,6 +424,7 @@ import {
   IonList,
   IonNote,
   IonSearchbar,
+  IonSkeletonText,
   IonSpinner
 } from "@ionic/vue";
 import { translate } from "@/i18n";
@@ -371,6 +432,7 @@ import { computed, defineEmits, defineProps, ref } from "vue";
 import { checkmarkCircleOutline, closeOutline, ellipsisVerticalOutline, flashOutline, pauseCircleOutline, refreshOutline, timeOutline } from "ionicons/icons";
 import { modalController, popoverController } from "@ionic/vue";
 import AnimatedNumber from "@/components/AnimatedNumber.vue";
+import AnimatedDuration from "@/components/AnimatedDuration.vue";
 
 import ShopifyProductSyncActionsPopover from "./ShopifyProductSyncActionsPopover.vue";
 import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
@@ -488,6 +550,35 @@ const filteredUpdates = computed(() => {
       item.shopifyId.toLowerCase().includes(query);
   });
 });
+const mdmLogFailedRecordCount = computed(() => {
+  return Number(props.currentSyncRun?.mdmLog?.failedRecordCount || 0);
+});
+const mdmLogTotalRecordCount = computed(() => {
+  return Number(props.currentSyncRun?.mdmLog?.totalRecordCount || 0);
+});
+const mdmLogHasFailedRecords = computed(() => {
+  return mdmLogFailedRecordCount.value > 0;
+});
+const mdmLogFailedRecordsLabel = computed(() => {
+  if (!mdmLogHasFailedRecords.value) return "";
+
+  if (mdmLogTotalRecordCount.value > 0) {
+    return `${mdmLogFailedRecordCount.value} ${translate("failed of")} ${mdmLogTotalRecordCount.value} ${translate("records processed")}`;
+  }
+
+  return `${mdmLogFailedRecordCount.value} ${translate("failed records")}`;
+});
+const mdmLogBadgeColor = computed(() => {
+  if (mdmLogHasFailedRecords.value) return "danger";
+  return props.currentSyncRun?.mdmLog?.statusColor || "medium";
+});
+const mdmLogBadgeLabel = computed(() => {
+  if (mdmLogHasFailedRecords.value) return translate("Errors");
+  return props.currentSyncRun?.mdmLog?.statusLabel || translate("Pending");
+});
+function normalizeSyncStepStatus(statusId: string) {
+  return String(statusId || "").toLowerCase().replace(/[_\-\s]/g, "");
+}
 
 </script>
 

@@ -2,7 +2,6 @@ export type ProductSyncWizardStep =
   | "home"
   | "product-store"
   | "identifier"
-  | "product-types"
   | "review"
   | "progress"
   | "reconcile";
@@ -56,7 +55,6 @@ export const productSyncWizardSteps: ProductSyncWizardStep[] = [
   "home",
   "product-store",
   "identifier",
-  "product-types",
   "review",
   "progress",
   "reconcile"
@@ -96,10 +94,6 @@ export function canAdvanceProductSyncStep(step: ProductSyncWizardStep, context: 
 
   if (step === "identifier") {
     return !!context.identifierLocked || !!draft.selectedIdentifierEnumId;
-  }
-
-  if (step === "product-types") {
-    return true;
   }
 
   if (step === "review") {

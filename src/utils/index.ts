@@ -20,6 +20,37 @@ const showToast = async (message: string) => {
     })
   return toast.present();
 }
+
+const getResponseErrorMessage = (error: any, defaultMessage: string) => {
+  const responseData = error?.response?.data || error?.data || error;
+  const errors = responseData?.errors;
+
+  if (Array.isArray(errors) && errors.length) {
+    return errors.join(", ");
+  }
+
+  if (typeof errors === "string" && errors.trim()) {
+    return errors;
+  }
+
+  if (Array.isArray(responseData?._ERROR_MESSAGE_LIST_) && responseData._ERROR_MESSAGE_LIST_.length) {
+    return responseData._ERROR_MESSAGE_LIST_.join(", ");
+  }
+
+  if (typeof responseData?._ERROR_MESSAGE_ === "string" && responseData._ERROR_MESSAGE_.trim()) {
+    return responseData._ERROR_MESSAGE_;
+  }
+
+  if (typeof responseData?.message === "string" && responseData.message.trim()) {
+    return responseData.message;
+  }
+
+  if (typeof error?.message === "string" && error.message.trim()) {
+    return error.message;
+  }
+
+  return defaultMessage;
+}
 const generateInternalId = (name: string) => {
   return name.trim().toUpperCase().split(' ').join('_');
 }
@@ -76,4 +107,4 @@ const parseDateTimeValue = (value: string | number) => {
   return candidates.find((candidate) => candidate.isValid) || null;
 }
 
-export { generateInternalId, hasError, showToast, getCurrentTime, getDownloadFileContent, downloadTextFile, formatDateTime, parseDateTimeValue }
+export { generateInternalId, getResponseErrorMessage, hasError, showToast, getCurrentTime, getDownloadFileContent, downloadTextFile, formatDateTime, parseDateTimeValue }

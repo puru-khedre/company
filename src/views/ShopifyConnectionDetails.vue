@@ -44,7 +44,7 @@
 
         <div class="ion-margin-top">
           <h1>{{ translate("Products and Inventory") }}</h1>
-          <ion-card class="widget product-sync" button @click="openProductSyncEntry()">
+          <ion-card v-if="shouldShowProductSyncWidget" class="widget product-sync" button @click="openProductSyncEntry()">
             <ion-card-header>
               <ion-card-title>{{ translate("Product sync") }}</ion-card-title>
               <ion-card-subtitle>{{ productSyncCardSubtitle }}</ion-card-subtitle>
@@ -133,8 +133,20 @@
             </div>
           </ion-card>
           <section>
-            <ion-item detail class="item-box" lines="none" button @click="openProductSyncEntry()">
-              <ion-label>{{ productSyncEntryLabel }}</ion-label>
+            <ion-item
+              v-if="productSyncMigrationNotice"
+              :data-sync-state="productSyncMigrationNotice.state"
+              detail
+              class="item-box"
+              lines="none"
+              button
+              @click="openProductSyncMigrationNotice()"
+            >
+              <ion-label>
+                {{ productSyncMigrationNotice.label }}
+                <p>{{ productSyncMigrationNotice.detail }}</p>
+              </ion-label>
+              <ion-badge slot="end" :color="productSyncMigrationNotice.color">{{ productSyncMigrationNotice.badge }}</ion-badge>
             </ion-item>
             <ion-item detail class="item-box" lines="none" button @click="openShopifyLocations()">
               <ion-label>{{ translate("Inventory locations") }}</ion-label>
@@ -166,10 +178,17 @@
           <section>
             <ion-item class="item-box" lines="none">
               <ion-label>
-                {{ translate("Force upgrade flow") }}
-                <p>{{ translate("Assume user needs to upgrade to new product sync") }}</p>
+                {{ translate("Connection detail state") }}
+                <p>{{ translate("Choose a simulated product sync state for this page while developing.") }}</p>
               </ion-label>
-              <ion-toggle slot="end" v-model="forceUpgradeFlow" />
+              <ion-select slot="end" interface="popover" v-model="debugPageState">
+                <ion-select-option value="live">{{ translate("Live data") }}</ion-select-option>
+                <ion-select-option value="setup-required">{{ translate("First time setup") }}</ion-select-option>
+                <ion-select-option value="incompatible">{{ translate("Upgrade required") }}</ion-select-option>
+                <ion-select-option value="upgrade-ready">{{ translate("Upgrade to new sync") }}</ion-select-option>
+                <ion-select-option value="teardown-needed">{{ translate("Disable old sync") }}</ion-select-option>
+                <ion-select-option value="upgraded">{{ translate("Already upgraded") }}</ion-select-option>
+              </ion-select>
             </ion-item>
           </section>
         </div>
@@ -180,7 +199,7 @@
 
 
 <script setup lang="ts">
-import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonSkeletonText, IonTitle, IonToggle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
+import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonSelect, IonSelectOption, IonSkeletonText, IonTitle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
 import { translate } from "@/i18n";
 import { formatDateTime, parseDateTimeValue } from "@/utils";
 import { DateTime } from "luxon";
@@ -203,9 +222,10 @@ const PRODUCT_SYNC_ACTIVITY_GRAPH_WIDTH = 320;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_HEIGHT = 96;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_PADDING_X = 12;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_PADDING_Y = 12;
+type DebugPageState = "live" | "setup-required" | "incompatible" | "upgrade-ready" | "teardown-needed" | "upgraded";
 const { fetchMdmLogBySystemMessageId } = useDataManagerLog();
 const { currentSyncRun, fetchSyncRun } = useShopifyProductSyncRun();
-const forceUpgradeFlow = ref(false);
+const debugPageState = ref<DebugPageState>("live");
 const productSyncSummary = ref<any>({
   syncRunState: {
     lastSyncedAt: "",
@@ -225,28 +245,142 @@ const productSyncMigrationEligibility = ref({
   minimumComponentRelease: "",
   isEligible: false
 });
+const shopifyAccessState = ref({
+  systemMessageRemoteId: "",
+  accessScopeEnumId: "",
+  hasWriteAccess: false,
+  status: "unavailable",
+  label: "Unavailable"
+});
+const legacyProductSyncState = ref({
+  legacySystemMessageTypes: [] as any[],
+  legacyServiceJobs: [] as any[],
+  legacySystemMessages: [] as any[]
+});
 
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
+const effectiveProductSyncMigrationEligibility = computed(() => {
+  if (debugPageState.value === "incompatible") {
+    return {
+      ...productSyncMigrationEligibility.value,
+      isEligible: false
+    };
+  }
+
+  if (debugPageState.value !== "live") {
+    return {
+      ...productSyncMigrationEligibility.value,
+      isEligible: true
+    };
+  }
+
+  return productSyncMigrationEligibility.value;
+});
 const hasCurrentProductSyncMessages = computed(() => {
-  if (forceUpgradeFlow.value) return false;
+  if (debugPageState.value === "setup-required" || debugPageState.value === "upgrade-ready" || debugPageState.value === "incompatible") return false;
+  if (debugPageState.value === "teardown-needed" || debugPageState.value === "upgraded") return true;
   return !!productSyncSummary.value.syncRunState?.latestSystemMessage || !!productSyncSummary.value.syncRunState?.systemMessages?.length;
+});
+const hasShopifyWriteAccess = computed(() => {
+  if (debugPageState.value === "setup-required" || debugPageState.value === "upgrade-ready" || debugPageState.value === "teardown-needed" || debugPageState.value === "upgraded") return true;
+  return !!shopifyAccessState.value.hasWriteAccess;
+});
+const shouldShowProductSyncWidget = computed(() => {
+  return hasCurrentProductSyncMessages.value;
+});
+const hasActiveLegacyProductSync = computed(() => {
+  if (debugPageState.value === "setup-required") return false;
+  if (debugPageState.value === "upgrade-ready" || debugPageState.value === "teardown-needed") return true;
+  if (debugPageState.value === "upgraded") return false;
+  return [
+    ...legacyProductSyncState.value.legacySystemMessageTypes,
+    ...legacyProductSyncState.value.legacyServiceJobs,
+    ...legacyProductSyncState.value.legacySystemMessages
+  ].some((item: any) => item?.status === "active");
 });
 const productSyncEntryAction = computed(() => {
   return ShopifyProductSyncMigrationService.resolveEntryAction({
     hasNewProductSyncMessages: hasCurrentProductSyncMessages.value,
-    isEligible: productSyncMigrationEligibility.value.isEligible
+    isEligible: effectiveProductSyncMigrationEligibility.value.isEligible
   });
 });
-const productSyncEntryLabel = computed(() => {
-  if (productSyncEntryAction.value === "current") {
-    return translate("Download products");
+const productSyncMigrationNoticeAction = computed(() => {
+  if (productSyncMigrationNotice.value?.action === "setup") {
+    return "setup";
   }
 
-  if (productSyncEntryAction.value === "setup") {
-    return translate("Setup new product sync");
+  return "upgrade-assistant";
+});
+const productSyncMigrationNotice = computed(() => {
+  if (!effectiveProductSyncMigrationEligibility.value.isEligible) {
+    return {
+      state: "upgrade-required",
+      label: translate("Upgrade required for new product sync"),
+      detail: translate("Upgrade this instance to {minimumRelease} or newer before moving to the new product sync.", {
+        minimumRelease: effectiveProductSyncMigrationEligibility.value.minimumComponentRelease || translate("the required release")
+      }),
+      badge: translate("Upgrade required"),
+      color: "warning",
+      action: "upgrade-assistant"
+    };
   }
 
-  return translate("Request upgrade to new product sync");
+  if (!hasCurrentProductSyncMessages.value && shopifyAccessState.value.status === "update-required") {
+    return {
+      state: "access-scope-update-required",
+      label: translate("Update Shopify access scope"),
+      detail: translate("This Shopify connection still uses SHOP_RW_ACCESS. Update the remote configuration to SHOP_READ_WRITE_ACCESS before starting the new product sync."),
+      badge: translate("Update required"),
+      color: "warning",
+      action: "setup"
+    };
+  }
+
+  if (!hasCurrentProductSyncMessages.value && !hasShopifyWriteAccess.value) {
+    return {
+      state: "write-access-required",
+      label: translate("Shopify write access required"),
+      detail: translate("This Shopify connection is read-only. Reconnect Shopify with write access before starting the new product sync."),
+      badge: translate("Read only"),
+      color: "warning",
+      action: "setup"
+    };
+  }
+
+  if (!hasActiveLegacyProductSync.value) {
+    if (!hasCurrentProductSyncMessages.value) {
+      return {
+        state: "setup-required",
+        label: translate("Setup new product sync"),
+        detail: translate("This shop is compatible and has not started product sync yet. Complete the first-time setup to begin syncing products."),
+        badge: translate("Setup required"),
+        color: "primary",
+        action: "setup"
+      };
+    }
+
+    return null;
+  }
+
+  if (!hasCurrentProductSyncMessages.value) {
+    return {
+      state: "upgrade-ready",
+      label: translate("Upgrade to new product sync"),
+      detail: translate("This instance is compatible. Move this shop from the old product sync to the new product sync."),
+      badge: translate("Ready"),
+      color: "success",
+      action: "upgrade-assistant"
+    };
+  }
+
+  return {
+    state: "teardown-needed",
+    label: translate("Disable old product sync"),
+    detail: translate("The new product sync is already in use, but the legacy product sync still has active artifacts that must be disabled."),
+    badge: translate("Teardown needed"),
+    color: "danger",
+    action: "upgrade-assistant"
+  };
 });
 const productSyncCardSubtitle = computed(() => {
   if (!hasCurrentProductSyncMessages.value) {
@@ -416,6 +550,18 @@ async function loadProductsInventorySummary() {
     minimumComponentRelease: "",
     isEligible: false
   };
+  shopifyAccessState.value = {
+    systemMessageRemoteId: "",
+    accessScopeEnumId: "",
+    hasWriteAccess: false,
+    status: "unavailable",
+    label: "Unavailable"
+  };
+  legacyProductSyncState.value = {
+    legacySystemMessageTypes: [],
+    legacyServiceJobs: [],
+    legacySystemMessages: []
+  };
   productSyncSummary.value = {
     syncRunState: {
       lastSyncedAt: "",
@@ -437,6 +583,30 @@ async function loadProductsInventorySummary() {
     productSyncMigrationEligibility.value = await ShopifyProductSyncMigrationService.fetchEligibility();
   } catch (error) {
     logger.warn("Failed to load product sync migration eligibility", error);
+  }
+
+  try {
+    shopifyAccessState.value = await ShopifyProductSyncService.fetchShopifyAccessState({
+      shopId: props.id,
+      shop: shop.value
+    });
+  } catch (error) {
+    logger.warn("Failed to resolve Shopify access scope", error);
+  }
+
+  try {
+    const legacyTeardownState = await ShopifyProductSyncMigrationService.fetchLegacyTeardownState({
+      shopId: props.id,
+      shop: shop.value
+    });
+
+    legacyProductSyncState.value = {
+      legacySystemMessageTypes: legacyTeardownState.legacySystemMessageTypes || [],
+      legacyServiceJobs: legacyTeardownState.legacyServiceJobs || [],
+      legacySystemMessages: legacyTeardownState.legacySystemMessages || []
+    };
+  } catch (error) {
+    logger.warn("Failed to inspect legacy product sync state", error);
   }
 
   try {
@@ -477,6 +647,15 @@ async function openProductStoreModal() {
 
 function openProductSyncEntry() {
   if (productSyncEntryAction.value === "current") {
+    router.push(`/shopify-connection-details/${props.id}/product-sync`);
+    return;
+  }
+
+  router.push(`/shopify-connection-details/${props.id}/product-sync/upgrade-assistant`);
+}
+
+function openProductSyncMigrationNotice() {
+  if (productSyncMigrationNoticeAction.value === "setup") {
     router.push(`/shopify-connection-details/${props.id}/product-sync`);
     return;
   }
@@ -581,6 +760,18 @@ section {
   gap: var(--spacer-sm);
 }
 
+ion-card.widget {
+  border-radius: 16px;
+  margin-block: var(--spacer-lg);
+  margin-inline: 0;
+  will-change: box-shadow;
+  transition: box-shadow 0.2s ease;
+}
+
+ion-card.widget:hover {
+  box-shadow: 3px 8px 18px -2px rgba(0,0,0, .2), -2px -2px 13px -6px rgba(0,0,0, .2);
+}
+
 .widget.product-sync::part(native) {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -621,6 +812,22 @@ section {
   justify-self: end;
   width: fit-content;
   height: 100%;
+}
+
+ion-item[data-sync-state="upgrade-required"]::part(native) {
+  border-color: var(--ion-color-warning);
+}
+
+ion-item[data-sync-state="setup-required"]::part(native) {
+  border-color: var(--ion-color-primary);
+}
+
+ion-item[data-sync-state="upgrade-ready"]::part(native) {
+  border-color: var(--ion-color-success);
+}
+
+ion-item[data-sync-state="teardown-needed"]::part(native) {
+  border-color: var(--ion-color-danger);
 }
 
 @media screen and (min-width: 700px) {

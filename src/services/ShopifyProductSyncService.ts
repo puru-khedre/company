@@ -9,8 +9,17 @@ export interface ShopifyProductSyncSetupState {
   identifierLocked: boolean;
   selectedProductStoreId: string;
   selectedIdentifierEnumId: string;
+  shopifyAccessState?: ShopifyProductSyncAccessState;
   syncJobId?: string;
   completed?: boolean;
+}
+
+export interface ShopifyProductSyncAccessState {
+  systemMessageRemoteId: string;
+  accessScopeEnumId: string;
+  hasWriteAccess: boolean;
+  status: "write" | "read-only" | "unavailable" | "update-required";
+  label: string;
 }
 
 export interface ShopifyProductSyncReviewStats {
@@ -114,6 +123,7 @@ export interface ShopifyProductSyncProductSearchState {
 }
 
 export interface ShopifyProductSyncOnDemandResult {
+  systemMessageId?: string;
   syncedProductId?: string[];
   missingProductId?: string[];
   failedProductId?: string[];
@@ -145,6 +155,9 @@ interface ProductUpdateHistoryResponse {
 }
 
 const PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID = "BulkQueryShopifyProductUpdates";
+const SHOPIFY_NO_ACCESS_SCOPE_ENUM_ID = "SHOP_NO_ACCESS";
+const SHOPIFY_LEGACY_READ_WRITE_ACCESS_SCOPE_ENUM_ID = "SHOP_RW_ACCESS";
+const SHOPIFY_READ_WRITE_ACCESS_SCOPE_ENUM_ID = "SHOP_READ_WRITE_ACCESS";
 const LIVE_CATALOG_COUNTS_QUERY = `
 query WizardLiveCatalogCounts {
   productsCount {
@@ -525,18 +538,56 @@ function sortShopRemoteCandidates(candidates: any[]) {
   });
 }
 
+function hasShopifyWriteAccess(accessScopeEnumId: string) {
+  const normalizedScope = String(accessScopeEnumId || "").trim().toUpperCase();
+  return normalizedScope === SHOPIFY_READ_WRITE_ACCESS_SCOPE_ENUM_ID;
+}
+
+function getShopifyAccessStateFromCandidate(candidate: any): ShopifyProductSyncAccessState {
+  const accessScopeEnumId = String(candidate?.accessScopeEnumId || "").trim();
+  const hasWriteAccess = hasShopifyWriteAccess(accessScopeEnumId);
+
+  if (!candidate?.systemMessageRemoteId) {
+    return {
+      systemMessageRemoteId: "",
+      accessScopeEnumId: "",
+      hasWriteAccess: false,
+      status: "unavailable",
+      label: "Unavailable"
+    };
+  }
+
+  return {
+    systemMessageRemoteId: String(candidate.systemMessageRemoteId || "").trim(),
+    accessScopeEnumId,
+    hasWriteAccess,
+    status: hasWriteAccess ? "write" : (
+      accessScopeEnumId === SHOPIFY_LEGACY_READ_WRITE_ACCESS_SCOPE_ENUM_ID ? "update-required" :
+        accessScopeEnumId === SHOPIFY_NO_ACCESS_SCOPE_ENUM_ID ? "unavailable" : "read-only"
+    ),
+    label: hasWriteAccess ? "Write access" : (
+      accessScopeEnumId === SHOPIFY_LEGACY_READ_WRITE_ACCESS_SCOPE_ENUM_ID ? "Update required" :
+        accessScopeEnumId === SHOPIFY_NO_ACCESS_SCOPE_ENUM_ID ? "Unavailable" : "Read only"
+    )
+  };
+}
+
+async function fetchShopRemoteCandidates(payload: any) {
+  const response = await requestBackend<SystemMessageRemotesResponse>({
+    url: "oms/systemMessageRemotes",
+    method: "get"
+  });
+
+  return sortShopRemoteCandidates(getShopRemoteCandidates(response?.systemMessageRemoteList || [], payload));
+}
+
 const fetchShopSystemMessageRemoteId = async (payload: any): Promise<any> => {
   const shopifyShopId = payload.shopifyShopId || payload.shop?.shopifyShopId;
   if (!shopifyShopId) {
     throw new Error("Shopify shop id is required to resolve SystemMessageRemote.remoteId.");
   }
 
-  const response = await requestBackend<SystemMessageRemotesResponse>({
-    url: "oms/systemMessageRemotes",
-    method: "get"
-  });
-
-  const candidates = sortShopRemoteCandidates(getShopRemoteCandidates(response?.systemMessageRemoteList || [], payload));
+  const candidates = await fetchShopRemoteCandidates(payload);
   if (!candidates.length) {
     throw new Error(`No SystemMessageRemote found with remoteId ${shopifyShopId}.`);
   }
@@ -580,6 +631,26 @@ const fetchShopSystemMessageRemoteId = async (payload: any): Promise<any> => {
   }
 
   return candidates[0].systemMessageRemoteId;
+};
+
+const fetchShopifyAccessState = async (payload: any): Promise<ShopifyProductSyncAccessState> => {
+  const shopifyShopId = payload.shopifyShopId || payload.shop?.shopifyShopId;
+  if (!shopifyShopId) {
+    throw new Error("Shopify shop id is required to resolve Shopify access scope.");
+  }
+
+  const candidates = await fetchShopRemoteCandidates(payload);
+  if (!candidates.length) {
+    return {
+      systemMessageRemoteId: "",
+      accessScopeEnumId: "",
+      hasWriteAccess: false,
+      status: "unavailable",
+      label: "Unavailable"
+    };
+  }
+
+  return getShopifyAccessStateFromCandidate(candidates[0]);
 };
 
 
@@ -743,6 +814,19 @@ const fetchRunningBulkOperation = async (payload: any): Promise<ShopifyRunningBu
 
 const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupState> => {
   const pageSize = payload.historyPageSize || 1;
+  let shopifyAccessState: ShopifyProductSyncAccessState = {
+    systemMessageRemoteId: "",
+    accessScopeEnumId: "",
+    hasWriteAccess: false,
+    status: "unavailable",
+    label: "Unavailable"
+  };
+
+  try {
+    shopifyAccessState = await fetchShopifyAccessState(payload);
+  } catch (error) {
+    logger.warn("Failed to resolve Shopify access scope for product sync setup", error);
+  }
   const productUpdateHistory = getProductUpdateHistoryRecords(await requestBackend<ProductUpdateHistoryResponse | any[]>({
     url: "oms/productUpdateHistory",
     method: "get",
@@ -757,6 +841,7 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
   return validateSetupState({
     productUpdateHistory,
     hasLinkedOmsProducts,
+    shopifyAccessState,
     productStoreLocked: hasLinkedOmsProducts,
     identifierLocked: hasLinkedOmsProducts,
     selectedProductStoreId: payload.shop?.productStoreId || payload.productStore?.productStoreId || "",
@@ -931,17 +1016,11 @@ const searchShopifyProducts = async (payload: any): Promise<ShopifyProductSyncPr
 };
 
 const syncShopifyProductsOnDemand = async (payload: any): Promise<ShopifyProductSyncOnDemandResult> => {
-  const shopifyProductIds = (payload.shopifyProductIds || [])
-    .map((shopifyProductId: any) => String(shopifyProductId || "").trim())
-    .filter((shopifyProductId: string, index: number, list: string[]) => shopifyProductId && list.indexOf(shopifyProductId) === index);
-
   if (!payload.shopId) {
-    throw new Error("Shopify shop id is required to sync selected products.");
-  }
-  if (!shopifyProductIds.length) {
-    throw new Error("Select at least one Shopify product to sync.");
+    throw new Error("Shopify shop id is required to sync products on demand.");
   }
 
+  const shopifyProductIds = Array.isArray(payload.shopifyProductId) ? payload.shopifyProductId : [payload.shopifyProductId];
   const data: any = {
     shopId: payload.shopId,
     shopifyProductId: shopifyProductIds
@@ -950,10 +1029,32 @@ const syncShopifyProductsOnDemand = async (payload: any): Promise<ShopifyProduct
   if (payload.additionalParameters) data.additionalParameters = payload.additionalParameters;
 
   return requestBackend<ShopifyProductSyncOnDemandResult>({
-    url: "sob/shopify/syncShopifyProductsOnDemand",
+    url: "shopify/products/syncOnDemand",
     method: "post",
     data
-  }, "Shopify selected products sync endpoint");
+  }, "Shopify product sync on demand endpoint");
+};
+
+const syncShopifyProducts = async (payload: any): Promise<ShopifyProductSyncOnDemandResult> => {
+  if (!payload.shopId) {
+    throw new Error("Shopify shop id is required to sync products.");
+  }
+
+  const data: any = {
+    shopifyShopId: payload.shopId,
+    includeAll: payload.includeAll || false
+  };
+
+  if (payload.fromDate) data.fromDate = payload.fromDate;
+  if (payload.thruDate) data.thruDate = payload.thruDate;
+  if (payload.namespace) data.namespace = payload.namespace;
+  if (payload.filterQuery) data.filterQuery = payload.filterQuery;
+
+  return requestBackend<ShopifyProductSyncOnDemandResult>({
+    url: "shopify/products/sync",
+    method: "post",
+    data
+  }, "Shopify product sync endpoint");
 };
 
 const fetchProductStoreContext = async (payload: any): Promise<any> => {
@@ -1240,6 +1341,7 @@ const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDa
 };
 
 export const ShopifyProductSyncService = {
+  fetchShopifyAccessState,
   fetchDashboardSummary,
   fetchShopSystemMessageRemoteId,
   fetchProductUpdateSyncRunState,
@@ -1250,6 +1352,7 @@ export const ShopifyProductSyncService = {
   fetchUnsyncedProductUpdates,
   searchShopifyProducts,
   syncShopifyProductsOnDemand,
+  syncShopifyProducts,
   fetchSetupState,
   fetchProductStoreContext,
   fetchReviewStats,
