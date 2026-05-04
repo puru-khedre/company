@@ -406,7 +406,7 @@
           </ion-item>
         </ion-card>
 
-        <ion-item v-if="reconcileAvailable" lines="full">
+        <ion-item v-if="reconcileAvailable" lines="none">
           <ion-label>
             {{ translate("Next step") }}
             <p>{{ setupCompletionMessage }}</p>
