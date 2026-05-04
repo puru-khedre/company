@@ -3,8 +3,7 @@ export type ProductSyncWizardStep =
   | "product-store"
   | "identifier"
   | "review"
-  | "progress"
-  | "reconcile";
+  | "progress";
 
 export type ProductSyncExperienceMode = "first-time" | "returning" | "auto";
 export type ProductSyncExperienceView = "first-time" | "returning";
@@ -56,8 +55,7 @@ export const productSyncWizardSteps: ProductSyncWizardStep[] = [
   "product-store",
   "identifier",
   "review",
-  "progress",
-  "reconcile"
+  "progress"
 ];
 
 export function createProductSyncWizardDraft(payload: Partial<ProductSyncWizardDraft> = {}): ProductSyncWizardDraft {
@@ -177,9 +175,7 @@ export function getProductSyncBulkOperationProgress(objectCount?: number | strin
   };
 }
 
-export function canShowProductSyncReconcile(progress: ProductSyncProgressSnapshot = {}): boolean {
-  return normalizeProductSyncStatus(progress) === "completed";
-}
+
 
 export function requiresPreflightConfirmation(summary: ProductSyncPreflightSummary): boolean {
   if (!summary.sampled) {

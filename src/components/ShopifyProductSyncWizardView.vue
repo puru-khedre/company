@@ -316,7 +316,7 @@
         <!-- Export message -->
         <ion-card class="message">
           <ion-item lines="none">
-            <ion-icon slot="start" :icon="pulseOutline" />
+            <ion-icon slot="start" :icon="systemMessageStatusIcon" />
             <ion-label>
               {{ translate("Product export request payload") }}
               <p>{{ translate("Using Shopify’s bulk query API to export all products in the catalog.") }}</p>
@@ -345,7 +345,7 @@
         <!-- Shopify bulk operation -->
         <ion-card class="export">
           <ion-item lines="none">
-            <ion-icon slot="start" :icon="pulseOutline" />
+            <ion-icon slot="start" :icon="bulkOperationStatusIcon" />
             <ion-label>
               {{ translate("Pending bulk operations") }}
               <p>{{ translate("Shopify might take some time to process bulk operation requests.") }}</p>
@@ -395,7 +395,7 @@
         <!-- HotWax bulk import -->
         <ion-card class="import">
           <ion-item lines="none">
-            <ion-icon slot="start" :icon="pulseOutline" />
+            <ion-icon slot="start" :icon="mdmLogStatusIcon" />
             <ion-label>
               {{ translate("Bulk file process") }}
               <p>{{ bulkFileProcessDescription }}</p>
@@ -406,7 +406,7 @@
           </ion-item>
         </ion-card>
 
-        <ion-item v-if="reconcileAvailable" lines="none">
+        <ion-item v-if="isProgressComplete" lines="none">
           <ion-label>
             {{ translate("Next step") }}
             <p>{{ setupCompletionMessage }}</p>
@@ -419,38 +419,6 @@
         </ion-item>
       </div>
     </template>
-
-    <ion-card class="step" v-if="currentStep === 'reconcile'">
-      <ion-card-header>
-        <ion-card-title>{{ translate("Product sync setup complete") }}</ion-card-title>
-        <ion-card-subtitle>{{ setupCompletionSubtitle }}</ion-card-subtitle>
-      </ion-card-header>
-      <ion-list lines="full">
-        <ion-item>
-          <ion-label>{{ translate("Shopify products") }}</ion-label>
-          <ion-note slot="end">{{ reviewStats?.shopifyProductCount }}</ion-note>
-        </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("HotWax products") }}</ion-label>
-          <ion-note slot="end">{{ reviewStats?.omsProductCount }}</ion-note>
-        </ion-item>
-        <ion-item>
-          <ion-label>{{ translate("Completion status") }}</ion-label>
-          <ion-badge slot="end" color="success">{{ translate("Complete") }}</ion-badge>
-        </ion-item>
-        <ion-item lines="none">
-          <ion-label>
-            {{ translate("Next step") }}
-            <p>{{ setupCompletionMessage }}</p>
-          </ion-label>
-          <ion-button slot="end" :disabled="setupCompletionActionDisabled || isCompletingSetup" @click="$emit('complete-setup')">
-            <ion-spinner v-if="isCompletingSetup" slot="start" name="crescent" />
-            <span v-else>{{ setupCompletionActionLabel }}</span>
-            <ion-icon slot="end" :icon="arrowForwardOutline"></ion-icon>
-          </ion-button>
-        </ion-item>
-      </ion-list>
-    </ion-card>
 
     <ion-modal :is-open="showMistakeModal" :backdrop-dismiss="false" @didDismiss="emit('close-mistake-modal')">
       <ion-header>
@@ -637,7 +605,9 @@ import {
   serverOutline,
   syncCircleOutline,
   checkmarkCircleOutline,
-  shirtOutline
+  shirtOutline,
+  timeOutline,
+  alertCircleOutline
 } from "ionicons/icons";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps } from "vue";
@@ -673,7 +643,7 @@ const props = defineProps<{
   systemMessageSendJobNextRunLabel: string
   bulkOperationPollJobNextRunLabel: string
   currentSyncRun?: ShopifyProductSyncRun
-  reconcileAvailable: boolean
+  isProgressComplete: boolean
   recommendedIdentifierEnumId: string
   relatedShops: any[]
   reviewReady: boolean
@@ -681,8 +651,6 @@ const props = defineProps<{
   setupCompletionActionDisabled: boolean
   setupCompletionActionLabel: string
   setupCompletionMessage: string
-  setupCompletionScheduleLabel: string
-  setupCompletionSubtitle: string
   selectedIdentifierLabel: string
   selectedProductStoreName: string
   sendUpdateRequestLastRunLabel: string
@@ -869,7 +837,7 @@ const bulkFileProcessDescription = computed(() => {
     return translate("Waiting for Shopify to generate product export");
   }
   if (!mdmLogId.value) return translate("Waiting for HotWax to import the Shopify export file.");
-  if (props.reconcileAvailable || props.currentSyncRun?.completed) return translate("Product sync request completed.");
+  if (props.isProgressComplete || props.currentSyncRun?.completed) return translate("Product sync request completed.");
   return translate("HotWax is processing the exported Shopify product file.");
 });
 
@@ -885,6 +853,19 @@ function isPollableStatus(status = "") {
   const normalizedStatus = String(status || "").toLowerCase();
   return ["running", "created"].includes(normalizedStatus);
 }
+
+function getStatusIcon(color: string) {
+  switch (color) {
+    case 'success': return checkmarkCircleOutline;
+    case 'primary': return pulseOutline;
+    case 'danger': return alertCircleOutline;
+    default: return timeOutline;
+  }
+}
+
+const systemMessageStatusIcon = computed(() => getStatusIcon(systemMessageStatusColor.value));
+const bulkOperationStatusIcon = computed(() => getStatusIcon(bulkOperationStatusColor.value));
+const mdmLogStatusIcon = computed(() => getStatusIcon(mdmLogBadgeColor.value));
 </script>
 
 <style scoped>

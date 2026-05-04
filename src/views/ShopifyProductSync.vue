@@ -120,7 +120,7 @@
           :system-message-send-job-next-run-label="systemMessageSendJobNextRunLabel"
           :bulk-operation-poll-job-next-run-label="bulkOperationPollJobNextRunLabel"
           :current-sync-run="currentSyncRun"
-          :reconcile-available="reconcileAvailable"
+          :is-progress-complete="isProgressComplete"
           :recommended-identifier-enum-id="recommendedIdentifierEnumId"
           :related-shops="relatedShops"
           :review-ready="reviewReady"
@@ -668,7 +668,7 @@ import { ShopifyProductSyncService, type ShopifyProductSyncDashboardSummary } fr
 import { UserService } from "@/services/UserService";
 import {
   canAdvanceProductSyncStep,
-  canShowProductSyncReconcile,
+
   canStartProductSync,
   createProductSyncWizardDraft,
   getReviewImportAction,
@@ -808,7 +808,7 @@ const progressState = ref<any>({
   completed: false,
   queuedJobsAhead: 0
 });
-const reconcileState = ref<any>({});
+
 const syncJobRecentRuns = ref<any[]>([]);
 const detailedErrorSearchQuery = ref("");
 const selectedErrorRecord = ref<any>(null);
@@ -1249,19 +1249,17 @@ const nextDisabled = computed(() => {
     productStoreLocked: productStoreLocked.value,
     identifierLocked: identifierLocked.value,
     reviewReady: reviewReady.value,
-    progressComplete: reconcileAvailable.value
+    progressComplete: isProgressComplete.value
   });
 });
 const startSyncDisabled = computed(() => !canStartProductSync(draft.value.startConfirmed) || !hasShopifyWriteAccess.value);
 const progressStatus = computed(() => normalizeProductSyncStatus(progressState.value));
-const reconcileAvailable = computed(() => canShowProductSyncReconcile(progressState.value));
+const isProgressComplete = computed(() => normalizeProductSyncStatus(progressState.value) === "completed");
 const importStatusLabel = computed(() => {
-  if (currentStep.value === "reconcile") return translate("Complete");
   if (currentStep.value === "progress") return progressStatus.value;
   return translate("Not started");
 });
 const importStatusBadgeColor = computed(() => {
-  if (currentStep.value === "reconcile") return "success";
   if (currentStep.value === "progress") return progressBadgeColor.value;
   return "medium";
 });
@@ -1577,7 +1575,7 @@ async function loadWizard() {
 
     syncJobId.value = setupState.value.syncJobId || "";
     if (setupState.value.completed) {
-      currentStep.value = "reconcile";
+      currentStep.value = "progress";
     } else if (syncJobId.value) {
       currentStep.value = "progress";
       if (!reviewStats.value.loaded) {
@@ -2378,14 +2376,6 @@ async function goNext() {
     return;
   }
 
-  if (nextStep === "reconcile") {
-    const loaded = await loadReconcile();
-    if (loaded) {
-      currentStep.value = nextStep;
-    }
-    return;
-  }
-
   currentStep.value = nextStep;
 }
 
@@ -2761,7 +2751,7 @@ async function loadProgress() {
       }
     }
 
-    if (reconcileAvailable.value) {
+    if (isProgressComplete.value) {
       stopProgressPolling();
     }
     return true;
@@ -2920,26 +2910,7 @@ async function refreshScheduledJobStateIfNeeded() {
   }
 }
 
-async function loadReconcile() {
-  try {
-    const reconcile = await ShopifyProductSyncService.fetchReconcile({
-      shopId: props.id,
-      productStoreId: draft.value.selectedProductStoreId,
-      syncJobId: syncJobId.value
-    });
-    assertBackendDataAvailable(reconcile, translate("Product sync reconciliation is unavailable."));
-    reconcileState.value = reconcile;
-    if (!reviewStats.value.loaded) {
-      const loadedReviewStats = await loadReviewStats();
-      if (!loadedReviewStats) return false;
-    }
-    return true;
-  } catch (error: any) {
-    logger.error(error);
-    showToast(translate("Failed to load product sync reconciliation."));
-    return false;
-  }
-}
+
 
 function isJobPaused(job: any) {
   const status = String(job?.statusId || job?.status || "").toLowerCase();
