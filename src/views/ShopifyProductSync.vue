@@ -834,15 +834,15 @@ const pendingUpdateRequestsSubtitle = computed(() => {
   });
 });
 const identifierOptions = ref([
-  { enumId: "SHOPIFY_PRODUCT_SKU", description: "SKU" },
-  { enumId: "SHOPIFY_BARCODE", description: "UPCA / Barcode" },
-  { enumId: "SHOPIFY_PRODUCT_ID", description: "Shopify internal id" }
+  { enumId: "SHOPIFY_PRODUCT_SKU", description: translate("SKU") },
+  { enumId: "SHOPIFY_BARCODE", description: translate("UPCA / Barcode") },
+  { enumId: "SHOPIFY_PRODUCT_ID", description: translate("Shopify internal id") }
 ]);
 const syncJobScheduleOptions = [
-  { label: "Every 15 minutes", expression: "0 */15 * ? * *" },
-  { label: "Every 30 minutes", expression: "0 */30 * ? * *" },
-  { label: "Every hour", expression: "0 0 * ? * *" },
-  { label: "Every day at midnight", expression: "0 0 0 ? * *" }
+  { label: translate("Every 15 minutes"), expression: "0 */15 * ? * *" },
+  { label: translate("Every 30 minutes"), expression: "0 */30 * ? * *" },
+  { label: translate("Every hour"), expression: "0 0 * ? * *" },
+  { label: translate("Every day at midnight"), expression: "0 0 0 ? * *" }
 ];
 
 const recommendedIdentifierEnumId = computed(() => {

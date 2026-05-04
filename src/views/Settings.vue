@@ -104,7 +104,7 @@
             <ion-item v-for="item in harmonizedFetchStatus" :key="item.label">
               <ion-icon slot="start" :icon="getStatusIcon(item.status)" :color="getStatusColor(item.status)" />
               <ion-label>
-                {{ translate(item.label) }}
+                {{ item.label }}
                 <p v-if="item.status === 'success' && item.count !== undefined">{{ translate("Fetched") }} {{ item.count }} {{ translate("records") }}</p>
                 <p v-else>{{ translate(getStatusLabel(item.status)) }}</p>
               </ion-label>
@@ -163,79 +163,79 @@ const oldestSyncTime = computed(() => {
 
 const harmonizedFetchStatus = computed(() => [
   {
-    label: "User Profile",
+    label: translate("User Profile"),
     status: userFetchStatus.value.profile,
     count: userProfile.value ? 1 : 0,
     refresh: () => store.dispatch('user/fetchUserProfile', store.state.user.token)
   },
   {
-    label: "Permissions",
+    label: translate("Permissions"),
     status: userFetchStatus.value.permissions,
     count: store.state.user.permissions.length,
     refresh: () => store.dispatch('user/fetchPermissions', { params: { permissionIds: [process.env.VUE_APP_PERMISSION_ID] }, url: omsRedirectionInfo.value.url, token: omsRedirectionInfo.value.token })
   },
   {
-    label: "Product Stores",
+    label: translate("Product Stores"),
     status: productStoreFetchStatus.value.productStores,
     count: store.state.productStore.productStores.length,
     refresh: () => store.dispatch('productStore/fetchProductStores')
   },
   {
-    label: "Shopify Shops",
+    label: translate("Shopify Shops"),
     status: shopifyFetchStatus.value.shops,
     count: store.state.shopify.shops.length,
     refresh: () => store.dispatch('shopify/fetchShopifyShops')
   },
   {
-    label: "Statuses",
+    label: translate("Statuses"),
     status: fetchStatus.value.statuses,
     count: Object.keys(statusItems.value).length,
     refresh: () => store.dispatch('util/fetchStatusItems')
   },
   {
-    label: "Facilities",
+    label: translate("Facilities"),
     status: fetchStatus.value.facilities,
     count: facilities.value.length,
     refresh: () => store.dispatch('util/fetchFacilities')
   },
   {
-    label: "Organization",
+    label: translate("Organization"),
     status: fetchStatus.value.organizationPartyId,
     count: store.state.util.organizationPartyId ? 1 : 0,
     refresh: () => store.dispatch('util/fetchOrganizationPartyId')
   },
   {
-    label: "Facility Groups",
+    label: translate("Facility Groups"),
     status: fetchStatus.value.facilityGroups,
     count: store.state.util.facilityGroups.length,
     refresh: () => store.dispatch('util/fetchFacilityGroups')
   },
   {
-    label: "DBIC Countries",
+    label: translate("DBIC Countries"),
     status: fetchStatus.value.dbicCountries,
     count: store.state.util.dbicCountries.list.length,
     refresh: () => store.dispatch('util/fetchDBICCountries')
   },
   {
-    label: "Operating Countries",
+    label: translate("Operating Countries"),
     status: fetchStatus.value.operatingCountries,
     count: store.state.util.operatingCountries.length,
     refresh: () => store.dispatch('util/fetchOperatingCountries')
   },
   {
-    label: "Product Identifiers",
+    label: translate("Product Identifiers"),
     status: fetchStatus.value.productIdentifiers,
     count: store.state.util.productIdentifiers.length,
     refresh: () => store.dispatch('util/fetchProductIdentifiers')
   },
   {
-    label: "Shipment Method Types",
+    label: translate("Shipment Method Types"),
     status: fetchStatus.value.shipmentMethodTypes,
     count: store.state.util.shipmentMethodTypes.length,
     refresh: () => store.dispatch('util/fetchShipmentMethodTypes')
   },
   {
-    label: "Jobs",
+    label: translate("Jobs"),
     status: loadingJobs.value ? 'pending' : (jobs.value.length ? 'success' : 'none'),
     count: jobs.value.length,
     refresh: () => fetchJobs()

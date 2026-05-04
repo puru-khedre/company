@@ -15,11 +15,12 @@ import Departments from "@/views/Departments.vue";
 import { DxpLogin, useAuthStore } from "@hotwax/dxp-components";
 import { loader } from '@/user-utils';
 import ShopifyConnectionDetails from "@/views/ShopifyConnectionDetails.vue";
+import { translate } from "@/i18n";
 
 const authGuard = async (to: any, from: any, next: any) => {
   const authStore = useAuthStore()
   if (!authStore.isAuthenticated || !store.getters['user/isAuthenticated']) {
-    await loader.present('Authenticating')
+    await loader.present(translate("Authenticating"))
     // TODO use authenticate() when support is there
     const redirectUrl = window.location.origin + '/login'
     window.location.href = `${process.env.VUE_APP_LOGIN_URL}?redirectUrl=${redirectUrl}`

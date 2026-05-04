@@ -33,6 +33,8 @@ export interface ProductSyncMigrationArtifactCheck {
   label: string;
   status: "verified" | "missing";
   note: string;
+  isPaused?: boolean;
+  jobDetail?: any;
 }
 
 export interface ProductSyncMigrationLegacyItem {
@@ -155,7 +157,9 @@ async function fetchServiceJobCheck(jobName: string, label: string, note: string
       id: jobName,
       label,
       status: jobDetail?.jobName ? "verified" : "missing",
-      note
+      note,
+      isPaused: jobDetail?.paused === "Y",
+      jobDetail
     };
   } catch (error) {
     logger.warn(`Failed to verify service job ${jobName}`, error);
@@ -445,6 +449,25 @@ async function deactivateLegacyServiceJob(jobName: string): Promise<void> {
   });
 }
 
+async function enableServiceJob(jobName: string, jobDetail: any): Promise<void> {
+  if (!jobDetail || !jobDetail.jobName) {
+    throw new Error(`Job details missing for ${jobName}`);
+  }
+
+  await api({
+    url: `admin/serviceJobs/${encodeURIComponent(jobName)}`,
+    method: "PUT",
+    data: {
+      jobName: jobDetail.jobName,
+      description: jobDetail.description || "",
+      paused: "N",
+      serviceName: jobDetail.serviceName || "",
+      cronExpression: jobDetail.cronExpression || "",
+      serviceJobParameters: Array.isArray(jobDetail.serviceJobParameters) ? jobDetail.serviceJobParameters : []
+    }
+  });
+}
+
 async function cancelLegacySystemMessage(systemMessageId: string): Promise<void> {
   await api({
     url: `admin/systemMessages/${encodeURIComponent(systemMessageId)}/cancel`,
@@ -718,6 +741,7 @@ export const ShopifyProductSyncMigrationService = {
   fetchEligibility,
   fetchLegacyTeardownState,
   resolveEntryAction,
-  teardownLegacySync
+  teardownLegacySync,
+  enableServiceJob
 };
 

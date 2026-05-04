@@ -48,7 +48,7 @@
 
         <ion-label>
           {{ shopifyShopsCarrierShipments[shipmentMethod.partyId + '_' + shipmentMethod.shipmentMethodTypeId]?.shopifyShippingMethod ? shopifyShopsCarrierShipments[shipmentMethod.partyId + '_' + shipmentMethod.shipmentMethodTypeId].shopifyShippingMethod : "-" }}
-          <p>{{ translate("Shopify name") }}</p>
+          <p>{{ translate("Shopify Name") }}</p>
         </ion-label>
         
         <template v-if="updatedNetSuiteIds[shipmentMethod.shipmentMethodTypeId]">

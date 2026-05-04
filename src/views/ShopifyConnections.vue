@@ -49,7 +49,7 @@
             <div class="tablet">
               <ion-label class="ion-text-center">
                 {{ shop.productStoreId }}
-                <p>{{ translate("product store") }}</p>
+                <p>{{ translate("Product store") }}</p>
               </ion-label>
             </div>
 
