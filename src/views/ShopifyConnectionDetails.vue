@@ -633,7 +633,7 @@ async function loadProductsInventorySummary() {
     productSyncRecordsProcessed.value = Number(productSyncSummary.value.syncRunState?.latestConsumedSystemMessage?.totalRecordCount || 0);
     productSyncUnsyncedCount.value = Number(productSyncSummary.value.unsyncedUpdates?.count || 0);
 
-    loadTrackProgressDetails();
+    await loadTrackProgressDetails();
   } catch (error) {
     logger.error(error);
     hasProductSyncSummaryError.value = true;
@@ -789,8 +789,8 @@ ion-card.widget {
   border-radius: 16px;
   margin-block: var(--spacer-lg);
   margin-inline: 0;
-  will-change: box-shadow;
-  transition: box-shadow 0.2s ease;
+  will-change: box-shadow, height;
+  transition: box-shadow 0.7s ease;
 }
 
 ion-card.widget:hover {

@@ -77,6 +77,7 @@
                 <AnimatedDuration :start-time="currentSyncRun.systemMessage?.initDate || currentSyncRun.systemMessage?.createdDate" />
               </p>
               <p>{{ systemMessageProgressLabel }}</p>
+              <p v-if="systemMessageErrorText">{{ systemMessageErrorText }}</p>
             </ion-label>
             <ion-badge slot="end" :color="currentSyncRun.systemMessage?.statusColor || 'medium'">{{ currentSyncRun.systemMessage?.statusLabel || translate("Pending") }}</ion-badge>
           </ion-item>
@@ -580,6 +581,9 @@ const mdmLogBadgeColor = computed(() => {
 const mdmLogBadgeLabel = computed(() => {
   if (mdmLogHasFailedRecords.value) return translate("Errors");
   return props.currentSyncRun?.mdmLog?.statusLabel || translate("Pending");
+});
+const systemMessageErrorText = computed(() => {
+  return String(props.currentSyncRun?.systemMessage?.errorText || "").trim();
 });
 function normalizeSyncStepStatus(statusId: string) {
   return String(statusId || "").toLowerCase().replace(/[_\-\s]/g, "");

@@ -84,13 +84,12 @@ import { close, save } from "ionicons/icons";
 import { useStore } from "@/store";
 import { getCurrentTime } from "@/utils"
 import { translate } from "@/i18n"
-import { useUserStore } from "@hotwax/dxp-components";
+import { UserService } from "@/services/UserService";
 
 const store = useStore();
-const userStore=useUserStore();
 let queryString = ref("")
 let filteredTimeZones = ref([])
-let timeZones =  computed(() => userStore.getTimeZones)
+let timeZones =  ref([])
 let timeZoneId = ref("")
 let isLoading = ref(true)
 const userProfile = computed(() => store.getters["user/getUserProfile"])
@@ -117,9 +116,18 @@ const props = defineProps({
 
 onBeforeMount(async() => {
   isLoading.value = true;
-  await userStore.getAvailableTimeZones();
+  try {
+    const resp = await UserService.getAvailableTimeZones();
+    if(resp.data && resp.data.timeZones) {
+      timeZones.value = resp.data.timeZones;
+    } else if (resp.data && Array.isArray(resp.data)) {
+      timeZones.value = resp.data;
+    }
+  } catch(error) {
+    console.error(error);
+  }
+  
   if(userProfile.value && userProfile.value.timeZone) {
-    userStore.currentTimeZoneId = userProfile.value.timeZone
     timeZoneId.value = userProfile.value.timeZone
   }
 

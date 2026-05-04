@@ -142,12 +142,17 @@ const actions: ActionTree<UserState, RootState> = {
   */
   async setUserTimeZone({ state, commit }, payload) {
     const current: any = state.current;
-    // TODO: add support to change the user time on server, currently api to update user is not available
     if(current.timeZone !== payload.tzId) {
-      current.timeZone = payload.tzId;
-      commit(types.USER_INFO_UPDATED, current);
-      Settings.defaultZone = current.timeZone;
-      showToast(translate("Time zone updated successfully"));
+      try {
+        await UserService.setUserTimeZone(payload);
+        current.timeZone = payload.tzId;
+        commit(types.USER_INFO_UPDATED, current);
+        Settings.defaultZone = current.timeZone;
+        showToast(translate("Time zone updated successfully"));
+      } catch (err) {
+        showToast(translate("Failed to update time zone"));
+        logger.error(err);
+      }
     }
   },
 
