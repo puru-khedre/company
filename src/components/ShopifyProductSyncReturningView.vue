@@ -217,11 +217,12 @@
             <p>{{ translate("Select products to run the product sync for on demand") }}</p>
           </ion-label>
         </ion-item>
-        <ion-item detail>
+        <ion-item disabled>
           <ion-label>
             {{ translate("Replay sync from a certain time") }}
             <p>{{ translate("Rewind the last sync time to reimport updates") }}</p>
           </ion-label>
+          <ion-badge slot="end" color="medium">{{ translate("Coming soon") }}</ion-badge>
         </ion-item>
         <ion-item button detail @click="emit('open-resync-entire-catalog')">
           <ion-label>
@@ -274,25 +275,29 @@
               <ion-list lines="full">
                 <ion-item>
                   <ion-label class="ion-text-wrap">
-                    <h2>{{ item.parentTitle || item.internalName }}</h2>
+                    {{ item.parentTitle || item.internalName }}
                     <p v-if="item.variantTitle && item.variantTitle !== item.parentTitle">{{ item.variantTitle }}</p>
                     <p v-if="item.sku">{{ translate("SKU") }}: {{ item.sku }}</p>
-                    <ion-button
-                      v-if="item.shopifyAdminUrl"
-                      fill="clear"
-                      size="small"
-                      :href="item.shopifyAdminUrl"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      @click.stop
-                    >
-                      {{ item.shopifyIdLabel }}
-                    </ion-button>
-                    <p v-else>{{ item.shopifyIdLabel || item.shopifyId }}</p>
                   </ion-label>
                   <ion-note slot="end">{{ item.updatedTime }}</ion-note>
                 </ion-item>
-
+                <ion-item>
+                  <ion-label>
+                    <p>{{ item.shopifyIdLabel || item.shopifyId }}</p>
+                  </ion-label>
+                  <ion-button
+                    slot="end"
+                    v-if="item.shopifyAdminUrl"
+                    fill="clear"
+                    color="medium"
+                    :href="item.shopifyAdminUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    @click.stop
+                  >
+                    <ion-icon slot="icon-only" :icon="openOutline" />
+                  </ion-button>
+                </ion-item>
                 <ion-card-content v-if="item.details.length">
                   <ion-chip v-for="label in getChangeSummary(item.details)" :key="label">
                     <ion-label>{{ label }}</ion-label>
@@ -429,7 +434,7 @@ import {
 } from "@ionic/vue";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps, ref } from "vue";
-import { checkmarkCircleOutline, closeOutline, ellipsisVerticalOutline, flashOutline, pauseCircleOutline, refreshOutline, timeOutline } from "ionicons/icons";
+import { checkmarkCircleOutline, closeOutline, ellipsisVerticalOutline, flashOutline, openOutline, pauseCircleOutline, refreshOutline, timeOutline } from "ionicons/icons";
 import { modalController, popoverController } from "@ionic/vue";
 import AnimatedNumber from "@/components/AnimatedNumber.vue";
 import AnimatedDuration from "@/components/AnimatedDuration.vue";
@@ -658,6 +663,7 @@ ion-buttons {
 .list-transition-group {
   display: flex;
   flex-wrap: nowrap;
+  align-items: start;
 }
 
 .list-enter-active,
