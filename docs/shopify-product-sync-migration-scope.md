@@ -246,6 +246,11 @@ The teardown code must explicitly look for old product-sync messages in statuses
 
 The migration should cancel or otherwise retire any old product-sync message that is not already in a terminal confirmed state.
 
+Message-matching rule:
+
+- Legacy product-sync message teardown must match exact `systemMessageTypeId` values from the configured legacy product-sync list.
+- Do not treat all messages on the shop's `SystemMessageRemote` as product-sync candidates, because the same remote can carry unrelated flows such as returns.
+
 ## 2. New activation actions
 
 The app or PWA must ensure the new bulk-query sync is fully activated for the selected shop.

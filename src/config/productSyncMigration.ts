@@ -1,6 +1,7 @@
 export const PRODUCT_SYNC_MIGRATION_CONFIG = {
   minimumComponentRelease: "ProductSyncMigrationGate_2026_05",
   eligibleComponentReleases: [
+    "product-sync",
     "ProductSyncMigrationGate_2026_05",
     "UpcomingRelease"
   ],

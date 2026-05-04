@@ -145,8 +145,6 @@ interface ProductUpdateHistoryResponse {
 }
 
 const PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID = "BulkQueryShopifyProductUpdates";
-const PRODUCT_SYNC_PROGRESS_STATUSES = ["queued", "sent", "running", "waiting", "completed", "cancelled", "error"];
-
 const LIVE_CATALOG_COUNTS_QUERY = `
 query WizardLiveCatalogCounts {
   productsCount {
@@ -1201,7 +1199,7 @@ const fetchUpdateFilesToProcessCount = async (payload: any): Promise<number> => 
 };
 
 const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDashboardSummary> => {
-  const { shopId, systemMessageRemoteId, shop } = payload;
+  const { systemMessageRemoteId } = payload;
   
   const [syncRunState, pendingRequests, runningOperation, updateFilesToProcess] = await Promise.all([
     fetchProductUpdateSyncRunState(payload),

@@ -160,6 +160,19 @@
             </ion-item>
           </section>
         </div>
+
+        <div class="ion-margin-top">
+          <h1>{{ translate("Debug") }}</h1>
+          <section>
+            <ion-item class="item-box" lines="none">
+              <ion-label>
+                {{ translate("Force upgrade flow") }}
+                <p>{{ translate("Assume user needs to upgrade to new product sync") }}</p>
+              </ion-label>
+              <ion-toggle slot="end" v-model="forceUpgradeFlow" />
+            </ion-item>
+          </section>
+        </div>
       </div>
     </ion-content>
   </ion-page>
@@ -167,10 +180,10 @@
 
 
 <script setup lang="ts">
-import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonSkeletonText, IonTitle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
+import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonSkeletonText, IonTitle, IonToggle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
 import api from "@/api";
 import { translate } from "@/i18n";
-import { formatDateTime, hasError, parseDateTimeValue, showToast } from "@/utils";
+import { formatDateTime, parseDateTimeValue } from "@/utils";
 import { DateTime } from "luxon";
 import { computed, defineProps, ref } from "vue";
 import { useStore } from "vuex";
@@ -193,6 +206,7 @@ const PRODUCT_SYNC_ACTIVITY_GRAPH_PADDING_X = 12;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_PADDING_Y = 12;
 const { fetchMdmLogBySystemMessageId } = useDataManagerLog();
 const { currentSyncRun, fetchSyncRun } = useShopifyProductSyncRun();
+const forceUpgradeFlow = ref(false);
 const productSyncSummary = ref<any>({
   syncRunState: {
     lastSyncedAt: "",
@@ -216,6 +230,7 @@ const productSyncMigrationEligibility = ref({
 
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
 const hasCurrentProductSyncMessages = computed(() => {
+  if (forceUpgradeFlow.value) return false;
   return !!productSyncSummary.value.syncRunState?.latestSystemMessage || !!productSyncSummary.value.syncRunState?.systemMessages?.length;
 });
 const productSyncEntryAction = computed(() => {
