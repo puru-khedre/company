@@ -341,13 +341,11 @@ function getSystemMessageParams() {
   const payload: any = {
     dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
     customParametersMap: {
-      logId_op: "empty",
-      logId_not: "true",
       systemMessageTypeId: "BulkQueryShopifyProductUpdates",
       remoteInternalId: props.id,
-      remoteInternalIdType: "HOTWAX_SHOP_ID"
-    },
-    orderByField: getSystemMessageOrderByField()
+      remoteInternalIdType: "HOTWAX_SHOP_ID",
+      orderByField: getSystemMessageOrderByField()
+    }
   };
 
   if (filters.statusId) payload.customParametersMap.statusId = filters.statusId;
@@ -469,6 +467,9 @@ async function hydrateRunDetails(run: ShopifyProductSyncHistoryRun, systemMessag
 
     if (isStaleHistoryLoad(loadToken)) return;
 
+    const isSkipped = shopifyBulkOperation?.status === "COMPLETED" && Number(shopifyBulkOperation?.objectCount || 0) === 0;
+    const mdmStatus = run.mdmStatus === "pending" && isSkipped ? "skipped" : run.mdmStatus;
+
     updateHistoryRun(run.id, {
       systemMessageStatus: getStatusLabel(systemMessage?.statusId),
       systemMessageStatusColor: getStatusColor(systemMessage?.statusId),
@@ -477,8 +478,11 @@ async function hydrateRunDetails(run: ShopifyProductSyncHistoryRun, systemMessag
       bulkOperationStatusLabel: shopifyBulkOperation?.status ? getStatusLabel(shopifyBulkOperation.status) : run.bulkOperationStatusLabel,
       bulkOperationStatusColor: shopifyBulkOperation?.status ? getStatusColor(shopifyBulkOperation.status) : run.bulkOperationStatusColor,
       queryContent: shopifyBulkOperation?.query || run.queryContent,
-      objectCount: shopifyBulkOperation?.objectCount || 0,
-      rootObjectCount: shopifyBulkOperation?.rootObjectCount || 0,
+      objectCount: Number(shopifyBulkOperation?.objectCount || 0),
+      rootObjectCount: Number(shopifyBulkOperation?.rootObjectCount || 0),
+      mdmStatus,
+      mdmStatusLabel: getStatusLabel(mdmStatus),
+      mdmStatusColor: getStatusColor(mdmStatus),
       loading: false
     });
   } catch (error) {
@@ -506,6 +510,7 @@ function getStatusColor(status: string) {
     normalizedStatus.includes("queued") ||
     normalizedStatus.includes("smsg") ||
     normalizedStatus.includes("dmls")) return "primary";
+  if (normalizedStatus.includes("skipped")) return "warning";
   return "medium";
 }
 
@@ -526,6 +531,7 @@ function getStatusLabel(status: string) {
   if (normalizedStatus === "completed") return translate("Complete");
   if (normalizedStatus === "failed") return translate("Failed");
   if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") return translate("Cancelled");
+  if (normalizedStatus === "skipped") return translate("Skipped");
   return status;
 }
 

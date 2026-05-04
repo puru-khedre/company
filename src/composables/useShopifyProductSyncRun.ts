@@ -103,9 +103,9 @@ export function useShopifyProductSyncRun() {
         },
         mdmLog: {
           id: mdmLog?.logId,
-          statusId: mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : undefined),
-          statusLabel: getStatusLabel(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : undefined)),
-          statusColor: getStatusColor(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : undefined)),
+          statusId: mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && Number(shopifyBulkOperation?.objectCount || 0) === 0 ? 'skipped' : undefined),
+          statusLabel: getStatusLabel(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && Number(shopifyBulkOperation?.objectCount || 0) === 0 ? 'skipped' : undefined)),
+          statusColor: getStatusColor(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && Number(shopifyBulkOperation?.objectCount || 0) === 0 ? 'skipped' : undefined)),
           startDate: mdmLog?.startDate,
           endDate: mdmLog?.endDate,
           finishDateTime: mdmLog?.finishDateTime,
@@ -121,9 +121,9 @@ export function useShopifyProductSyncRun() {
           logContentId: mdmLog?.logContentId,
           fileName: mdmLog?.fileName
         },
-        status: getStatusLabel(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : shopifyBulkOperation?.status) || systemMessage?.statusId),
-        statusColor: getStatusColor(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0 ? 'skipped' : shopifyBulkOperation?.status) || systemMessage?.statusId),
-        completed: mdmLog?.statusId === "DmlSuccess" || mdmLog?.statusId === "DmlError" || (shopifyBulkOperation?.status === 'COMPLETED' && shopifyBulkOperation?.objectCount === 0)
+        status: getStatusLabel(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && Number(shopifyBulkOperation?.objectCount || 0) === 0 ? 'skipped' : shopifyBulkOperation?.status) || systemMessage?.statusId),
+        statusColor: getStatusColor(mdmLog?.statusId || (shopifyBulkOperation?.status === 'COMPLETED' && Number(shopifyBulkOperation?.objectCount || 0) === 0 ? 'skipped' : shopifyBulkOperation?.status) || systemMessage?.statusId),
+        completed: mdmLog?.statusId === "DmlSuccess" || mdmLog?.statusId === "DmlError" || (shopifyBulkOperation?.status === 'COMPLETED' && Number(shopifyBulkOperation?.objectCount || 0) === 0)
       };
 
       state.currentSyncRun = syncRun;

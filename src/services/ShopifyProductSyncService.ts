@@ -656,12 +656,11 @@ const fetchShopifyAccessState = async (payload: any): Promise<ShopifyProductSync
 
 function getLatestSystemMessage(systemMessages: any[], dateFields: string[]) {
   return systemMessages.reduce((latest: any, systemMessage: any) => {
-    const systemMessageTimestamp = dateFields.reduce((timestamp, field) => {
-      return timestamp || getTimestampValue(systemMessage?.[field]);
-    }, 0);
-    const latestTimestamp = dateFields.reduce((timestamp, field) => {
-      return timestamp || getTimestampValue(latest?.[field]);
-    }, 0);
+    const systemMessageTimestamp = Math.max(...dateFields.map(field => getTimestampValue(systemMessage?.[field])));
+    
+    if (!latest) return systemMessage;
+
+    const latestTimestamp = Math.max(...dateFields.map(field => getTimestampValue(latest?.[field])));
 
     return systemMessageTimestamp > latestTimestamp ? systemMessage : latest;
   }, undefined);
@@ -677,9 +676,9 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
   const pageSize = 1000;
   let pageIndex = 0;
   let systemMessages: any[] = [];
-  let totalCount = pageSize;
+  let page;
 
-  while (systemMessages.length < totalCount) {
+  do {
     const response = await requestBackend<any>({
       url: "oms/dataDocumentView",
       method: "post",
@@ -691,17 +690,15 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
           remoteInternalIdType: "HOTWAX_SHOP_ID"
         },
         pageSize,
-        pageIndex
+        pageIndex,
+        orderByField: "-initDate"
       }
     });
 
-    const page = response?.entityValueList || [];
-    totalCount = Number(response?.entityValueListCount || 0);
+    page = response?.entityValueList || [];
     systemMessages = systemMessages.concat(page);
     pageIndex++;
-
-    if (page.length < pageSize) break;
-  }
+  } while (page.length === pageSize);
 
   const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed" || systemMessage.statusId === "SmsgConsumed");
   const consumedMessages = systemMessages.filter((systemMessage: any) => {
@@ -809,8 +806,8 @@ const fetchRunningBulkOperation = async (payload: any): Promise<ShopifyRunningBu
     type: runningOperation.type,
     createdAt: runningOperation.createdAt,
     objectCount: Number(runningOperation.objectCount || 0)
-  };
-};
+  }
+}
 
 const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupState> => {
   const pageSize = payload.historyPageSize || 1;
@@ -875,7 +872,7 @@ const fetchShopifyShopProductCount = async (payload: any): Promise<ShopifyShopPr
     count: getRequiredCount(graphQlPayload, "productsCount", "Shopify unsynced product update count query"),
     lastSyncedAt
   };
-};
+}
 
 const fetchUnsyncedProductUpdates = async (payload: any): Promise<ShopifyUnsyncedProductUpdate[]> => {
   const systemMessageRemoteId = resolveSystemMessageRemoteId(payload);
@@ -1041,7 +1038,7 @@ const syncShopifyProducts = async (payload: any): Promise<ShopifyProductSyncOnDe
   }
 
   const data: any = {
-    shopifyShopId: payload.shopId,
+    shopId: payload.shopId,
     includeAll: payload.includeAll || false
   };
 

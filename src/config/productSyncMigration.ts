@@ -43,7 +43,7 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
     },
     serviceJobs: {
       baseSync: "sync_ShopifyProductUpdates",
-      perShopPattern: "sync_ShopifyProductUpdates_{shopifyShopId}",
+      perShopPattern: "sync_ShopifyProductUpdates_{shopId}",
       send: "send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery",
       poll: "poll_ShopifyBulkOperationResult"
     },

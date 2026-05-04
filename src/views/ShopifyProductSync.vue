@@ -88,6 +88,7 @@
           @open-unsynced-updates="openUnsyncedUpdatesModal"
           @open-specific-products-sync="openSpecificProductsSyncModal"
           @open-resync-entire-catalog="openResyncEntireCatalogModal"
+          @open-replay-sync="openReplaySyncModal"
           @open-step-details="openStepDetails"
           @run-job="runSyncJob"
           @download-file="downloadRawFile"
@@ -261,6 +262,49 @@
                 <ion-button fill="solid" color="primary" @click="startResyncEntireCatalog" :disabled="isResyncEntireCatalogStarting">
                   <ion-spinner v-if="isResyncEntireCatalogStarting" name="crescent" />
                   <span v-else>{{ translate("Start full catalog re-sync") }}</span>
+                </ion-button>
+              </ion-buttons>
+            </ion-toolbar>
+          </ion-footer>
+        </ion-modal>
+
+        <ion-modal :is-open="showReplaySyncModal" :backdrop-dismiss="false" @didDismiss="showReplaySyncModal = false">
+          <ion-header>
+            <ion-toolbar>
+              <ion-buttons slot="start">
+                <ion-button @click="showReplaySyncModal = false" :aria-label="translate('Close')">
+                  <ion-icon slot="icon-only" :icon="closeOutline" />
+                </ion-button>
+              </ion-buttons>
+              <ion-title>{{ translate("Replay sync") }}</ion-title>
+            </ion-toolbar>
+          </ion-header>
+          <ion-content>
+            <ion-list lines="full">
+              <ion-item lines="none">
+                <ion-label>
+                  <h2>{{ translate("Replay sync from a certain time") }}</h2>
+                  <p>{{ translate("Select a date to rewind the product sync to. All updates from that date onwards will be re-imported.") }}</p>
+                </ion-label>
+              </ion-item>
+              <ion-item>
+                <ion-label>{{ translate("Sync updates from") }}</ion-label>
+                <ion-datetime-button slot="end" datetime="replay-sync-datetime"></ion-datetime-button>
+                <ion-popover :keep-contents-on-did-dismiss="true">
+                  <ion-datetime id="replay-sync-datetime" presentation="date-time" v-model="replaySyncFromDate"></ion-datetime>
+                </ion-popover>
+              </ion-item>
+            </ion-list>
+          </ion-content>
+          <ion-footer>
+            <ion-toolbar>
+              <ion-buttons slot="start">
+                <ion-button fill="clear" @click="showReplaySyncModal = false" :disabled="isReplaySyncStarting">{{ translate("Cancel") }}</ion-button>
+              </ion-buttons>
+              <ion-buttons slot="end">
+                <ion-button fill="solid" color="primary" @click="startReplaySync" :disabled="isReplaySyncStarting">
+                  <ion-spinner v-if="isReplaySyncStarting" name="crescent" />
+                  <span v-else>{{ translate("Start replay sync") }}</span>
                 </ion-button>
               </ion-buttons>
             </ion-toolbar>
@@ -627,6 +671,8 @@ import {
   IonFab,
   IonFabButton,
   IonHeader,
+  IonDatetime,
+  IonDatetimeButton,
   IonIcon,
   IonInput,
   IonItem,
@@ -730,6 +776,9 @@ const showModeModal = ref(false);
 const showMistakeModal = ref(false);
 const showStartSyncModal = ref(false);
 const showResyncEntireCatalogModal = ref(false);
+const showReplaySyncModal = ref(false);
+const replaySyncFromDate = ref("");
+const isReplaySyncStarting = ref(false);
 const showSyncJobDetailsModal = ref(false);
 const showStepDetailsModal = ref(false);
 const isSyncJobDetailsLoading = ref(false);
@@ -2620,6 +2669,7 @@ async function startProductSync() {
     // which is useful for progress state but cannot replace the shop-level remote id used by
     // subsequent run-state and GraphQL lookups.
     if (resp.systemMessageId) {
+      currentSyncRun.value = {} as any;
       progressState.value = {
         ...progressState.value,
         systemMessageId: resp.systemMessageId,
@@ -2657,41 +2707,61 @@ async function runJobNow(job: any) {
   }
 }
 
+async function performSync(params: any, successMsg: string, modalRef: any, loadingRef: any) {
+  loadingRef.value = true;
+  try {
+    const job = syncJobObj.value;
+    if (!job) throw new Error("Sync job not found");
+
+    const resp: any = await ShopifyProductSyncService.syncShopifyProducts({
+      shopId: props.id,
+      ...params
+    });
+
+    if (resp._ERROR_MESSAGE_ || resp._ERROR_MESSAGE_LIST_) throw resp;
+
+    currentSyncRun.value = {} as any;
+    progressState.value = {
+      ...progressState.value,
+      syncJobId: job.jobName,
+      systemMessageId: resp.systemMessageId || "",
+      systemMessageState: "SmsgProduced",
+      status: "queued",
+      completed: false
+    };
+    currentStep.value = "progress";
+    const loadedProgress = await loadProgress();
+    if (loadedProgress) startProgressPolling();
+
+    modalRef.value = false;
+    showToast(translate(successMsg));
+  } catch (error: any) {
+    logger.error(error);
+    showToast(translate("Failed to start product sync"));
+  } finally {
+    loadingRef.value = false;
+  }
+}
+
 async function startResyncEntireCatalog() {
   if (!selectedShopSystemMessageRemoteId.value) {
     showToast(translate("Shopify product sync is unavailable for this shop."));
     return;
   }
+  await performSync({ includeAll: true }, "Full catalog re-sync started.", showResyncEntireCatalogModal, isResyncEntireCatalogStarting);
+}
 
-  isResyncEntireCatalogStarting.value = true;
-  try {
-    const job = syncJobObj.value;
-    if (!job) throw new Error("Sync job not found");
+function openReplaySyncModal() {
+  replaySyncFromDate.value = new Date().toISOString();
+  showReplaySyncModal.value = true;
+}
 
-    // For full re-sync, we just run the job. 
-    // It will fetch all products based on the configured identifiers.
-    await runNow(job.jobName);
-
-    showResyncEntireCatalogModal.value = false;
-    currentStep.value = "progress";
-    
-    // Initialize progress state
-    progressState.value = {
-      syncJobId: job.jobName,
-      status: "queued",
-      systemMessageState: "SmsgProduced",
-      completed: false
-    };
-
-    const loadedProgress = await loadProgress();
-    if (loadedProgress) startProgressPolling();
-    showToast(translate("Full catalog re-sync started."));
-  } catch (error: any) {
-    logger.error(error);
-    showToast(translate("Failed to start product sync"));
-  } finally {
-    isResyncEntireCatalogStarting.value = false;
+async function startReplaySync() {
+  if (!replaySyncFromDate.value) {
+    showToast(translate("Please select a date to start the sync from."));
+    return;
   }
+  await performSync({ fromDate: formatDateTime(replaySyncFromDate.value, "yyyy-MM-dd HH:mm:ss") }, "Product sync replay started.", showReplaySyncModal, isReplaySyncStarting);
 }
 
 async function loadProgress() {
@@ -2736,7 +2806,22 @@ async function loadProgress() {
     assertBackendDataAvailable(syncRunState, translate("Product sync run state is unavailable."));
     loadedRunState = true;
 
-    const latestMessage = syncRunState.latestSystemMessage;
+    // Prioritize the system message ID we already have in state if it's still active
+    const currentMessageId = progressState.value?.systemMessageId;
+    let latestMessage = syncRunState.latestSystemMessage;
+
+    if (currentMessageId && syncRunState.systemMessages) {
+      const currentMessage = syncRunState.systemMessages.find((m: any) => m.systemMessageId === currentMessageId);
+      if (currentMessage) {
+        latestMessage = currentMessage;
+      } else if (!progressState.value?.completed) {
+        // If the message we are tracking is NOT in the list yet and it's not completed,
+        // it means there's a backend lag for a newly started sync.
+        // We should NOT overwrite the progressState with an older message.
+        latestMessage = null;
+      }
+    }
+
     if (latestMessage) {
       progressState.value = {
         syncJobId: syncJobId.value || "",

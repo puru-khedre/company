@@ -116,7 +116,7 @@ The following identifiers are confirmed in local source and should be treated as
 | Artifact | ID | Source | Notes |
 | --- | --- | --- | --- |
 | Base per-shop product sync template job | `sync_ShopifyProductUpdates` | `mantle-shopify-connector/data/ShopifyServiceJobData.xml`, `company/src/views/ShopifyProductSync.vue` | The app clones this per shop. |
-| Per-shop product sync runtime job pattern | `sync_ShopifyProductUpdates_{shopifyShopId}` | `company/src/services/ShopifyProductSyncService.ts` | Created by app logic using the base template job. |
+| Per-shop product sync runtime job pattern | `sync_ShopifyProductUpdates_{shopId}` | `company/src/services/ShopifyProductSyncService.ts` | Created by app logic using the base template job. |
 | Shared send job | `send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery` | `mantle-shopify-connector/data/ShopifyServiceJobData.xml`, `company/src/views/ShopifyProductSync.vue` | Shared sender for `ShopifyBulkQuery` parent type. |
 | Shared poll job expected by Company app | `poll_ShopifyBulkOperationResult` | `mantle-shopify-connector/data/ShopifyServiceJobData.xml`, `company/src/views/ShopifyProductSync.vue` | Current app expects this newer poller name. |
 
@@ -188,7 +188,7 @@ The following old-runtime categories are in scope, but I do not see a single con
 
 Implementation guidance:
 
-- Discover these jobs by `serviceName`, `parentSystemMessageTypeId`, `systemMessageTypeId`, and `shopifyShopId` parameters rather than relying only on a single job name.
+- Discover these jobs by `serviceName`, `parentSystemMessageTypeId`, `systemMessageTypeId`, and `shopId` parameters rather than relying only on a single job name.
 - Record the exact live job names encountered during implementation so this document can be tightened later.
 
 ## Migration Actions
@@ -260,7 +260,7 @@ The app or PWA must ensure the new bulk-query sync is fully activated for the se
 1. Verify the new system message type exists.
 2. Verify or create the `SYNC_SHOPIFY_PRODUCT` DataManager config.
 3. Verify the base `sync_ShopifyProductUpdates` job exists.
-4. Verify or create the per-shop `sync_ShopifyProductUpdates_{shopifyShopId}` job.
+4. Verify or create the per-shop `sync_ShopifyProductUpdates_{shopId}` job.
 5. Verify the shared send job exists.
 6. Verify the shared poll job exists.
 7. Verify the bulk-operations-finish webhook is subscribed for the shop.
@@ -272,7 +272,7 @@ These are the artifacts that should be treated as shop runtime data rather than 
 
 | Artifact | ID pattern | How it is used |
 | --- | --- | --- |
-| Per-shop product sync job | `sync_ShopifyProductUpdates_{shopifyShopId}` | Created by cloning the base `sync_ShopifyProductUpdates` job. |
+| Per-shop product sync job | `sync_ShopifyProductUpdates_{shopId}` | Created by cloning the base `sync_ShopifyProductUpdates` job. |
 | Per-shop webhook subscription | Shopify webhook subscription ID for `bulk_operations/finish` | Should exist for each active shop after migration. |
 | Product sync DataManager config, if not seeded | `SYNC_SHOPIFY_PRODUCT` | The app currently treats this as required but local seed data does not show it pre-created. |
 
@@ -302,7 +302,7 @@ This is the matrix the app code should follow when implemented.
 | ServiceJob | `poll_BulkOperationResult_ShopifyBulkQuery` | Older bulk-query | Deployment/runtime depending on upgrade path | replace with current poller or deactivate safely |
 | SystemMessageType | `BulkQueryShopifyProductUpdates` | New | Deployment seed | verify exists |
 | ServiceJob | `sync_ShopifyProductUpdates` | New | Deployment seed | verify exists |
-| ServiceJob | `sync_ShopifyProductUpdates_{shopifyShopId}` | New | App-created runtime | create or verify |
+| ServiceJob | `sync_ShopifyProductUpdates_{shopId}` | New | App-created runtime | create or verify |
 | ServiceJob | `send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery` | New shared | Deployment seed | verify exists |
 | ServiceJob | `poll_ShopifyBulkOperationResult` | New shared | Deployment seed | verify exists |
 | Webhook type | `BulkOperationsFinish` | New shared | Deployment seed | verify exists |
@@ -370,7 +370,7 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
     },
     serviceJobs: {
       baseSync: "sync_ShopifyProductUpdates",
-      perShopPattern: "sync_ShopifyProductUpdates_{shopifyShopId}",
+      perShopPattern: "sync_ShopifyProductUpdates_{shopId}",
       send: "send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery",
       poll: "poll_ShopifyBulkOperationResult"
     },
@@ -400,7 +400,7 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
 - `outgoing` should list the legacy IDs the migration must remove, cancel, or inspect.
 - `incoming` should list the target IDs the migration must verify or create.
 - `mappings` should capture only true replacement relationships, not every artifact in the flow.
-- Shop-specific runtime patterns should stay parameterized, for example `sync_ShopifyProductUpdates_{shopifyShopId}`.
+- Shop-specific runtime patterns should stay parameterized, for example `sync_ShopifyProductUpdates_{shopId}`.
 - If a legacy runtime job cannot be identified by a stable ID, add a discovery rule next to the config rather than hardcoding guessed names in feature code.
 
 ### Why this should live in config
@@ -419,7 +419,7 @@ Some old runtime jobs are not cleanly recoverable from local source with a singl
 - parent message type
 - service name
 - `systemMessageTypeId` parameter
-- `shopifyShopId` parameter
+- `shopId` parameter
 
 ### 2. Treat the version gate as necessary but not sufficient
 

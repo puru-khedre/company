@@ -61,7 +61,7 @@ export interface ProductSyncMigrationAssistantState {
 }
 
 function getShopId(payload: any) {
-  return String(payload?.shopId || payload?.id || payload?.shop?.shopId || payload?.shopifyShopId || "").trim();
+  return String(payload?.shopId || payload?.id || payload?.shop?.shopId || "").trim();
 }
 
 function buildDeprecatedLabel(value: string, fallback: string) {

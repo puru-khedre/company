@@ -36,7 +36,6 @@ export function useDataManagerLog() {
 
   const fetchFailedRecords = async (configId: string, errorLogContentId: string) => {
     state.loading = true;
-    console.log("Fetching failed records", configId, errorLogContentId);
     const cachedData = await getErrorRecords(errorLogContentId);
     if (cachedData && cachedData.length > 0) {
       state.errorLogs = cachedData;
@@ -71,7 +70,6 @@ export function useDataManagerLog() {
       ...mdmLog,
       successRecordCount: (Number(mdmLog?.totalRecordCount) || 0) - (Number(mdmLog?.failedRecordCount) || 0)
     };
-    console.log({mdmLog, mdmLogDetails})
 
     state.currentMdmLog = mdmLogDetails;
 
