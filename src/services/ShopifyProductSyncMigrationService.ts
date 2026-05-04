@@ -31,7 +31,7 @@ export interface ProductSyncMigrationEligibility {
 export interface ProductSyncMigrationArtifactCheck {
   id: string;
   label: string;
-  status: "verified" | "missing";
+  status: "verified" | "missing" | "checking";
   note: string;
   isPaused?: boolean;
   jobDetail?: any;
@@ -40,19 +40,19 @@ export interface ProductSyncMigrationArtifactCheck {
 export interface ProductSyncMigrationLegacyItem {
   id: string;
   label: string;
-  status: "active" | "deprecated" | "deactivated" | "cancelled" | "terminal" | "missing" | "failed";
+  status: "active" | "deprecated" | "deactivated" | "cancelled" | "terminal" | "missing" | "failed" | "checking";
   note: string;
 }
 
 export interface ProductSyncMigrationAssistantState {
   componentRelease: string;
   minimumComponentRelease: string;
-  isEligible: boolean;
-  hasNewProductSyncMessages: boolean;
+  isEligible: boolean | null;
+  hasNewProductSyncMessages: boolean | null;
   systemMessageRemoteId: string;
   legacySystemMessageRemoteIds: string[];
   legacySystemMessagesTotalCount: number;
-  syncJobConfigured: boolean;
+  syncJobConfigured: boolean | null;
   syncJobName: string;
   artifactChecks: ProductSyncMigrationArtifactCheck[];
   legacySystemMessageTypes: ProductSyncMigrationLegacyItem[];
@@ -207,6 +207,35 @@ async function fetchDataManagerConfigCheck(configId: string, label: string, note
     logger.warn(`Failed to verify data manager config ${configId}`, error);
     return {
       id: configId,
+      label,
+      status: "missing",
+      note
+    };
+  }
+}
+
+async function fetchDataDocumentCheck(dataDocumentId: string, label: string, note: string): Promise<ProductSyncMigrationArtifactCheck> {
+  try {
+    // Attempt a minimal query to verify document existence
+    await api({
+      url: "oms/dataDocumentView",
+      method: "POST",
+      data: {
+        dataDocumentId,
+        pageSize: 0
+      }
+    });
+
+    return {
+      id: dataDocumentId,
+      label,
+      status: "verified",
+      note
+    };
+  } catch (error) {
+    logger.warn(`Failed to verify data document ${dataDocumentId}`, error);
+    return {
+      id: dataDocumentId,
       label,
       status: "missing",
       note
@@ -619,121 +648,170 @@ async function teardownLegacySync(
   };
 }
 
-async function fetchAssistantState(payload: any): Promise<ProductSyncMigrationAssistantState> {
-  const eligibility = await fetchEligibility();
+async function fetchAssistantState(
+  payload: any,
+  onProgress?: (state: Partial<ProductSyncMigrationAssistantState>) => void
+): Promise<ProductSyncMigrationAssistantState> {
   const shopId = getShopId(payload);
-  let systemMessageRemoteId = "";
-  let hasNewProductSyncMessages = false;
-  let syncJobConfigured = false;
-  let syncJobName = "";
-  let legacySystemMessageRemoteIds: string[] = [];
-  let legacySystemMessagesTotalCount = 0;
-  let legacySystemMessageTypes: ProductSyncMigrationLegacyItem[] = [];
-  let legacyServiceJobs: ProductSyncMigrationLegacyItem[] = [];
-  let legacySystemMessages: ProductSyncMigrationLegacyItem[] = [];
+  const state: ProductSyncMigrationAssistantState = {
+    componentRelease: "",
+    minimumComponentRelease: PRODUCT_SYNC_MIGRATION_CONFIG.minimumComponentRelease,
+    isEligible: null,
+    hasNewProductSyncMessages: null,
+    systemMessageRemoteId: "",
+    legacySystemMessageRemoteIds: [],
+    legacySystemMessagesTotalCount: 0,
+    syncJobConfigured: null,
+    syncJobName: "",
+    artifactChecks: [],
+    legacySystemMessageTypes: [],
+    legacyServiceJobs: [],
+    legacySystemMessages: []
+  };
 
-  const artifactCheckPromises = [
-    fetchServiceJobCheck(
-      PRODUCT_SYNC_MIGRATION_CONFIG.incoming.serviceJobs.baseSync,
-      "Base sync job",
-      "Shared template job required before the app can configure a per-shop sync."
-    ),
-    fetchServiceJobCheck(
-      PRODUCT_SYNC_MIGRATION_CONFIG.incoming.serviceJobs.send,
-      "Send produced messages job",
-      "Shared sender for new product sync system messages."
-    ),
-    fetchServiceJobCheck(
-      PRODUCT_SYNC_MIGRATION_CONFIG.incoming.serviceJobs.poll,
-      "Poll bulk operation results job",
-      "Shared poller for completed Shopify bulk query results."
-    ),
-    fetchSystemMessageTypeCheck(
-      PRODUCT_SYNC_MIGRATION_CONFIG.incoming.systemMessageTypes.productSync,
-      "New product sync message type",
-      "Required message type for the bulk-query product sync flow."
-    ),
-    fetchDataManagerConfigCheck(
-      PRODUCT_SYNC_MIGRATION_CONFIG.incoming.dataManagerConfig,
-      "Data manager config",
-      "Required config for processing imported Shopify product sync files."
-    )
+  // 1. Eligibility Check
+  try {
+    const eligibility = await fetchEligibility();
+    state.componentRelease = eligibility.componentRelease;
+    state.isEligible = eligibility.isEligible;
+    onProgress?.({
+      componentRelease: state.componentRelease,
+      isEligible: state.isEligible
+    });
+  } catch (error) {
+    logger.warn("Failed to verify eligibility", error);
+    state.isEligible = false;
+    onProgress?.({ isEligible: false });
+  }
+
+  // 2. Artifact Checks (Base infrastructure)
+  const artifactCheckDefinitions = [
+    { id: PRODUCT_SYNC_MIGRATION_CONFIG.incoming.serviceJobs.baseSync, type: "job", label: "Base sync job", note: "Shared template job required before the app can configure a per-shop sync." },
+    { id: PRODUCT_SYNC_MIGRATION_CONFIG.incoming.serviceJobs.send, type: "job", label: "Send produced messages job", note: "Shared sender for new product sync system messages." },
+    { id: PRODUCT_SYNC_MIGRATION_CONFIG.incoming.serviceJobs.poll, type: "job", label: "Poll bulk operation results job", note: "Shared poller for completed Shopify bulk query results." },
+    { id: PRODUCT_SYNC_MIGRATION_CONFIG.incoming.systemMessageTypes.productSync, type: "systemMessageType", label: "New product sync message type", note: "Required message type for the bulk-query product sync flow." },
+    { id: PRODUCT_SYNC_MIGRATION_CONFIG.incoming.dataManagerConfig, type: "dataManagerConfig", label: "Data manager config", note: "Required config for processing imported Shopify product sync files." },
+    { id: "SERVICE_JOB_PARAMETER", type: "dataDocument", label: "Service job parameters document", note: "Required for verifying per-shop sync job configuration via Data Document." },
+    { id: "DATA_MANAGER_LOG_AND_PARAMETER", type: "dataDocument", label: "Data manager logs document", note: "Required for tracking sync progress and error counts via Data Document." },
+    { id: "PROD_STORE_PRODUCTS_COUNT", type: "dataDocument", label: "Product store counts document", note: "Required for preflight checks and catalog metrics via Data Document." }
   ];
 
+  state.artifactChecks = artifactCheckDefinitions.map(def => ({ id: def.id, label: def.label, note: def.note, status: "checking" }));
+  onProgress?.({ artifactChecks: [...state.artifactChecks] });
+
+  // Process artifact checks concurrently and update state piece by piece
+  await Promise.all(artifactCheckDefinitions.map(async (def, index) => {
+    let result: ProductSyncMigrationArtifactCheck;
+    if (def.type === "systemMessageType") {
+      result = await fetchSystemMessageTypeCheck(def.id, def.label, def.note);
+    } else if (def.type === "dataManagerConfig") {
+      result = await fetchDataManagerConfigCheck(def.id, def.label, def.note);
+    } else if (def.type === "dataDocument") {
+      result = await fetchDataDocumentCheck(def.id, def.label, def.note);
+    } else {
+      result = await fetchServiceJobCheck(def.id, def.label, def.note);
+    }
+    state.artifactChecks[index] = result;
+    onProgress?.({ artifactChecks: [...state.artifactChecks] });
+  }));
+
+  // 3. Per-shop sync job configuration
   if (shopId) {
     try {
       const syncJobConfig = await ShopifyProductSyncService.fetchSyncJobConfig({ shopId });
-      syncJobConfigured = syncJobConfig.isConfigured;
-      syncJobName = syncJobConfig.jobName || "";
+      state.syncJobConfigured = syncJobConfig.isConfigured;
+      state.syncJobName = syncJobConfig.jobName || "";
+      onProgress?.({
+        syncJobConfigured: state.syncJobConfigured,
+        syncJobName: state.syncJobName
+      });
     } catch (error) {
       logger.warn("Failed to verify per-shop product sync job configuration", error);
+      state.syncJobConfigured = false;
+      onProgress?.({ syncJobConfigured: false });
     }
   }
 
+  // 4. Detect existing new product sync messages or history
+  if (shopId) {
+    try {
+      state.systemMessageRemoteId = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
+        shopId,
+        shop: payload?.shop
+      });
+      const syncRunState = await ShopifyProductSyncService.fetchProductUpdateSyncRunState({
+        systemMessageRemoteId: state.systemMessageRemoteId,
+        shopId
+      });
+      state.hasNewProductSyncMessages = !!syncRunState.latestSystemMessage || !!syncRunState.systemMessages?.length;
+
+      if (!state.hasNewProductSyncMessages) {
+        const response = await api({
+          url: `oms/shopifyShops/${shopId}/productSync/history`,
+          method: "GET",
+          params: { limit: 1 }
+        }) as any;
+        state.hasNewProductSyncMessages = Array.isArray(response?.data?.runs) && response.data.runs.length > 0;
+      }
+      onProgress?.({
+        hasNewProductSyncMessages: state.hasNewProductSyncMessages,
+        systemMessageRemoteId: state.systemMessageRemoteId
+      });
+    } catch (error) {
+      logger.warn("Failed to detect existing product sync history for shop", error);
+      state.hasNewProductSyncMessages = false;
+      onProgress?.({ hasNewProductSyncMessages: false });
+    }
+  }
+
+  // 5. Legacy Teardown State
   try {
-    const legacyTeardownState = await fetchLegacyTeardownState({
+    state.legacySystemMessageRemoteIds = await fetchLegacySystemMessageRemoteIds({
       shopId,
-      shop: payload?.shop,
-      includeAllSystemMessages: false
+      shop: payload?.shop
     });
-    legacySystemMessageRemoteIds = legacyTeardownState.legacySystemMessageRemoteIds;
-    legacySystemMessagesTotalCount = legacyTeardownState.legacySystemMessagesTotalCount;
-    legacySystemMessageTypes = legacyTeardownState.legacySystemMessageTypes;
-    legacyServiceJobs = legacyTeardownState.legacyServiceJobs;
-    legacySystemMessages = legacyTeardownState.legacySystemMessages;
+    onProgress?.({ legacySystemMessageRemoteIds: state.legacySystemMessageRemoteIds });
+
+    // Fetch legacy items in parallel blocks
+    const [legacyTypes, legacyJobs, legacyMessages] = await Promise.all([
+      fetchLegacySystemMessageTypeState(),
+      fetchLegacyServiceJobState(),
+      fetchLegacySystemMessages({
+        shopId,
+        shop: payload?.shop,
+        legacySystemMessageRemoteIds: state.legacySystemMessageRemoteIds,
+        includeAllSystemMessages: false
+      })
+    ]);
+
+    state.legacySystemMessageTypes = legacyTypes;
+    state.legacyServiceJobs = legacyJobs;
+    state.legacySystemMessages = legacyMessages.items;
+    state.legacySystemMessagesTotalCount = legacyMessages.totalCount;
+
+    onProgress?.({
+      legacySystemMessageTypes: state.legacySystemMessageTypes,
+      legacyServiceJobs: state.legacyServiceJobs,
+      legacySystemMessages: state.legacySystemMessages,
+      legacySystemMessagesTotalCount: state.legacySystemMessagesTotalCount
+    });
   } catch (error) {
     logger.warn("Failed to inspect legacy product sync teardown state", error);
   }
 
-  try {
-    systemMessageRemoteId = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
-      shopId,
-      shop: payload?.shop
-    });
-    const syncRunState = await ShopifyProductSyncService.fetchProductUpdateSyncRunState(systemMessageRemoteId);
-    hasNewProductSyncMessages = !!syncRunState.latestSystemMessage || !!syncRunState.systemMessages?.length;
-  } catch (error) {
-    logger.warn("Failed to detect existing new product sync messages for shop", error);
-  }
-
-  if (!hasNewProductSyncMessages && shopId) {
-    try {
-      const response = await api({
-        url: `oms/shopifyShops/${shopId}/productSync/history`,
-        method: "GET",
-        params: {
-          limit: 1
-        }
-      }) as any;
-      hasNewProductSyncMessages = Array.isArray(response?.data?.runs) && response.data.runs.length > 0;
-    } catch (error) {
-      logger.warn("Failed to detect existing product sync history for shop", error);
-    }
-  }
-
-  const artifactChecks = await Promise.all(artifactCheckPromises);
-
-  return {
-    ...eligibility,
-    hasNewProductSyncMessages,
-    systemMessageRemoteId,
-    legacySystemMessageRemoteIds,
-    legacySystemMessagesTotalCount,
-    syncJobConfigured,
-    syncJobName,
-    artifactChecks,
-    legacySystemMessageTypes,
-    legacyServiceJobs,
-    legacySystemMessages
-  };
+  return state;
 }
 
 function resolveEntryAction(payload: Pick<ProductSyncMigrationAssistantState, "hasNewProductSyncMessages" | "isEligible">): ProductSyncMigrationEntryAction {
-  if (payload.hasNewProductSyncMessages) {
+  if (payload.hasNewProductSyncMessages === true) {
     return "current";
   }
 
-  return payload.isEligible ? "setup" : "request-upgrade";
+  if (payload.isEligible === true) {
+    return "setup";
+  }
+
+  return "request-upgrade";
 }
 
 export const ShopifyProductSyncMigrationService = {

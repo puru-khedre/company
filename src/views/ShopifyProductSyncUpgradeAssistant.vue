@@ -10,243 +10,219 @@
     </ion-header>
 
     <ion-content>
-      <ion-card v-if="isLoading">
-          <ion-card-header>
-            <ion-card-title>{{ translate("Loading upgrade assistant") }}</ion-card-title>
-          </ion-card-header>
-        <ion-card-content>
-          <ion-spinner name="crescent" />
-        </ion-card-content>
-      </ion-card>
-
-      <ion-card v-else-if="loadErrorMessage">
-          <ion-card-header>
-            <ion-card-title>{{ translate("Upgrade assistant could not load") }}</ion-card-title>
-          </ion-card-header>
-        <ion-card-content>
-          <p>{{ loadErrorMessage }}</p>
-            <ion-button fill="outline" @click="loadAssistant">{{ translate("Retry") }}</ion-button>
-        </ion-card-content>
-      </ion-card>
-
-      <template v-else>
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>{{ assistantTitle }}</ion-card-title>
-            <ion-card-subtitle>{{ assistantSubtitle }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-list lines="full">
-            <ion-item>
-              <ion-label>
-                {{ translate("Backend release") }}
-                <p>{{ backendReleaseDetail }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="eligibilityBadgeColor">{{ eligibilityBadgeLabel }}</ion-badge>
-            </ion-item>
-            <ion-item>
-              <ion-label>
-                {{ translate("New product sync messages") }}
-                <p>{{ newSyncMessagesDetail }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="newSyncMessagesBadgeColor">{{ newSyncMessagesBadgeLabel }}</ion-badge>
-            </ion-item>
-            <ion-item lines="none">
-              <ion-label>
-                {{ translate("Per-shop sync job") }}
-                <p>{{ perShopSyncJobDetail }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="syncJobBadgeColor">{{ syncJobBadgeLabel }}</ion-badge>
-            </ion-item>
-          </ion-list>
+      <main>
+        <ion-card v-if="loadErrorMessage">
+            <ion-card-header>
+              <ion-card-title>{{ translate("Upgrade assistant could not load") }}</ion-card-title>
+            </ion-card-header>
           <ion-card-content>
-            <ion-button v-if="entryAction === 'current'" expand="block" @click="openProductSync">{{ translate("Open current product sync") }}</ion-button>
-            <ion-button v-else-if="entryAction === 'setup'" expand="block" @click="openProductSync">{{ translate("Continue to setup new product sync") }}</ion-button>
-            <ion-button v-else expand="block" fill="outline" @click="openConnectionDetails">{{ translate("Back to shop details") }}</ion-button>
-            <ion-button expand="block" fill="clear" @click="loadAssistant">{{ translate("Refresh checks") }}</ion-button>
+            <p>{{ loadErrorMessage }}</p>
+              <ion-button fill="outline" @click="loadAssistant">{{ translate("Retry") }}</ion-button>
           </ion-card-content>
         </ion-card>
 
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>{{ translate("1. Confirm readiness") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("Verify the compatible backend release and the shared new-sync jobs before teardown starts.") }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-list lines="full">
-            <ion-item v-for="artifactCheck in assistantState.artifactChecks" :key="artifactCheck.id">
-              <ion-label>
-                {{ artifactCheck.label }}
-                <p>{{ artifactCheck.id }}</p>
-                <p>{{ artifactCheck.note }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="artifactCheck.status === 'verified' ? 'success' : 'warning'">
-                {{ artifactCheck.status === "verified" ? translate("Verified") : translate("Missing") }}
-              </ion-badge>
-            </ion-item>
-          </ion-list>
-        </ion-card>
+        <template v-if="!loadErrorMessage">
+          <!-- Summary/Eligibility Card (Always visible for context) -->
+          <ion-card>
+            <ion-card-header>
+              <ion-card-title>{{ assistantTitle }}</ion-card-title>
+              <ion-card-subtitle>{{ assistantSubtitle }}</ion-card-subtitle>
+            </ion-card-header>
+            <ion-list lines="full">
+              <ion-item>
+                <ion-label>
+                  {{ translate("Backend release") }}
+                  <p>{{ backendReleaseDetail }}</p>
+                </ion-label>
+                <ion-spinner v-if="assistantState.isEligible === null" slot="end" name="crescent" />
+                <ion-badge v-else slot="end" :color="eligibilityBadgeColor">{{ eligibilityBadgeLabel }}</ion-badge>
+              </ion-item>
+              <ion-item>
+                <ion-label>
+                  {{ translate("New product sync messages") }}
+                  <p>{{ newSyncMessagesDetail }}</p>
+                </ion-label>
+                <ion-spinner v-if="assistantState.hasNewProductSyncMessages === null" slot="end" name="crescent" />
+                <ion-badge v-else slot="end" :color="newSyncMessagesBadgeColor">{{ newSyncMessagesBadgeLabel }}</ion-badge>
+              </ion-item>
+              <ion-item lines="none">
+                <ion-label>
+                  {{ translate("Per-shop sync job") }}
+                  <p>{{ perShopSyncJobDetail }}</p>
+                </ion-label>
+                <ion-spinner v-if="assistantState.syncJobConfigured === null" slot="end" name="crescent" />
+                <ion-badge v-else slot="end" :color="syncJobBadgeColor">{{ syncJobBadgeLabel }}</ion-badge>
+              </ion-item>
+            </ion-list>
+          </ion-card>
 
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>{{ translate("2. Deactivate the legacy sync") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("Use the same Moqui APIs as Job Manager to cancel unfinished legacy messages, pause legacy jobs, and deprecate legacy message types in place.") }}</ion-card-subtitle>
-          </ion-card-header>
-          <ion-list lines="full">
-            <ion-item>
-              <ion-label>
-                {{ translate("Legacy system message types") }}
-                <p>{{ legacySystemMessageTypesSummary }}</p>
-                <p>{{ translate("These types are deprecated in place by clearing their bound services and paths.") }}</p>
-              </ion-label>
-              <ion-note slot="end">{{ legacySystemMessageTypesCount }}</ion-note>
-            </ion-item>
-            <ion-item>
-              <ion-label>
-                {{ translate("Legacy service jobs") }}
-                <p>{{ legacyServiceJobsSummary }}</p>
-                <p>{{ translate("These jobs are paused and their service name is replaced with a no-op marker so accidental runs do nothing.") }}</p>
-              </ion-label>
-              <ion-note slot="end">{{ legacyServiceJobsCount }}</ion-note>
-            </ion-item>
-            <ion-item lines="none">
-              <ion-label>
-                {{ translate("Legacy system messages") }}
-                <p>{{ legacySystemMessagesSummary }}</p>
-                <p>{{ translate("Only non-terminal legacy messages are cancelled. Confirmed or consumed history is left intact.") }}</p>
-              </ion-label>
-              <ion-note slot="end">{{ legacySystemMessagesCount }}</ion-note>
-            </ion-item>
-          </ion-list>
-          <ion-card-content>
-            <p>{{ teardownStepDetail }}</p>
-            <p v-if="teardownErrorMessage" class="ion-color-danger">{{ teardownErrorMessage }}</p>
-            <p v-else-if="teardownSuccessMessage">{{ teardownSuccessMessage }}</p>
-            <ion-button
-              expand="block"
-              :disabled="isTeardownRunning || !canRunTeardown"
-              @click="confirmLegacyTeardown"
-            >
-              <ion-spinner v-if="isTeardownRunning" name="crescent" slot="start" />
-              {{ teardownActionLabel }}
-            </ion-button>
-            <ion-button expand="block" fill="outline" :disabled="isTeardownRunning" @click="loadAssistant">{{ translate("Refresh legacy checks") }}</ion-button>
-          </ion-card-content>
-          <!-- Live teardown activity log -->
-          <ion-list v-if="teardownLog.length" lines="full">
-            <ion-list-header>{{ translate("Teardown activity") }}</ion-list-header>
-            <ion-item v-for="step in teardownLog" :key="`log-${step.kind}-${step.id}`">
-              <ion-label>
-                {{ step.label }}
-                <p v-if="step.error">{{ step.error }}</p>
-              </ion-label>
-              <ion-spinner v-if="step.status === 'processing'" name="crescent" slot="end" />
-              <ion-badge v-else slot="end" :color="getTeardownStepColor(step.status)">
-                {{ getTeardownStepLabel(step.status) }}
-              </ion-badge>
-            </ion-item>
-          </ion-list>
-
-          <!-- Failure summary after teardown -->
-          <ion-list v-if="teardownFailedSteps.length && !isTeardownRunning" lines="full">
-            <ion-list-header>{{ translate("Steps that could not complete") }}</ion-list-header>
-            <ion-item v-for="step in teardownFailedSteps" :key="`fail-${step.kind}-${step.id}`">
-              <ion-label color="danger">
-                {{ step.label }}
-                <p>{{ step.error }}</p>
-              </ion-label>
-              <ion-badge slot="end" color="danger">{{ translate("Failed") }}</ion-badge>
-            </ion-item>
-          </ion-list>
-
-          <ion-list v-if="assistantState.legacySystemMessageTypes.length || assistantState.legacyServiceJobs.length || assistantState.legacySystemMessages.length" lines="full">
-            <ion-list-header>{{ translate("Legacy types") }}</ion-list-header>
-            <ion-item v-for="item in assistantState.legacySystemMessageTypes" :key="`type-${item.id}`">
-              <ion-label>
-                {{ item.label }}
-                <p>{{ item.note }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="getLegacyItemColor(item.status)">{{ getLegacyItemLabel(item.status) }}</ion-badge>
-            </ion-item>
-            <ion-list-header>{{ translate("Legacy jobs") }}</ion-list-header>
-            <ion-item v-for="item in assistantState.legacyServiceJobs" :key="`job-${item.id}`">
-              <ion-label>
-                {{ item.label }}
-                <p>{{ item.note }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="getLegacyItemColor(item.status)">{{ getLegacyItemLabel(item.status) }}</ion-badge>
-            </ion-item>
-            <ion-list-header>{{ translate("Legacy messages") }}</ion-list-header>
-            <ion-item v-for="item in legacySystemMessagesPreview" :key="`message-${item.id}`">
-              <ion-label>
-                {{ item.label }}
-                <p>{{ item.id }}</p>
-                <p>{{ item.note }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="getLegacyItemColor(item.status)">{{ getLegacyItemLabel(item.status) }}</ion-badge>
-            </ion-item>
-            <ion-item v-if="remainingLegacySystemMessageCount > 0" lines="none">
-              <ion-label>
-                {{ translate("Additional legacy messages") }}
-                <p>{{ translate("{count} more legacy messages were found for this shop.", { count: remainingLegacySystemMessageCount }) }}</p>
-              </ion-label>
-            </ion-item>
-          </ion-list>
-        </ion-card>
-
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>{{ translate("3. Setup the new sync") }}</ion-card-title>
-            <ion-card-subtitle>{{ translate("Once readiness checks pass and the old sync is deactivated, continue to the current product-sync setup flow.") }}</ion-card-subtitle>
-            <ion-progress-bar :value="setupProgressValue" style="margin-top: 16px;"></ion-progress-bar>
-            <p style="margin-top: 8px; font-size: 14px; color: var(--ion-color-medium);">
-              {{ translate("{completed} of {total} setup steps complete", { completed: setupProgressCompleted, total: setupProgressTotal }) }}
-            </p>
-          </ion-card-header>
-          <ion-list lines="full">
-            <ion-item>
-              <ion-label>
-                {{ translate("Per-shop sync job pattern") }}
-                <p>{{ perShopPatternLabel }}</p>
-                <p>{{ translate("The app will configure or verify the shop-specific job from the shared sync template.") }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="syncJobBadgeColor">{{ syncJobBadgeLabel }}</ion-badge>
-              <ion-button v-if="!assistantState.syncJobConfigured" slot="end" fill="outline" :disabled="isConfiguringSyncJob" @click="configureSyncJobForShop">
-                <ion-spinner v-if="isConfiguringSyncJob" name="crescent" slot="start" />
-                {{ translate("Configure") }}
+          <!-- Step 1: Readiness -->
+          <ion-card v-if="currentStep === 1">
+            <ion-card-header>
+              <div class="card-header-wrapper">
+                <div>
+                  <ion-card-title>{{ translate("1. Confirm readiness") }}</ion-card-title>
+                  <ion-card-subtitle>{{ translate("Verify the compatible backend release and the shared new-sync jobs before teardown starts.") }}</ion-card-subtitle>
+                </div>
+                <ion-button v-if="hasMissingArtifacts" fill="clear" color="danger" @click="copyMissingArtifactsToClipboard">
+                  {{ translate("Copy details") }}
+                </ion-button>
+              </div>
+            </ion-card-header>
+            <ion-list lines="full">
+              <ion-item v-for="artifactCheck in assistantState.artifactChecks" :key="artifactCheck.id" :button="artifactCheck.status === 'missing'" @click="artifactCheck.status === 'missing' ? copyArtifactCheckToClipboard(artifactCheck) : null">
+                <ion-label>
+                  {{ artifactCheck.label }}
+                  <p>{{ artifactCheck.id }}</p>
+                  <p>{{ artifactCheck.note }}</p>
+                </ion-label>
+                <ion-spinner v-if="artifactCheck.status === 'checking'" slot="end" name="crescent" />
+                <ion-badge v-else slot="end" :color="getArtifactCheckColor(artifactCheck)">{{ getArtifactCheckLabel(artifactCheck) }}</ion-badge>
+              </ion-item>
+            </ion-list>
+            <ion-card-content>
+              <ion-button v-if="entryAction === 'current'" expand="block" @click="openProductSync">{{ translate("Open current product sync") }}</ion-button>
+              <ion-button v-else expand="block" :disabled="!isStep1Done" @click="currentStep = 2">
+                {{ translate("Next") }}
+                <ion-icon slot="end" :icon="arrowForwardOutline" />
               </ion-button>
-            </ion-item>
+              <ion-button expand="block" fill="clear" @click="loadAssistant">{{ translate("Refresh checks") }}</ion-button>
+            </ion-card-content>
+          </ion-card>
+
+          <!-- Step 2: Teardown -->
+          <ion-card v-if="currentStep === 2">
+            <ion-card-header>
+              <ion-card-title>{{ translate("2. Deactivate the legacy sync") }}</ion-card-title>
+              <ion-card-subtitle>{{ translate("Use the same Moqui APIs as Job Manager to cancel unfinished legacy messages, pause legacy jobs, and deprecate legacy message types in place.") }}</ion-card-subtitle>
+            </ion-card-header>
+            <ion-list lines="full">
+              <ion-item>
+                <ion-label>
+                  {{ translate("Legacy system message types") }}
+                  <p>{{ legacySystemMessageTypesSummary }}</p>
+                  <p>{{ translate("These types are deprecated in place by clearing their bound services and paths.") }}</p>
+                </ion-label>
+                <ion-note slot="end">{{ legacySystemMessageTypesCount }}</ion-note>
+              </ion-item>
+              <ion-item>
+                <ion-label>
+                  {{ translate("Legacy service jobs") }}
+                  <p>{{ legacyServiceJobsSummary }}</p>
+                  <p>{{ translate("These jobs are paused and their service name is replaced with a no-op marker so accidental runs do nothing.") }}</p>
+                </ion-label>
+                <ion-note slot="end">{{ legacyServiceJobsCount }}</ion-note>
+              </ion-item>
+              <ion-item lines="none">
+                <ion-label>
+                  {{ translate("Legacy system messages") }}
+                  <p>{{ legacySystemMessagesSummary }}</p>
+                  <p>{{ translate("Only non-terminal legacy messages are cancelled. Confirmed or consumed history is left intact.") }}</p>
+                </ion-label>
+                <ion-note slot="end">{{ legacySystemMessagesCount }}</ion-note>
+              </ion-item>
+            </ion-list>
+            <ion-card-content>
+              <p>{{ teardownStepDetail }}</p>
+              <p v-if="teardownErrorMessage" class="ion-color-danger">{{ teardownErrorMessage }}</p>
+              <p v-else-if="teardownSuccessMessage">{{ teardownSuccessMessage }}</p>
+              <ion-button
+                expand="block"
+                v-if="canRunTeardown"
+                :disabled="isTeardownRunning"
+                @click="confirmLegacyTeardown"
+              >
+                <ion-spinner v-if="isTeardownRunning" name="crescent" slot="start" />
+                {{ teardownActionLabel }}
+              </ion-button>
+              <ion-button v-if="isStep2Done" expand="block" @click="currentStep = 3">
+                {{ translate("Next") }}
+                <ion-icon slot="end" :icon="arrowForwardOutline" />
+              </ion-button>
+              <ion-button expand="block" fill="clear" :disabled="isTeardownRunning" @click="currentStep = 1">{{ translate("Back") }}</ion-button>
+            </ion-card-content>
             
-            <ion-item v-for="job in sharedInfrastructureJobs" :key="job.id">
-              <ion-label>
-                {{ job.label }}
-                <p>{{ job.id }}</p>
-                <p>{{ job.note }}</p>
-              </ion-label>
-              <ion-badge slot="end" :color="getJobStatusColor(job)">{{ getJobStatusLabel(job) }}</ion-badge>
-              <ion-button v-if="job.status === 'verified' && job.isPaused" slot="end" fill="outline" :disabled="isEnablingJob[job.id]" @click="enableJob(job)">
-                <ion-spinner v-if="isEnablingJob[job.id]" name="crescent" slot="start" />
-                {{ translate("Enable") }}
-              </ion-button>
-            </ion-item>
+            <!-- Live teardown activity log -->
+            <ion-list v-if="teardownLog.length" lines="full">
+              <ion-list-header>{{ translate("Teardown activity") }}</ion-list-header>
+              <ion-item v-for="step in teardownLog" :key="`log-${step.kind}-${step.id}`">
+                <ion-label>
+                  {{ step.label }}
+                  <p v-if="step.error">{{ step.error }}</p>
+                </ion-label>
+                <ion-spinner v-if="step.status === 'processing'" slot="end" name="crescent" />
+                <ion-badge v-else slot="end" :color="getTeardownStepColor(step.status)">
+                  {{ getTeardownStepLabel(step.status) }}
+                </ion-badge>
+              </ion-item>
+            </ion-list>
 
-            <ion-item>
-              <ion-label>
-                {{ translate("Webhook topic") }}
-                <p>{{ migrationConfig.incoming.webhookTopic }}</p>
-                <p>{{ translate("The shop should be subscribed to bulk operation updates before relying on the new sync flow.") }}</p>
-              </ion-label>
-            </ion-item>
-            <ion-item lines="none">
-              <ion-label>
-                {{ translate("Next step") }}
-                <p>{{ nextStepDetail }}</p>
-              </ion-label>
-            </ion-item>
-          </ion-list>
-          <ion-card-content>
-            <ion-button v-if="entryAction !== 'request-upgrade'" expand="block" @click="openProductSync">{{ entryAction === "current" ? translate("Open current product sync") : translate("Go to new product sync setup") }}</ion-button>
-          </ion-card-content>
-        </ion-card>
-      </template>
+            <!-- Failure summary after teardown -->
+            <ion-list v-if="teardownFailedSteps.length && !isTeardownRunning" lines="full">
+              <ion-list-header>{{ translate("Steps that could not complete") }}</ion-list-header>
+              <ion-item v-for="step in teardownFailedSteps" :key="`fail-${step.kind}-${step.id}`">
+                <ion-label color="danger">
+                  {{ step.label }}
+                  <p>{{ step.error }}</p>
+                </ion-label>
+                <ion-badge slot="end" color="danger">{{ translate("Failed") }}</ion-badge>
+              </ion-item>
+            </ion-list>
+          </ion-card>
+
+          <!-- Step 3: Setup -->
+          <ion-card v-if="currentStep === 3">
+            <ion-card-header>
+              <ion-card-title>{{ translate("3. Setup the new sync") }}</ion-card-title>
+              <ion-card-subtitle>{{ translate("Once readiness checks pass and the old sync is deactivated, continue to the current product-sync setup flow.") }}</ion-card-subtitle>
+              <ion-progress-bar :value="setupProgressValue" style="margin-top: 16px;"></ion-progress-bar>
+              <p style="margin-top: 8px; font-size: 14px; color: var(--ion-color-medium);">
+                {{ translate("{completed} of {total} setup steps complete", { completed: setupProgressCompleted, total: setupProgressTotal }) }}
+              </p>
+            </ion-card-header>
+            <ion-list lines="full">
+              <ion-item>
+                <ion-label>
+                  {{ translate("Per-shop sync job pattern") }}
+                  <p>{{ perShopPatternLabel }}</p>
+                  <p>{{ translate("The app will configure or verify the shop-specific job from the shared sync template.") }}</p>
+                </ion-label>
+                <ion-spinner v-if="assistantState.syncJobConfigured === null" slot="end" name="crescent" />
+                <ion-badge v-else slot="end" :color="syncJobBadgeColor">{{ syncJobBadgeLabel }}</ion-badge>
+                <ion-button v-if="!assistantState.syncJobConfigured" slot="end" fill="outline" :disabled="isConfiguringSyncJob" @click="configureSyncJobForShop">
+                  <ion-spinner v-if="isConfiguringSyncJob" name="crescent" slot="start" />
+                  {{ translate("Configure") }}
+                </ion-button>
+              </ion-item>
+              
+              <ion-item v-for="job in sharedInfrastructureJobs" :key="job.id">
+                <ion-label>
+                  {{ job.label }}
+                  <p>{{ job.id }}</p>
+                  <p>{{ job.note }}</p>
+                </ion-label>
+                <ion-spinner v-if="job.status === 'checking'" slot="end" name="crescent" />
+                <ion-badge v-else slot="end" :color="getJobStatusColor(job)">{{ getJobStatusLabel(job) }}</ion-badge>
+                <ion-button v-if="job.status === 'verified' && job.isPaused" slot="end" fill="outline" :disabled="isEnablingJob[job.id]" @click="enableJob(job)">
+                  <ion-spinner v-if="isEnablingJob[job.id]" name="crescent" slot="start" />
+                  {{ translate("Enable") }}
+                </ion-button>
+              </ion-item>
+              
+              <ion-item lines="none">
+                <ion-label>
+                  {{ translate("Next step") }}
+                  <p>{{ nextStepDetail }}</p>
+                </ion-label>
+              </ion-item>
+            </ion-list>
+            <ion-card-content>
+              <ion-button v-if="entryAction !== 'request-upgrade'" expand="block" :disabled="!isStep3Done" @click="openProductSync">{{ entryAction === "current" ? translate("Open current product sync") : translate("Go to new product sync setup") }}</ion-button>
+              <ion-button expand="block" fill="clear" @click="currentStep = 2">{{ translate("Back") }}</ion-button>
+            </ion-card-content>
+          </ion-card>
+        </template>
+      </main>
     </ion-content>
   </ion-page>
 </template>
@@ -264,6 +240,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -277,6 +254,7 @@ import {
   alertController,
   onIonViewWillEnter
 } from "@ionic/vue";
+import { arrowForwardOutline } from "ionicons/icons";
 import { computed, defineProps, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useStore } from "vuex";
@@ -300,6 +278,7 @@ const migrationConfig = PRODUCT_SYNC_MIGRATION_CONFIG;
 const isLoading = ref(true);
 const loadErrorMessage = ref("");
 const isTeardownRunning = ref(false);
+const currentStep = ref(1);
 const teardownErrorMessage = ref("");
 const teardownSuccessMessage = ref("");
 const teardownLog = ref<ProductSyncMigrationTeardownStep[]>([]);
@@ -309,12 +288,12 @@ const isEnablingJob = ref<Record<string, boolean>>({});
 const assistantState = ref<ProductSyncMigrationAssistantState>({
   componentRelease: "",
   minimumComponentRelease: migrationConfig.minimumComponentRelease,
-  isEligible: false,
-  hasNewProductSyncMessages: false,
+  isEligible: null,
+  hasNewProductSyncMessages: null,
   systemMessageRemoteId: "",
   legacySystemMessageRemoteIds: [],
   legacySystemMessagesTotalCount: 0,
-  syncJobConfigured: false,
+  syncJobConfigured: null,
   syncJobName: "",
   artifactChecks: [],
   legacySystemMessageTypes: [],
@@ -348,9 +327,11 @@ const backendReleaseDetail = computed(() => {
   return translate("The backend release could not be read from Maarg.");
 });
 const eligibilityBadgeLabel = computed(() => {
+  if (assistantState.value.isEligible === null) return translate("Checking");
   return assistantState.value.isEligible ? translate("Eligible") : translate("Upgrade required");
 });
 const eligibilityBadgeColor = computed(() => {
+  if (assistantState.value.isEligible === null) return "medium";
   return assistantState.value.isEligible ? "success" : "warning";
 });
 const newSyncMessagesDetail = computed(() => {
@@ -361,9 +342,11 @@ const newSyncMessagesDetail = computed(() => {
   return translate("No new product sync messages were found for this shop yet.");
 });
 const newSyncMessagesBadgeLabel = computed(() => {
+  if (assistantState.value.hasNewProductSyncMessages === null) return translate("Checking");
   return assistantState.value.hasNewProductSyncMessages ? translate("Active") : translate("Not started");
 });
 const newSyncMessagesBadgeColor = computed(() => {
+  if (assistantState.value.hasNewProductSyncMessages === null) return "medium";
   return assistantState.value.hasNewProductSyncMessages ? "success" : "medium";
 });
 const perShopSyncJobDetail = computed(() => {
@@ -374,9 +357,11 @@ const perShopSyncJobDetail = computed(() => {
   return translate("No per-shop sync job is configured yet.");
 });
 const syncJobBadgeLabel = computed(() => {
+  if (assistantState.value.syncJobConfigured === null) return translate("Checking");
   return assistantState.value.syncJobConfigured ? translate("Configured") : translate("Not configured");
 });
 const syncJobBadgeColor = computed(() => {
+  if (assistantState.value.syncJobConfigured === null) return "medium";
   return assistantState.value.syncJobConfigured ? "success" : "medium";
 });
 const legacySystemMessageTypesCount = computed(() => {
@@ -450,6 +435,9 @@ const sharedInfrastructureJobs = computed(() => {
     check.id === migrationConfig.incoming.serviceJobs.poll
   );
 });
+const hasMissingArtifacts = computed(() => {
+  return assistantState.value.artifactChecks.some(check => check.status === "missing");
+});
 const setupProgressTotal = computed(() => {
   return 1 + sharedInfrastructureJobs.value.length;
 });
@@ -461,6 +449,16 @@ const setupProgressCompleted = computed(() => {
   });
   return count;
 });
+const isStep1Done = computed(() => {
+  return !hasMissingArtifacts.value && assistantState.value.isEligible === true;
+});
+const isStep2Done = computed(() => {
+  return !canRunTeardown.value;
+});
+const isStep3Done = computed(() => {
+  return setupProgressCompleted.value === setupProgressTotal.value;
+});
+
 const setupProgressValue = computed(() => {
   if (setupProgressTotal.value === 0) return 0;
   return setupProgressCompleted.value / setupProgressTotal.value;
@@ -478,6 +476,18 @@ async function loadAssistant() {
   teardownLog.value = [];
   teardownFailedSteps.value = [];
 
+  // Reset granular states to null/checking
+  assistantState.value = {
+    ...assistantState.value,
+    isEligible: null,
+    hasNewProductSyncMessages: null,
+    syncJobConfigured: null,
+    artifactChecks: assistantState.value.artifactChecks.map(check => ({ ...check, status: "checking" })),
+    legacySystemMessageTypes: assistantState.value.legacySystemMessageTypes.map(item => ({ ...item, status: "checking" })),
+    legacyServiceJobs: assistantState.value.legacyServiceJobs.map(item => ({ ...item, status: "checking" })),
+    legacySystemMessages: assistantState.value.legacySystemMessages.map(item => ({ ...item, status: "checking" }))
+  };
+
   try {
     if (!shop.value.shopId) {
       await store.dispatch("shopify/fetchShopifyShops");
@@ -485,10 +495,22 @@ async function loadAssistant() {
 
     const currentShop = store.getters["shopify/getShopById"](props.id) || {};
 
-    assistantState.value = await ShopifyProductSyncMigrationService.fetchAssistantState({
-      shopId: props.id,
-      shop: currentShop
-    });
+    await ShopifyProductSyncMigrationService.fetchAssistantState(
+      { shopId: props.id, shop: currentShop },
+      (partialState) => {
+        assistantState.value = { ...assistantState.value, ...partialState };
+      }
+    );
+
+    // Auto-advance if state allows (only if we haven't manually moved away from step 1)
+    if (currentStep.value === 1) {
+      if (isStep1Done.value) {
+        currentStep.value = 2;
+        if (isStep2Done.value) {
+          currentStep.value = 3;
+        }
+      }
+    }
   } catch (error: any) {
     loadErrorMessage.value = error?.message || translate("Failed to load the product sync upgrade assistant.");
   }
@@ -506,6 +528,8 @@ function openConnectionDetails() {
 
 function getLegacyItemLabel(status: ProductSyncMigrationLegacyItem["status"]) {
   switch (status) {
+    case "checking":
+      return translate("Checking");
     case "active":
       return translate("Active");
     case "deprecated":
@@ -525,6 +549,8 @@ function getLegacyItemLabel(status: ProductSyncMigrationLegacyItem["status"]) {
 
 function getLegacyItemColor(status: ProductSyncMigrationLegacyItem["status"]) {
   switch (status) {
+    case "checking":
+      return "medium";
     case "active":
       return "warning";
     case "deprecated":
@@ -537,6 +563,17 @@ function getLegacyItemColor(status: ProductSyncMigrationLegacyItem["status"]) {
     default:
       return "danger";
   }
+}
+
+function getArtifactCheckLabel(artifactCheck: any) {
+  if (artifactCheck.status === "checking") return translate("Checking");
+  return artifactCheck.status === "verified" ? translate("Verified") : translate("Missing");
+}
+
+function getArtifactCheckColor(artifactCheck: any) {
+  if (artifactCheck.status === "checking") return "medium";
+  if (artifactCheck.status === "verified") return "success";
+  return "danger";
 }
 
 function getTeardownStepLabel(status: ProductSyncMigrationTeardownStep["status"]) {
@@ -610,6 +647,30 @@ async function enableJob(artifactCheck: any) {
     await showToast(translate("Failed to enable job."));
   } finally {
     isEnablingJob.value[artifactCheck.id] = false;
+  }
+}
+
+async function copyMissingArtifactsToClipboard() {
+  const missingArtifacts = assistantState.value.artifactChecks.filter(check => check.status === "missing");
+  if (!missingArtifacts.length) return;
+
+  const details = missingArtifacts.map(check => `${check.label} (${check.id}): ${check.note}`).join("\n");
+  const textToCopy = `${translate("Missing readiness artifacts")}:\n${details}`;
+  
+  await copyToClipboard(textToCopy);
+}
+
+async function copyArtifactCheckToClipboard(artifactCheck: any) {
+  const textToCopy = `${artifactCheck.label} (${artifactCheck.id}): ${artifactCheck.note}`;
+  await copyToClipboard(textToCopy);
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    await showToast(translate("Details copied to clipboard."));
+  } catch (err) {
+    logger.error("Failed to copy to clipboard", err);
   }
 }
 
@@ -687,3 +748,19 @@ async function teardownLegacySync() {
   }
 }
 </script>
+
+
+<style scoped>
+
+main {
+  max-width: 70ch;
+  margin-inline: auto;
+}
+
+.card-header-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+</style>

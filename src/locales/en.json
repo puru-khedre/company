@@ -718,5 +718,18 @@
   "threshold": "threshold",
   "Variant components": "Variant components",
   "Variants": "Variants",
-  "variances in 7 days": "variances in 7 days"
+  "variances in 7 days": "variances in 7 days",
+  "Base sync job": "Base sync job",
+  "Data manager config": "Data manager config",
+  "Data manager logs document": "Data manager logs document",
+  "Details copied to clipboard.": "Details copied to clipboard.",
+  "Missing readiness artifacts": "Missing readiness artifacts",
+  "New product sync message type": "New product sync message type",
+  "Poll bulk operation results job": "Poll bulk operation results job",
+  "Product store counts document": "Product store counts document",
+  "Send produced messages job": "Send produced messages job",
+  "Service job parameters document": "Service job parameters document",
+  "The following required artifacts were not found in the system. These must be present before the new sync can be fully operational:": "The following required artifacts were not found in the system. These must be present before the new sync can be fully operational:",
+  "Verified": "Verified",
+  "Copy details": "Copy details"
 }
