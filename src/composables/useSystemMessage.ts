@@ -224,7 +224,11 @@ export function useSystemMessage() {
     const bulkOperationSource = await getBulkOperationSource(systemMessage);
     const systemMessageRemoteId = bulkOperationSource.systemMessage?.systemMessageRemoteId || systemMessage?.systemMessageRemoteId;
     if (systemMessage && bulkOperationSource.bulkOperationId && systemMessageRemoteId) {
-      shopifyBulkOperation = await fetchShopifyBulkOperation(bulkOperationSource.bulkOperationId, systemMessageRemoteId) || {};
+      try {
+        shopifyBulkOperation = await fetchShopifyBulkOperation(bulkOperationSource.bulkOperationId, systemMessageRemoteId) || {};
+      } catch (err) {
+        shopifyBulkOperation = { isStatusUnavailable: true };
+      }
     } else {
       state.currentShopifyBulkOperation = {};
     }

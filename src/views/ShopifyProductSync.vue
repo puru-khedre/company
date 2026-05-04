@@ -948,13 +948,17 @@ const bulkOperationProgressLabel = computed(() => {
   }
 
   const bulkOperationStatus = normalizeSyncStepStatus(currentSyncRun.value?.bulkOperation?.status);
+  if (bulkOperationStatus === "unavailable") {
+    return translate("Status unavailable");
+  }
+
   if (["created", "running", "canceling"].includes(bulkOperationStatus)) {
     return `${translate("Next poll attempt")}: ${bulkOperationPollJobNextRunLabel.value}`;
   }
 
   const statusTimeLabel = getRelativeOrAbsoluteLabel(getBulkOperationStatusAt(currentSyncRun.value?.bulkOperation));
   if (statusTimeLabel) {
-    return `${currentSyncRun.value?.bulkOperation?.statusLabel || translate("Pending")} ${statusTimeLabel}`;
+    return `${currentSyncRun.value?.bulkOperation?.statusLabel || ""} ${statusTimeLabel}`.trim() || translate("Pending");
   }
 
   return currentSyncRun.value?.bulkOperation?.statusLabel || translate("Pending");
@@ -1511,30 +1515,50 @@ async function loadSecondaryData() {
     });
     applyDashboardSummary(summary);
 
-    if (latestSystemMessage.value?.systemMessageId) {
-      await fetchSyncRun(latestSystemMessage.value.systemMessageId, latestSystemMessage.value);
-    } else {
-      currentSyncRun.value = {} as any;
+    try {
+      if (latestSystemMessage.value?.systemMessageId) {
+        await fetchSyncRun(latestSystemMessage.value.systemMessageId, latestSystemMessage.value);
+      } else {
+        currentSyncRun.value = {} as any;
+      }
+    } catch (e) {
+      logger.error("Failed to fetch sync run monitoring data", e);
     }
 
-    await fetchJobs({});
-    const syncJobs = jobs.value.filter((job: any) => isProductUpdateSyncServiceJob(job) || (syncJobId.value && job.jobName === syncJobId.value));
-    await Promise.all(syncJobs.map(async (job: any) => {
-      const details = await fetchJobDetail(job.jobName);
-      Object.assign(job, details);
-    }));
+    try {
+      await fetchJobs({});
+      const syncJobs = jobs.value.filter((job: any) => isProductUpdateSyncServiceJob(job) || (syncJobId.value && job.jobName === syncJobId.value));
+      await Promise.all(syncJobs.map(async (job: any) => {
+        try {
+          const details = await fetchJobDetail(job.jobName);
+          Object.assign(job, details);
+        } catch (e) {
+          logger.error(`Failed to fetch details for job ${job.jobName}`, e);
+        }
+      }));
+    } catch (e) {
+      logger.error("Failed to fetch service jobs", e);
+    }
 
-    await loadBulkOperationMonitoringJobs();
+    try {
+      await loadBulkOperationMonitoringJobs();
+    } catch (e) {
+      logger.error("Failed to load bulk operation monitoring jobs", e);
+    }
 
     await Promise.all([
-      loadSyncJobLatestRun(),
-      loadBulkOperationSendJobLatestRun(),
-      loadBulkOperationPollJobLatestRun(),
-      fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT)
+      loadSyncJobLatestRun().catch(e => logger.error("Failed to load sync job latest run", e)),
+      loadBulkOperationSendJobLatestRun().catch(e => logger.error("Failed to load bulk operation send job latest run", e)),
+      loadBulkOperationPollJobLatestRun().catch(e => logger.error("Failed to load bulk operation poll job latest run", e)),
+      fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT).catch(e => logger.error("Failed to fetch recent MDM logs", e))
     ]);
 
     if (recentMdmLogs.value.length) {
-      await fetchAllRecentFailedRecords(PRODUCT_SYNC_MDM_CONFIG_ID, recentMdmLogs.value);
+      try {
+        await fetchAllRecentFailedRecords(PRODUCT_SYNC_MDM_CONFIG_ID, recentMdmLogs.value);
+      } catch (e) {
+        logger.error("Failed to fetch failed records for MDM logs", e);
+      }
     }
   } catch (error) {
     logger.error("Error loading secondary data", error);

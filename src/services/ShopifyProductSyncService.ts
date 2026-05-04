@@ -364,6 +364,7 @@ export interface ShopifyProductSyncRun {
     rootObjectCount?: number;
     createdAt?: string;
     completedAt?: string;
+    isStatusUnavailable?: boolean;
     query?: string;
   };
   mdmLog: {
@@ -1212,16 +1213,22 @@ const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDa
   const { systemMessageRemoteId } = payload;
   
   const [syncRunState, pendingRequests, runningOperation, updateFilesToProcess] = await Promise.all([
-    fetchProductUpdateSyncRunState(payload),
-    fetchPendingProductUpdateRequests(payload),
-    fetchRunningBulkOperation(payload),
-    fetchUpdateFilesToProcessCount(payload)
+    fetchProductUpdateSyncRunState(payload).catch(e => { logger.error("Failed to fetch product update sync run state", e); return { systemMessages: [], lastSyncedAt: "" } as any }),
+    fetchPendingProductUpdateRequests(payload).catch(e => { logger.error("Failed to fetch pending product update requests", e); return { count: 0 } as any }),
+    fetchRunningBulkOperation(payload).catch(e => { logger.warn("Failed to fetch running bulk operation (likely GraphQL error)", e); return null }),
+    fetchUpdateFilesToProcessCount(payload).catch(e => { logger.error("Failed to fetch update files to process count", e); return 0 })
   ]);
-  const unsyncedUpdates = await fetchShopifyShopProductCount({
-    ...payload,
-    systemMessageRemoteId,
-    syncRunState
-  });
+
+  let unsyncedUpdates = { count: 0, products: [] } as any;
+  try {
+    unsyncedUpdates = await fetchShopifyShopProductCount({
+      ...payload,
+      systemMessageRemoteId,
+      syncRunState
+    });
+  } catch (error) {
+    logger.warn("Failed to fetch unsynced product updates (likely GraphQL error)", error);
+  }
 
   return {
     syncRunState,

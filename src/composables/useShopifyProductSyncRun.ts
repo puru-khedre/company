@@ -69,8 +69,9 @@ export function useShopifyProductSyncRun() {
         bulkOperation: {
           id: shopifyBulkOperation?.id || bulkOperationId,
           status: shopifyBulkOperation?.status,
-          statusLabel: getStatusLabel(shopifyBulkOperation?.status),
-          statusColor: getStatusColor(shopifyBulkOperation?.status),
+          statusLabel: shopifyBulkOperation?.isStatusUnavailable ? translate("Unavailable") : getStatusLabel(shopifyBulkOperation?.status),
+          statusColor: shopifyBulkOperation?.isStatusUnavailable ? "medium" : getStatusColor(shopifyBulkOperation?.status),
+          isStatusUnavailable: shopifyBulkOperation?.isStatusUnavailable,
           objectCount: shopifyBulkOperation?.objectCount,
           rootObjectCount: shopifyBulkOperation?.rootObjectCount,
           createdAt: shopifyBulkOperation?.createdAt,

@@ -77,7 +77,7 @@
             <ion-note slot="end" v-if="currentSyncRun.bulkOperation?.objectCount">
               {{ currentSyncRun.bulkOperation.objectCount }} {{ translate("objects") }}
             </ion-note>
-            <ion-badge slot="end" :color="currentSyncRun.bulkOperation?.statusColor || 'medium'">{{ currentSyncRun.bulkOperation?.statusLabel || translate("Pending") }}</ion-badge>
+            <ion-badge v-if="!currentSyncRun.bulkOperation?.isStatusUnavailable" slot="end" :color="currentSyncRun.bulkOperation?.statusColor || 'medium'">{{ currentSyncRun.bulkOperation?.statusLabel || translate("Pending") }}</ion-badge>
           </ion-item>
           <ion-item button detail @click="emit('open-step-details', { type: 'mdmLog', id: currentSyncRun.mdmLog?.id })" :disabled="!currentSyncRun.mdmLog?.id">
             <ion-label>
