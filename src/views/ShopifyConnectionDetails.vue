@@ -47,7 +47,7 @@
           <ion-skeleton-text 
             v-if="isSyncSummaryLoading" 
             animated 
-            style="height: 180px; width: 100%; border-radius: 16px; margin-block: var(--spacer-lg);" 
+            class="product-sync-skeleton"
           />
           <ion-card v-else-if="shouldShowProductSyncWidget" class="widget product-sync" button @click="openProductSyncEntry()">
             <ion-card-header>
@@ -837,7 +837,7 @@ ion-card.widget:hover {
 .product-sync-activity-svg polyline {
   stroke-dasharray: 1000;
   stroke-dashoffset: 1000;
-  animation: drawLine 1s ease-out forwards;
+  animation: drawLine 2s ease-out forwards;
 }
 
 .product-sync-activity-svg path:nth-of-type(2) {
@@ -879,6 +879,13 @@ ion-item[data-sync-state="upgrade-ready"]::part(native) {
 
 ion-item[data-sync-state="teardown-needed"]::part(native) {
   border-color: var(--ion-color-danger);
+}
+
+.product-sync-skeleton {
+  height: 180px;
+  width: 100%;
+  border-radius: 16px;
+  margin-block: var(--spacer-lg);
 }
 
 @media screen and (min-width: 700px) {
