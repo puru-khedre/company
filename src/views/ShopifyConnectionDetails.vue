@@ -44,7 +44,12 @@
 
         <div class="ion-margin-top">
           <h1>{{ translate("Products and Inventory") }}</h1>
-          <ion-card v-if="shouldShowProductSyncWidget" class="widget product-sync" button @click="openProductSyncEntry()">
+          <ion-skeleton-text 
+            v-if="isSyncSummaryLoading" 
+            animated 
+            style="height: 180px; width: 100%; border-radius: 16px; margin-block: var(--spacer-lg);" 
+          />
+          <ion-card v-else-if="shouldShowProductSyncWidget" class="widget product-sync" button @click="openProductSyncEntry()">
             <ion-card-header>
               <ion-card-title>{{ translate("Product sync") }}</ion-card-title>
               <ion-card-subtitle>{{ productSyncCardSubtitle }}</ion-card-subtitle>
@@ -217,6 +222,7 @@ const props = defineProps(['id']);
 const store = useStore();
 const router = useRouter();
 const isLoading = ref(true);
+const isSyncSummaryLoading = ref(true);
 const PRODUCT_SYNC_ACTIVITY_HOUR_COUNT = 24;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_WIDTH = 320;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_HEIGHT = 96;
@@ -539,12 +545,13 @@ onIonViewWillEnter(async () => {
   if (!shop.value.shopId) {
     await store.dispatch("shopify/fetchShopifyShops")
   }
-  await loadProductsInventorySummary();
   isLoading.value = false;
+  await loadProductsInventorySummary();
 });
 
 async function loadProductsInventorySummary() {
   hasProductSyncSummaryError.value = false;
+  isSyncSummaryLoading.value = true;
   productSyncMigrationEligibility.value = {
     componentRelease: "",
     minimumComponentRelease: "",
@@ -577,60 +584,72 @@ async function loadProductsInventorySummary() {
   productSyncUnsyncedCount.value = 0;
   currentSyncRun.value = {} as any;
 
-  if (!props.id) return;
-
-  try {
-    productSyncMigrationEligibility.value = await ShopifyProductSyncMigrationService.fetchEligibility();
-  } catch (error) {
-    logger.warn("Failed to load product sync migration eligibility", error);
+  if (!props.id) {
+    isSyncSummaryLoading.value = false;
+    return;
   }
 
-  try {
-    shopifyAccessState.value = await ShopifyProductSyncService.fetchShopifyAccessState({
-      shopId: props.id,
-      shop: shop.value
-    });
-  } catch (error) {
-    logger.warn("Failed to resolve Shopify access scope", error);
+  const [eligibilityResult, accessStateResult, legacyTeardownStateResult, systemMessageRemoteIdResult] = await Promise.allSettled([
+    ShopifyProductSyncMigrationService.fetchEligibility(),
+    ShopifyProductSyncService.fetchShopifyAccessState({ shopId: props.id, shop: shop.value }),
+    ShopifyProductSyncMigrationService.fetchLegacyTeardownState({ shopId: props.id, shop: shop.value }),
+    ShopifyProductSyncService.fetchShopSystemMessageRemoteId({ shopId: props.id, shop: shop.value })
+  ]);
+
+  if (eligibilityResult.status === "fulfilled") {
+    productSyncMigrationEligibility.value = eligibilityResult.value;
+  } else {
+    logger.warn("Failed to load product sync migration eligibility", eligibilityResult.reason);
   }
 
-  try {
-    const legacyTeardownState = await ShopifyProductSyncMigrationService.fetchLegacyTeardownState({
-      shopId: props.id,
-      shop: shop.value
-    });
+  if (accessStateResult.status === "fulfilled") {
+    shopifyAccessState.value = accessStateResult.value;
+  } else {
+    logger.warn("Failed to resolve Shopify access scope", accessStateResult.reason);
+  }
 
+  if (legacyTeardownStateResult.status === "fulfilled") {
     legacyProductSyncState.value = {
-      legacySystemMessageTypes: legacyTeardownState.legacySystemMessageTypes || [],
-      legacyServiceJobs: legacyTeardownState.legacyServiceJobs || [],
-      legacySystemMessages: legacyTeardownState.legacySystemMessages || []
+      legacySystemMessageTypes: legacyTeardownStateResult.value.legacySystemMessageTypes || [],
+      legacyServiceJobs: legacyTeardownStateResult.value.legacyServiceJobs || [],
+      legacySystemMessages: legacyTeardownStateResult.value.legacySystemMessages || []
     };
-  } catch (error) {
-    logger.warn("Failed to inspect legacy product sync state", error);
+  } else {
+    logger.warn("Failed to inspect legacy product sync state", legacyTeardownStateResult.reason);
+  }
+
+  let systemMessageRemoteId = null;
+  if (systemMessageRemoteIdResult.status === "fulfilled") {
+    systemMessageRemoteId = systemMessageRemoteIdResult.value;
   }
 
   try {
-    const systemMessageRemoteId = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
-      shopId: props.id,
-      shop: shop.value
-    });
-
     productSyncSummary.value = await ShopifyProductSyncService.fetchDashboardSummary({
       shopId: props.id,
       systemMessageRemoteId,
       shop: shop.value
     });
 
+    productSyncRecordsProcessed.value = Number(productSyncSummary.value.syncRunState?.latestConsumedSystemMessage?.totalRecordCount || 0);
+    productSyncUnsyncedCount.value = Number(productSyncSummary.value.unsyncedUpdates?.count || 0);
+
+    loadTrackProgressDetails();
+  } catch (error) {
+    logger.error(error);
+    hasProductSyncSummaryError.value = true;
+  }
+  
+  isSyncSummaryLoading.value = false;
+}
+
+async function loadTrackProgressDetails() {
+  try {
     const trackProgressMessage = await selectTrackProgressSystemMessage(productSyncSummary.value.syncRunState?.systemMessages || []);
     if (trackProgressMessage?.systemMessageId) {
       await fetchSyncRun(trackProgressMessage.systemMessageId, trackProgressMessage);
     }
-
-    productSyncRecordsProcessed.value = Number(productSyncSummary.value.syncRunState?.latestConsumedSystemMessage?.totalRecordCount || 0);
-    productSyncUnsyncedCount.value = Number(productSyncSummary.value.unsyncedUpdates?.count || 0);
   } catch (error) {
-    logger.error(error);
-    hasProductSyncSummaryError.value = true;
+    logger.warn("Failed to load track progress details in background", error);
   }
 }
 
@@ -695,8 +714,14 @@ async function selectTrackProgressSystemMessage(systemMessages: any[]) {
   const consumedMessages = systemMessages.filter((message) => hasSystemMessageStatus(message, ["smsgconsumed", "consumed", "smsgconfirmed", "confirmed"]));
   const oldestConsumedMessages = sortSystemMessagesOldestFirst(consumedMessages);
 
-  for (const message of oldestConsumedMessages) {
-    const mdmLog = await fetchMdmLogBySystemMessageId(message.systemMessageId);
+  const mdmLogResults = await Promise.all(
+    oldestConsumedMessages.map(async (message) => {
+      const mdmLog = await fetchMdmLogBySystemMessageId(message.systemMessageId);
+      return { message, mdmLog };
+    })
+  );
+
+  for (const { message, mdmLog } of mdmLogResults) {
     if (mdmLog?.logId && !isTerminalMdmLogStatus(mdmLog.statusId)) {
       return message;
     }
@@ -797,6 +822,32 @@ ion-card.widget:hover {
   min-height: 0;
   overflow: hidden;
   position: relative;
+}
+
+@keyframes drawLine {
+  from { stroke-dashoffset: 1000; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes fadeArea {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.product-sync-activity-svg polyline {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: drawLine 1s ease-out forwards;
+}
+
+.product-sync-activity-svg path:nth-of-type(2) {
+  opacity: 0;
+  animation: fadeArea 1s ease-out 0.3s forwards;
+}
+
+.product-sync-activity-svg circle {
+  opacity: 0;
+  animation: fadeArea 0.5s ease-out 0.8s forwards;
 }
 
 .product-sync-activity-canvas {
