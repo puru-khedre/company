@@ -63,8 +63,8 @@
           <ion-item button detail @click="emit('open-step-details', { type: 'systemMessage', id: currentSyncRun.systemMessageId })">
             <ion-label>
               {{ translate("System message") }}
-              <p>{{ currentSyncRun.systemMessageId }}</p>
-              <p>{{ translate("Next send attempt") }}: {{ systemMessageSendJobNextRunLabel }}</p>
+              <p>{{ systemMessageMetaLabel }}</p>
+              <p>{{ systemMessageProgressLabel }}</p>
             </ion-label>
             <ion-badge slot="end" :color="currentSyncRun.systemMessage?.statusColor || 'medium'">{{ currentSyncRun.systemMessage?.statusLabel || translate("Pending") }}</ion-badge>
           </ion-item>
@@ -72,7 +72,7 @@
             <ion-label>
               {{ translate("Shopify bulk operation") }}
               <p>{{ currentSyncRun.bulkOperation?.id || translate("Not started") }}</p>
-              <p>{{ translate("Next poll attempt") }}: {{ bulkOperationPollJobNextRunLabel }}</p>
+              <p>{{ bulkOperationProgressLabel }}</p>
             </ion-label>
             <ion-note slot="end" v-if="currentSyncRun.bulkOperation?.objectCount">
               {{ currentSyncRun.bulkOperation.objectCount }} {{ translate("objects") }}
@@ -82,7 +82,8 @@
           <ion-item button detail @click="emit('open-step-details', { type: 'mdmLog', id: currentSyncRun.mdmLog?.id })" :disabled="!currentSyncRun.mdmLog?.id">
             <ion-label>
               {{ translate("HotWax bulk import") }}
-              <p>{{ currentSyncRun.mdmLog?.id || translate("Not started") }}</p>
+              <p>{{ mdmLogMetaLabel }}</p>
+              <p>{{ mdmLogProgressLabel }}</p>
             </ion-label>
             <ion-note slot="end" v-if="currentSyncRun.mdmLog?.totalRecordCount">
               {{ currentSyncRun.mdmLog.totalRecordCount }} {{ translate("records") }}
@@ -372,6 +373,11 @@ const props = defineProps<{
   nextSyncRelativeLabel: string
   systemMessageSendJobNextRunLabel: string
   bulkOperationPollJobNextRunLabel: string
+  systemMessageMetaLabel: string
+  systemMessageProgressLabel: string
+  bulkOperationProgressLabel: string
+  mdmLogMetaLabel: string
+  mdmLogProgressLabel: string
   summarySubtitle: string
   errorLookbackCount: number
   currentSyncRun?: ShopifyProductSyncRun

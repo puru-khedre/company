@@ -44,6 +44,11 @@
           :next-sync-relative-label="nextSyncRelativeLabel"
           :system-message-send-job-next-run-label="systemMessageSendJobNextRunLabel"
           :bulk-operation-poll-job-next-run-label="bulkOperationPollJobNextRunLabel"
+          :system-message-meta-label="systemMessageMetaLabel"
+          :system-message-progress-label="systemMessageProgressLabel"
+          :bulk-operation-progress-label="bulkOperationProgressLabel"
+          :mdm-log-meta-label="mdmLogMetaLabel"
+          :mdm-log-progress-label="mdmLogProgressLabel"
           :current-sync-run="currentSyncRun"
           :recent-sync-updates="recentSyncUpdates"
           :selected-product-store-name="selectedProductStoreName"
@@ -892,11 +897,80 @@ const nextSyncRelativeLabel = computed(() => {
   return getRelativeNextRunLabel(syncJobObj.value);
 });
 const systemMessageSendJobNextRunLabel = computed(() => {
-  if (!pendingUpdateRequestsCount.value) return translate("No requests queued to send");
   return getJobNextRunLabel(bulkOperationSendJob.value);
 });
 const bulkOperationPollJobNextRunLabel = computed(() => {
   return getJobNextRunLabel(bulkOperationPollJob.value);
+});
+const systemMessageMetaLabel = computed(() => {
+  const systemMessageId = currentSyncRun.value?.systemMessageId || "";
+  const createdAtLabel = getRelativeOrAbsoluteLabel(getSystemMessageCreatedAt(currentSyncRun.value?.systemMessage));
+
+  if (systemMessageId && createdAtLabel) {
+    return `${systemMessageId} · ${translate("Created")} ${createdAtLabel}`;
+  }
+  if (systemMessageId) return systemMessageId;
+  if (createdAtLabel) return `${translate("Created")} ${createdAtLabel}`;
+  return translate("No system message details available");
+});
+const systemMessageProgressLabel = computed(() => {
+  const statusId = normalizeSyncStepStatus(currentSyncRun.value?.systemMessage?.statusId);
+  const statusLabel = currentSyncRun.value?.systemMessage?.statusLabel || translate("Pending");
+  const statusTimeLabel = getRelativeOrAbsoluteLabel(getSystemMessageStatusAt(currentSyncRun.value?.systemMessage));
+
+  if (statusId === "smsgproduced") {
+    return `${translate("Next send attempt")}: ${systemMessageSendJobNextRunLabel.value}`;
+  }
+
+  if (statusTimeLabel) {
+    return `${statusLabel} ${statusTimeLabel}`;
+  }
+
+  return statusLabel;
+});
+const bulkOperationProgressLabel = computed(() => {
+  const bulkOperationId = currentSyncRun.value?.bulkOperation?.id;
+  if (!bulkOperationId) {
+    return translate("Waiting for Shopify bulk operation request.");
+  }
+
+  const bulkOperationStatus = normalizeSyncStepStatus(currentSyncRun.value?.bulkOperation?.status);
+  if (["created", "running", "canceling"].includes(bulkOperationStatus)) {
+    return `${translate("Next poll attempt")}: ${bulkOperationPollJobNextRunLabel.value}`;
+  }
+
+  const statusTimeLabel = getRelativeOrAbsoluteLabel(getBulkOperationStatusAt(currentSyncRun.value?.bulkOperation));
+  if (statusTimeLabel) {
+    return `${currentSyncRun.value?.bulkOperation?.statusLabel || translate("Pending")} ${statusTimeLabel}`;
+  }
+
+  return currentSyncRun.value?.bulkOperation?.statusLabel || translate("Pending");
+});
+const mdmLogMetaLabel = computed(() => {
+  const mdmLogId = currentSyncRun.value?.mdmLog?.id || "";
+  const startedAtLabel = getRelativeOrAbsoluteLabel(getMdmLogStartedAt(currentSyncRun.value?.mdmLog));
+
+  if (mdmLogId && startedAtLabel) {
+    return `${mdmLogId} · ${translate("Started")} ${startedAtLabel}`;
+  }
+  if (mdmLogId) return mdmLogId;
+  if (startedAtLabel) return `${translate("Started")} ${startedAtLabel}`;
+  return translate("No import log details available");
+});
+const mdmLogProgressLabel = computed(() => {
+  const statusLabel = currentSyncRun.value?.mdmLog?.statusLabel || translate("Pending");
+  const completedAtLabel = getRelativeOrAbsoluteLabel(getMdmLogCompletedAt(currentSyncRun.value?.mdmLog));
+
+  if (completedAtLabel) {
+    return `${statusLabel} ${completedAtLabel}`;
+  }
+
+  const startedAtLabel = getRelativeOrAbsoluteLabel(getMdmLogStartedAt(currentSyncRun.value?.mdmLog));
+  if (startedAtLabel) {
+    return `${statusLabel} ${startedAtLabel}`;
+  }
+
+  return statusLabel;
 });
 const lastSyncTotalRecordCount = computed(() => {
   return latestConsumedSystemMessage.value?.totalRecordCount || 0;
@@ -1664,6 +1738,49 @@ function getConnectedShopLabel(productStoreId: string) {
     return shopifyShop.productStoreId === productStoreId;
   }).length;
   return translate("{count} Shopify stores connected", { count });
+}
+
+function getSystemMessageCreatedAt(systemMessage: any) {
+  return systemMessage?.createdDate || systemMessage?.createdStamp || systemMessage?.initDate || "";
+}
+
+function getSystemMessageStatusAt(systemMessage: any) {
+  return systemMessage?.processedDate || systemMessage?.lastUpdatedStamp || systemMessage?.initDate || "";
+}
+
+function getBulkOperationStatusAt(bulkOperation: any) {
+  return bulkOperation?.completedAt || bulkOperation?.createdAt || "";
+}
+
+function getMdmLogStartedAt(mdmLog: any) {
+  return mdmLog?.startDate ||
+    mdmLog?.startTime ||
+    mdmLog?.startedDate ||
+    mdmLog?.startedAt ||
+    mdmLog?.createdDate ||
+    mdmLog?.createdStamp ||
+    "";
+}
+
+function getMdmLogCompletedAt(mdmLog: any) {
+  return mdmLog?.endDate ||
+    mdmLog?.endTime ||
+    mdmLog?.finishDateTime ||
+    mdmLog?.finishedAt ||
+    mdmLog?.completedDate ||
+    mdmLog?.completedAt ||
+    mdmLog?.lastUpdatedStamp ||
+    "";
+}
+
+function getRelativeOrAbsoluteLabel(value: string) {
+  const dateTime = parseDateTimeValue(value);
+  if (!dateTime || !dateTime.isValid) return "";
+  return dateTime.toRelative({ base: DateTime.fromMillis(currentTimeMs.value) }) || formatDateTime(value);
+}
+
+function normalizeSyncStepStatus(statusId: string) {
+  return String(statusId || "").toLowerCase().replace(/[_\-\s]/g, "");
 }
 
 function handleProductStoreChange(productStoreId: string) {

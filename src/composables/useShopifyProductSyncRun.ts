@@ -73,6 +73,8 @@ export function useShopifyProductSyncRun() {
           statusColor: getStatusColor(shopifyBulkOperation?.status),
           objectCount: shopifyBulkOperation?.objectCount,
           rootObjectCount: shopifyBulkOperation?.rootObjectCount,
+          createdAt: shopifyBulkOperation?.createdAt,
+          completedAt: shopifyBulkOperation?.completedAt,
           query: shopifyBulkOperation?.query
         },
         mdmLog: {
@@ -80,6 +82,14 @@ export function useShopifyProductSyncRun() {
           statusId: mdmLog?.statusId,
           statusLabel: getStatusLabel(mdmLog?.statusId),
           statusColor: getStatusColor(mdmLog?.statusId),
+          startDate: mdmLog?.startDate,
+          endDate: mdmLog?.endDate,
+          finishDateTime: mdmLog?.finishDateTime,
+          createdDate: mdmLog?.createdDate,
+          createdStamp: mdmLog?.createdStamp,
+          completedDate: mdmLog?.completedDate,
+          completedAt: mdmLog?.completedAt,
+          lastUpdatedStamp: mdmLog?.lastUpdatedStamp,
           totalRecordCount: mdmLog?.totalRecordCount,
           failedRecordCount: mdmLog?.failedRecordCount,
           successRecordCount: mdmLog?.successRecordCount,

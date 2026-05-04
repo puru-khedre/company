@@ -362,6 +362,8 @@ export interface ShopifyProductSyncRun {
     statusColor?: string;
     objectCount?: number;
     rootObjectCount?: number;
+    createdAt?: string;
+    completedAt?: string;
     query?: string;
   };
   mdmLog: {
@@ -369,6 +371,14 @@ export interface ShopifyProductSyncRun {
     statusId?: string;
     statusLabel?: string;
     statusColor?: string;
+    startDate?: string;
+    endDate?: string;
+    finishDateTime?: string;
+    createdDate?: string;
+    createdStamp?: string;
+    completedDate?: string;
+    completedAt?: string;
+    lastUpdatedStamp?: string;
     totalRecordCount?: number;
     failedRecordCount?: number;
     successRecordCount?: number;
