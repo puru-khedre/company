@@ -27,7 +27,7 @@
         </ion-item>
         <ion-item>
           <ion-label>{{ translate("Updates synced") }}</ion-label>
-          <ion-label slot="end">{{ lastSyncTotalRecordCount }}</ion-label>
+          <ion-label slot="end"><AnimatedNumber :value="Number(lastSyncTotalRecordCount) || 0" /></ion-label>
         </ion-item>
         <ion-item button :detail="isSyncScheduled" @click="isSyncScheduled ? emit('open-sync-job-details') : undefined">
           <ion-label>{{ translate("Next sync time") }}
@@ -39,7 +39,7 @@
         </ion-item>
         <ion-item button detail @click="emit('open-unsynced-updates')">
           <ion-label>{{ translate("Un-synced updates") }}</ion-label>
-          <ion-spinner v-if="isSecondaryLoading" name="crescent" slot="end"></ion-spinner><ion-badge v-else slot="end" color="medium">{{ unsyncedUpdatesCount }}</ion-badge>
+          <ion-badge slot="end" color="medium"><AnimatedNumber :value="Number(unsyncedUpdatesCount) || 0" /></ion-badge>
         </ion-item>
         <ion-item>
           <ion-label>{{ translate("Product store") }}</ion-label>
@@ -145,7 +145,7 @@
             {{ translate("Pending update requests")}}
             <p>{{ pendingUpdateRequestsSubtitle }}</p>
           </ion-label>
-          <ion-spinner v-if="isSecondaryLoading" name="crescent" slot="end"></ion-spinner><ion-label v-else slot="end">{{ pendingUpdateRequestsCount }}</ion-label>
+          <ion-label slot="end"><AnimatedNumber :value="Number(pendingUpdateRequestsCount) || 0" /></ion-label>
         </ion-item>
         <ion-item>
           <ion-label>
@@ -158,14 +158,14 @@
           <ion-label>
             {{ translate("Update files to process")}}
           </ion-label>
-          <ion-label slot="end">{{ updateFilesToProcessCount }}</ion-label>
+          <ion-label slot="end"><AnimatedNumber :value="Number(updateFilesToProcessCount) || 0" /></ion-label>
         </ion-item>
         <ion-item>
           <ion-label>
             {{ translate("Error records")}}
             <p>{{ translate("In the last 24 hours") }}</p>
           </ion-label>
-          <ion-label slot="end">{{ errorRecordCount }}</ion-label>
+          <ion-label slot="end"><AnimatedNumber :value="Number(errorRecordCount) || 0" /></ion-label>
         </ion-item>
       </ion-list>
     </ion-card>
@@ -209,66 +209,78 @@
       <ion-searchbar v-model="updatesQuery" :placeholder="translate('Search by internal name')" />
     </div>
     <div class="stat-data">
-      <ion-spinner v-if="isSecondaryLoading" name="crescent"></ion-spinner>
-      <template v-else>
-      <ion-card v-for="item in filteredUpdates" :key="item.id">
-        <ion-list lines="full">
-          <ion-item>
-            <ion-label class="ion-text-wrap">
-              <h2>{{ item.internalName }}</h2>
-              <p>{{ item.shopifyId }}</p>
-            </ion-label>
-            <ion-note slot="end">{{ item.updatedTime }}</ion-note>
-          </ion-item>
-
-          <ion-card-content v-if="item.details.length">
-            <ion-chip v-for="label in getChangeSummary(item.details)" :key="label">
-              <ion-label>{{ label }}</ion-label>
-            </ion-chip>
-          </ion-card-content>
-
-          <ion-accordion-group>
-            <ion-accordion :value="item.id">
-              <ion-item slot="header">
-                <ion-label>
-                  {{ translate("Changes") }}
-                  <p>{{ translate("Review field-level updates") }}</p>
+        <transition-group name="list" tag="div" class="list-transition-group">
+          <ion-card v-for="item in filteredUpdates" :key="item.id">
+            <ion-list lines="full">
+              <ion-item>
+                <ion-label class="ion-text-wrap">
+                  <h2>{{ item.parentTitle || item.internalName }}</h2>
+                  <p v-if="item.variantTitle && item.variantTitle !== item.parentTitle">{{ item.variantTitle }}</p>
+                  <p v-if="item.sku">{{ translate("SKU") }}: {{ item.sku }}</p>
+                  <ion-button
+                    v-if="item.shopifyAdminUrl"
+                    fill="clear"
+                    size="small"
+                    :href="item.shopifyAdminUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    @click.stop
+                  >
+                    {{ item.shopifyIdLabel }}
+                  </ion-button>
+                  <p v-else>{{ item.shopifyIdLabel || item.shopifyId }}</p>
                 </ion-label>
-                <ion-badge slot="end" color="medium">{{ item.details.length }}</ion-badge>
+                <ion-note slot="end">{{ item.updatedTime }}</ion-note>
               </ion-item>
-              <ion-list slot="content" lines="full">
-                <ion-item v-for="(detail, index) in item.details" :key="index">
-                  <ion-label class="ion-text-wrap">
-                    <h3>{{ detail.label }}</h3>
-                    <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
-                      {{ getDetailActionLabel(detail.type) }}
-                    </p>
-                    <template v-if="detail.items?.length">
-                      <p v-for="(detailItem, detailItemIndex) in detail.items" :key="detailItemIndex">
-                        <template v-if="detailItem.label">{{ detailItem.label }}: </template>{{ detailItem.value }}
-                      </p>
-                    </template>
-                    <p v-else>{{ detail.value }}</p>
-                  </ion-label>
-                </ion-item>
-              </ion-list>
-            </ion-accordion>
-          </ion-accordion-group>
 
-          <ion-item v-if="!item.details.length">
-            <ion-label>{{ translate("No details found for this update") }}</ion-label>
-          </ion-item>
-        </ion-list>
-      </ion-card>
+              <ion-card-content v-if="item.details.length">
+                <ion-chip v-for="label in getChangeSummary(item.details)" :key="label">
+                  <ion-label>{{ label }}</ion-label>
+                </ion-chip>
+              </ion-card-content>
 
-      <ion-card v-if="!filteredUpdates.length">
-        <ion-list lines="full">
-          <ion-item>
-            <ion-label>{{ translate("No recently synced product updates") }}</ion-label>
-          </ion-item>
-        </ion-list>
-      </ion-card>
-      </template>
+              <ion-accordion-group>
+                <ion-accordion :value="item.id">
+                  <ion-item slot="header">
+                    <ion-label>
+                      {{ translate("Changes") }}
+                      <p>{{ translate("Review field-level updates") }}</p>
+                    </ion-label>
+                    <ion-badge slot="end" color="medium">{{ item.details.length }}</ion-badge>
+                  </ion-item>
+                  <ion-list slot="content" lines="full">
+                    <ion-item v-for="(detail, index) in item.details" :key="index">
+                      <ion-label class="ion-text-wrap">
+                        <h3>{{ detail.label }}</h3>
+                        <p :class="detail.type === 'added' ? 'ion-text-success' : 'ion-text-danger'">
+                          {{ getDetailActionLabel(detail.type) }}
+                        </p>
+                        <template v-if="detail.items?.length">
+                          <p v-for="(detailItem, detailItemIndex) in detail.items" :key="detailItemIndex">
+                            <template v-if="detailItem.label">{{ detailItem.label }}: </template>{{ detailItem.value }}
+                          </p>
+                        </template>
+                        <p v-else>{{ detail.value }}</p>
+                      </ion-label>
+                    </ion-item>
+                  </ion-list>
+                </ion-accordion>
+              </ion-accordion-group>
+
+              <ion-item v-if="!item.details.length">
+                <ion-label>{{ translate("No details found for this update") }}</ion-label>
+              </ion-item>
+            </ion-list>
+          </ion-card>
+
+          <ion-card v-if="!filteredUpdates.length" key="no-updates-card">
+            <ion-list lines="full">
+              <ion-item>
+                <ion-label>{{ translate("No recently synced product updates") }}</ion-label>
+              </ion-item>
+            </ion-list>
+          </ion-card>
+        </transition-group>
     </div>
   </section>
 
@@ -358,6 +370,7 @@ import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps, ref } from "vue";
 import { checkmarkCircleOutline, closeOutline, ellipsisVerticalOutline, flashOutline, pauseCircleOutline, refreshOutline, timeOutline } from "ionicons/icons";
 import { modalController, popoverController } from "@ionic/vue";
+import AnimatedNumber from "@/components/AnimatedNumber.vue";
 
 import ShopifyProductSyncActionsPopover from "./ShopifyProductSyncActionsPopover.vue";
 import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
@@ -384,7 +397,12 @@ const props = defineProps<{
   recentSyncUpdates: Array<{
     id: string,
     internalName: string,
+    parentTitle?: string,
+    variantTitle?: string,
+    sku?: string,
     shopifyId: string,
+    shopifyIdLabel?: string,
+    shopifyAdminUrl?: string,
     updatedTime: string,
     details: Array<{ type: string, label: string, value: string, items?: Array<{ label?: string, value: string }> }>
   }>
@@ -463,7 +481,11 @@ const filteredUpdates = computed(() => {
   if (!query) return props.recentSyncUpdates;
 
   return props.recentSyncUpdates.filter((item) => {
-    return item.internalName.toLowerCase().includes(query) || item.shopifyId.toLowerCase().includes(query);
+    return item.internalName.toLowerCase().includes(query) ||
+      String(item.parentTitle || "").toLowerCase().includes(query) ||
+      String(item.variantTitle || "").toLowerCase().includes(query) ||
+      String(item.sku || "").toLowerCase().includes(query) ||
+      item.shopifyId.toLowerCase().includes(query);
   });
 });
 
@@ -540,5 +562,26 @@ ion-buttons {
 
 .stat-data ion-card {
   flex: 0 0 375px;
+}
+
+.list-transition-group {
+  display: flex;
+  flex-wrap: nowrap;
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.5s ease;
+}
+.list-leave-active {
+  position: absolute;
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+.list-move {
+  transition: transform 0.5s ease;
 }
 </style>

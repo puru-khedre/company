@@ -181,7 +181,6 @@
 
 <script setup lang="ts">
 import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCardTitle, IonContent, IonHeader, IonItem, IonLabel, IonList, IonPage, IonSkeletonText, IonTitle, IonToggle, IonToolbar, modalController, onIonViewWillEnter } from "@ionic/vue";
-import api from "@/api";
 import { translate } from "@/i18n";
 import { formatDateTime, parseDateTimeValue } from "@/utils";
 import { DateTime } from "luxon";
@@ -220,7 +219,6 @@ const productSyncSummary = ref<any>({
 });
 const productSyncRecordsProcessed = ref(0);
 const productSyncUnsyncedCount = ref(0);
-const productSyncActivityHistory = ref<any[]>([]);
 const hasProductSyncSummaryError = ref(false);
 const productSyncMigrationEligibility = ref({
   componentRelease: "",
@@ -275,7 +273,7 @@ const recordsProcessedLabel = computed(() => {
   return String(productSyncRecordsProcessed.value || 0);
 });
 const recordsProcessedDetail = computed(() => {
-  if (currentSyncRun.value?.mdmLog?.id) {
+  if (productSyncSummary.value.syncRunState?.latestConsumedSystemMessage) {
     return translate("From the most recent completed import run.");
   }
 
@@ -322,9 +320,15 @@ const hotwaxImportDetail = computed(() => {
 
   return translate("Not started");
 });
+const productSyncActivityRuns = computed(() => {
+  const windowStart = DateTime.now().minus({ hours: PRODUCT_SYNC_ACTIVITY_HOUR_COUNT }).toMillis();
+  const systemMessages = productSyncSummary.value.syncRunState?.systemMessages || [];
+
+  return systemMessages.filter((message: any) => getSystemMessageTime(message) >= windowStart);
+});
 const productSyncActivityHours = computed(() => {
-  const countsByHour = productSyncActivityHistory.value.reduce((counts: Record<string, number>, history: any) => {
-    const hourKey = getHourKey(history?.lastUpdatedStamp);
+  const countsByHour = productSyncActivityRuns.value.reduce((counts: Record<string, number>, message: any) => {
+    const hourKey = getHourKey(getSystemMessageTimeValue(message));
     if (!hourKey) return counts;
     counts[hourKey] = (counts[hourKey] || 0) + 1;
     return counts;
@@ -387,13 +391,13 @@ const activityGraphLatestPoint = computed(() => {
 });
 const activityGraphCaption = computed(() => {
   if (!activityGraphTotalCount.value) {
-    return `${translate("No product update activity recorded in the last")} ${PRODUCT_SYNC_ACTIVITY_HOUR_COUNT} ${translate("hours")}.`;
+    return `${translate("No sync activity recorded in the last")} ${PRODUCT_SYNC_ACTIVITY_HOUR_COUNT} ${translate("hours")}.`;
   }
 
-  return `${activityGraphTotalCount.value} ${translate("updates")} · ${activityGraphActiveHourCount.value} ${translate("active hours")}`;
+  return `${activityGraphTotalCount.value} ${translate("sync runs")} · ${activityGraphActiveHourCount.value} ${translate("active hours")}`;
 });
 const activityGraphAriaLabel = computed(() => {
-  return `${translate("Product update activity over the last")} ${PRODUCT_SYNC_ACTIVITY_HOUR_COUNT} ${translate("hours")}. ${activityGraphCaption.value}. ${translate("Peak")} ${activityGraphPeakCount.value}/${translate("hour")}.`;
+  return `${translate("Product sync activity over the last")} ${PRODUCT_SYNC_ACTIVITY_HOUR_COUNT} ${translate("hours")}. ${activityGraphCaption.value}. ${translate("Peak")} ${activityGraphPeakCount.value}/${translate("hour")}.`;
 });
 
 onIonViewWillEnter(async () => {
@@ -425,7 +429,6 @@ async function loadProductsInventorySummary() {
   };
   productSyncRecordsProcessed.value = 0;
   productSyncUnsyncedCount.value = 0;
-  productSyncActivityHistory.value = [];
   currentSyncRun.value = {} as any;
 
   if (!props.id) return;
@@ -448,64 +451,16 @@ async function loadProductsInventorySummary() {
       shop: shop.value
     });
 
-    await loadProductSyncActivityHistory();
-
     const trackProgressMessage = await selectTrackProgressSystemMessage(productSyncSummary.value.syncRunState?.systemMessages || []);
     if (trackProgressMessage?.systemMessageId) {
       await fetchSyncRun(trackProgressMessage.systemMessageId, trackProgressMessage);
     }
 
-    productSyncRecordsProcessed.value = Number(currentSyncRun.value?.mdmLog?.totalRecordCount || 0);
+    productSyncRecordsProcessed.value = Number(productSyncSummary.value.syncRunState?.latestConsumedSystemMessage?.totalRecordCount || 0);
     productSyncUnsyncedCount.value = Number(productSyncSummary.value.unsyncedUpdates?.count || 0);
   } catch (error) {
     logger.error(error);
     hasProductSyncSummaryError.value = true;
-  }
-}
-
-async function loadProductSyncActivityHistory() {
-  try {
-    const pageSize = 1000;
-    const hourWindowStart = DateTime.now().minus({ hours: PRODUCT_SYNC_ACTIVITY_HOUR_COUNT }).toJSDate();
-    const histories = [] as any[];
-    let pageIndex = 0;
-    let keepLoading = true;
-
-    while (keepLoading) {
-      const response = await api({
-        url: "oms/productUpdateHistory",
-        method: "GET",
-        params: {
-          shopId: props.id,
-          pageSize,
-          pageIndex,
-          orderByField: "-lastUpdatedStamp"
-        }
-      }) as any;
-
-      const page = getProductUpdateHistoryPayload(response?.data);
-      if (!page.length) {
-        break;
-      }
-
-      const inWindowRecords = page.filter((history: any) => {
-        const timestamp = parseDateTimeValue(history?.lastUpdatedStamp)?.toMillis() || 0;
-        return timestamp >= hourWindowStart.getTime();
-      });
-      histories.push(...inWindowRecords);
-
-      const oldestTimestamp = parseDateTimeValue(page[page.length - 1]?.lastUpdatedStamp)?.toMillis() || 0;
-      if (page.length < pageSize || !oldestTimestamp || oldestTimestamp < hourWindowStart.getTime()) {
-        keepLoading = false;
-      } else {
-        pageIndex += 1;
-      }
-    }
-
-    productSyncActivityHistory.value = histories;
-  } catch (error) {
-    logger.error("Failed to load product sync activity history", error);
-    productSyncActivityHistory.value = [];
   }
 }
 
@@ -596,8 +551,11 @@ function sortSystemMessagesNewestFirst(systemMessages: any[]) {
 }
 
 function getSystemMessageTime(systemMessage: any) {
-  const value = systemMessage?.initDate || systemMessage?.lastUpdatedStamp || systemMessage?.processedDate;
-  return parseDateTimeValue(value)?.toMillis() || 0;
+  return parseDateTimeValue(getSystemMessageTimeValue(systemMessage))?.toMillis() || 0;
+}
+
+function getSystemMessageTimeValue(systemMessage: any) {
+  return systemMessage?.initDate || systemMessage?.lastUpdatedStamp || systemMessage?.processedDate || "";
 }
 
 function normalizeStatusValue(statusId: string) {
@@ -609,12 +567,6 @@ function getHourKey(value: any) {
   return dt?.toFormat("yyyy-MM-dd'T'HH") || "";
 }
 
-function getProductUpdateHistoryPayload(data: any): any[] {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.productUpdateHistory)) return data.productUpdateHistory;
-  if (Array.isArray(data?.productUpdateHistories)) return data.productUpdateHistories;
-  return [];
-}
 </script>
 
 <style scoped>

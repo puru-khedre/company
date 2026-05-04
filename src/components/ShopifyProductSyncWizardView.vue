@@ -207,7 +207,10 @@
 
       <ion-card>
         <ion-card-content>
-          <p class="big-number">{{ formatCount(reviewStats.shopifyProductCount) }}</p>
+          <p class="big-number">
+            <AnimatedNumber v-if="reviewStats.shopifyProductCount !== undefined && reviewStats.shopifyProductCount !== null" :value="Number(reviewStats.shopifyProductCount)" />
+            <template v-else>{{ formatCount(reviewStats.shopifyProductCount) }}</template>
+          </p>
         </ion-card-content>
         <ion-item lines="none">
           <ion-label>
@@ -217,7 +220,10 @@
       </ion-card>
       <ion-card>
         <ion-card-content>
-          <p class="big-number">{{ formatCount(reviewStats.shopifyVariantCount) }}</p>
+          <p class="big-number">
+            <AnimatedNumber v-if="reviewStats.shopifyVariantCount !== undefined && reviewStats.shopifyVariantCount !== null" :value="Number(reviewStats.shopifyVariantCount)" />
+            <template v-else>{{ formatCount(reviewStats.shopifyVariantCount) }}</template>
+          </p>
         </ion-card-content>
         <ion-item lines="none">
           <ion-label>
@@ -236,7 +242,10 @@
 
       <ion-card>
         <ion-card-content>
-          <p class="big-number">{{ formatCount(reviewStats.omsProductCount) }}</p>
+          <p class="big-number">
+            <AnimatedNumber v-if="reviewStats.omsProductCount !== undefined && reviewStats.omsProductCount !== null" :value="Number(reviewStats.omsProductCount)" />
+            <template v-else>{{ formatCount(reviewStats.omsProductCount) }}</template>
+          </p>
         </ion-card-content>
         <ion-item lines="none">
           <ion-label>
@@ -246,7 +255,10 @@
       </ion-card>
       <ion-card>
         <ion-card-content>
-          <p class="big-number">{{ formatCount(reviewStats.omsVariantCount) }}</p>
+          <p class="big-number">
+            <AnimatedNumber v-if="reviewStats.omsVariantCount !== undefined && reviewStats.omsVariantCount !== null" :value="Number(reviewStats.omsVariantCount)" />
+            <template v-else>{{ formatCount(reviewStats.omsVariantCount) }}</template>
+          </p>
         </ion-card-content>
         <ion-item lines="none">
           <ion-label>
@@ -256,7 +268,10 @@
       </ion-card>
       <ion-card>
         <ion-card-content>
-          <p class="big-number">{{ formatCount(reviewStats.linkedShopCount) }}</p>
+          <p class="big-number">
+            <AnimatedNumber v-if="reviewStats.linkedShopCount !== undefined && reviewStats.linkedShopCount !== null" :value="Number(reviewStats.linkedShopCount)" />
+            <template v-else>{{ formatCount(reviewStats.linkedShopCount) }}</template>
+          </p>
         </ion-card-content>
         <ion-item lines="none">
           <ion-label>
@@ -484,6 +499,7 @@
 </template>
 
 <script setup lang="ts">
+import AnimatedNumber from "@/components/AnimatedNumber.vue";
 import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
 import {
   IonAccordion,

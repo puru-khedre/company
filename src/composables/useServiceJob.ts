@@ -198,7 +198,7 @@ export default function useServiceJob() {
     const params = {
       pageSize: 250,
       pageIndex: 0,
-      orderByField: "-endTime",
+      orderByField: "-startTime",
       ...payload
     }
     const key = `job_runs_${jobName}_${JSON.stringify(params)}`;

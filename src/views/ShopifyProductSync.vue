@@ -287,6 +287,15 @@
                     </ion-label>
                   </ion-item>
                   <ion-item>
+                    <ion-label>
+                      {{ translate("Run now") }}
+                      <p>{{ translate("Create an immediate execution of this service job without changing its schedule.") }}</p>
+                    </ion-label>
+                    <ion-button slot="end" fill="outline" color="primary" :disabled="isSyncJobDetailsSaving" @click="runSyncJob(selectedSyncJobDetailsJob)">
+                      {{ translate("Run now") }}
+                    </ion-button>
+                  </ion-item>
+                  <ion-item>
                     <ion-label>{{ translate("Active") }}</ion-label>
                     <ion-toggle
                       slot="end"
@@ -372,7 +381,7 @@
                           {{ getSyncJobRunTitle(run) }}
                           <p>{{ formatDateTime(getSyncJobRunStartedAt(run)) }}</p>
                           <p v-if="getSyncJobRunCompletedAt(run)">{{ translate("Completed") }} {{ formatDateTime(getSyncJobRunCompletedAt(run)) }}</p>
-                          <p v-if="getSyncJobRunDuration(run)">{{ translate("Duration") }} {{ getSyncJobRunDuration(run) }}</p>
+                          <p v-if="run.startTime || run.endTime || run.elapsedTime || run.runtime">{{ translate("Duration") }} <AnimatedDuration :start-time="getSyncJobRunStartedAt(run)" :end-time="getSyncJobRunCompletedAt(run)" :runtime="run.runtime" :elapsed-time="run.elapsedTime" /></p>
                           <p v-if="getSyncJobRunUser(run)">{{ translate("User") }} {{ getSyncJobRunUser(run) }}</p>
                           <p v-if="getSyncJobRunCount(run)">{{ getSyncJobRunCount(run) }}</p>
                           <p>{{ translate("Output") }}: {{ getSyncJobRunMessage(run) || translate("No output message") }}</p>
@@ -638,6 +647,7 @@ import { useRoute, useRouter } from "vue-router";
 import ShopifyProductSyncReturningView from "@/components/ShopifyProductSyncReturningView.vue";
 import ShopifyProductSyncProductsModal from "@/components/ShopifyProductSyncProductsModal.vue";
 import ShopifyProductSyncWizardView from "@/components/ShopifyProductSyncWizardView.vue";
+import AnimatedDuration from "@/components/AnimatedDuration.vue";
 import { ProductStoreService } from "@/services/ProductStoreService";
 import { ShopifyService } from "@/services/ShopifyService";
 import { ShopifyProductSyncService, type ShopifyProductSyncDashboardSummary } from "@/services/ShopifyProductSyncService";
@@ -783,6 +793,9 @@ const selectedErrorRecord = ref<any>(null);
 const showErrorDetailsModal = ref(false);
 let progressPoll: number | undefined;
 let nextSyncRefreshPoll: number | undefined;
+let scheduledJobRefreshAtMs: number | null = null;
+let scheduledJobRefreshGraceUntilMs: number | null = null;
+let isScheduledJobRefreshInFlight = false;
 
 const shop = computed(() => store.getters["shopify/getShopById"](props.id) || {});
 const userProfile = computed(() => store.getters["user/getUserProfile"] || {});
@@ -1152,12 +1165,121 @@ const progressBadgeColor = computed(() => {
 const recentSyncUpdates = computed(() => {
   return productUpdateHistories.value.map((history: any) => ({
     id: [history.shopId, history.productId, history.lastUpdatedStamp].filter(Boolean).join("-"),
-    internalName: history.diffs?.title || history.diffs?.handle || history.productId,
+    internalName: getRecentSyncUpdateTitle(history),
+    parentTitle: getRecentSyncParentTitle(history),
+    variantTitle: getRecentSyncVariantTitle(history),
+    sku: getRecentSyncSku(history),
     shopifyId: getShopifyProductReference(history),
+    shopifyIdLabel: getRecentSyncShopifyIdLabel(history),
+    shopifyAdminUrl: getRecentSyncShopifyAdminUrl(history),
     updatedTime: formatDateTime(history.lastUpdatedStamp) || translate("Recent"),
     details: history.details || []
   }));
 });
+
+function getRecentSyncUpdateTitle(history: any) {
+  return getRecentSyncVariantTitle(history) || getRecentSyncParentTitle(history) || history.productId;
+}
+
+function getRecentSyncParentTitle(history: any) {
+  return [
+    history.parentTitle,
+    history.parentProductName,
+    history.productTitle,
+    history.diffs?.productTitle,
+    history.diffs?.parentTitle,
+    history.diffs?.productName
+  ].find((value) => String(value || "").trim()) || "";
+}
+
+function getRecentSyncVariantTitle(history: any) {
+  return [
+    history.variantTitle,
+    history.internalName,
+    history.diffs?.variantTitle,
+    history.diffs?.title,
+    history.diffs?.name,
+    history.diffs?.handle
+  ].find((value) => String(value || "").trim()) || "";
+}
+
+function getRecentSyncSku(history: any) {
+  const identifications = getRecentSyncIdentifications(history);
+  return String(
+    history.sku ||
+    history.diffs?.sku ||
+    identifications.sku ||
+    identifications.SKU ||
+    ""
+  ).trim();
+}
+
+function getRecentSyncShopifyIdLabel(history: any) {
+  const productId = getRecentSyncShopifyProductId(history);
+  const variantId = getRecentSyncShopifyVariantId(history);
+
+  if (variantId && productId && variantId !== productId) {
+    return `${translate("Shopify variant ID")}: ${variantId}`;
+  }
+
+  if (productId) {
+    return `${translate("Shopify ID")}: ${productId}`;
+  }
+
+  return getShopifyProductReference(history);
+}
+
+function getRecentSyncShopifyAdminUrl(history: any) {
+  const myshopifyDomain = String(shop.value?.myshopifyDomain || "").trim();
+  const productId = getRecentSyncShopifyProductId(history);
+  if (!myshopifyDomain || !productId) return "";
+
+  const variantId = getRecentSyncShopifyVariantId(history);
+  const baseUrl = `https://${myshopifyDomain}/admin/products/${productId}`;
+  if (variantId && variantId !== productId) {
+    return `${baseUrl}/variants/${variantId}`;
+  }
+
+  return baseUrl;
+}
+
+function getRecentSyncIdentifications(history: any) {
+  return {
+    ...(history.diffs?.identifications || {}),
+    ...(history.identifications || {})
+  };
+}
+
+function getRecentSyncShopifyProductId(history: any) {
+  const identifications = getRecentSyncIdentifications(history);
+  return getShopifyNumericId(
+    history.parentProductId ||
+    history.diffs?.parentProductId ||
+    identifications.shopifyParentProductId ||
+    identifications.shopifyProductId ||
+    identifications.SHOPIFY_PRODUCT_ID ||
+    (String(history.diffs?.id || "").startsWith("gid://shopify/Product/") ? history.diffs?.id : "") ||
+    history.productId
+  );
+}
+
+function getRecentSyncShopifyVariantId(history: any) {
+  const identifications = getRecentSyncIdentifications(history);
+  return getShopifyNumericId(
+    identifications.shopifyVariantId ||
+    identifications.SHOPIFY_VARIANT_ID ||
+    (String(history.diffs?.id || "").startsWith("gid://shopify/ProductVariant/") ? history.diffs?.id : "") ||
+    history.productId
+  );
+}
+
+function getShopifyNumericId(value: any) {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return "";
+  if (/^\d+$/.test(rawValue)) return rawValue;
+  if (rawValue.startsWith("gid://shopify/")) return rawValue.split("/").pop() || "";
+  return "";
+}
 
 function getShopifyProductReference(history: any) {
   const diffId = history.diffs?.id ? String(history.diffs.id) : "";
@@ -1418,6 +1540,7 @@ async function loadSecondaryData() {
     logger.error("Error loading secondary data", error);
   } finally {
     isSecondaryLoading.value = false;
+    updateScheduledJobRefreshAt();
   }
 }
 
@@ -1818,7 +1941,7 @@ async function runSyncJob(job: any) {
           try {
             await runNow(job.jobName);
             showToast(translate("Job has been scheduled to run now"));
-            await loadSyncJobLatestRun();
+            await refreshAfterRunNow(job);
           } catch (err) {
             logger.error("Failed to run job now", err);
             showToast(translate("Failed to run job"));
@@ -1829,6 +1952,20 @@ async function runSyncJob(job: any) {
   });
 
   await jobAlert.present();
+}
+
+async function refreshAfterRunNow(job: any) {
+  const refreshTasks = [loadSyncJobLatestRun()];
+
+  if (activeExperienceMode.value === "returning") {
+    refreshTasks.push(loadSecondaryData());
+  }
+
+  if (!syncJobDetailsDirty.value && selectedSyncJobDetailsJob.value?.jobName === job?.jobName) {
+    refreshTasks.push(refreshSyncJobDetails());
+  }
+
+  await Promise.all(refreshTasks);
 }
 
 
@@ -1966,6 +2103,7 @@ async function refreshSyncJobDetails() {
     showToast(translate("Failed to load sync job details."));
   } finally {
     isSyncJobDetailsLoading.value = false;
+    updateScheduledJobRefreshAt();
   }
 }
 
@@ -2428,15 +2566,129 @@ function stopProgressPolling() {
 function startNextSyncRefreshPolling() {
   stopNextSyncRefreshPolling();
   currentTimeMs.value = Date.now();
+  updateScheduledJobRefreshAt();
   nextSyncRefreshPoll = window.setInterval(() => {
     currentTimeMs.value = Date.now();
-  }, 60000);
+    void refreshScheduledJobStateIfNeeded();
+  }, 15000);
 }
 
 function stopNextSyncRefreshPolling() {
   if (nextSyncRefreshPoll) {
     window.clearInterval(nextSyncRefreshPoll);
     nextSyncRefreshPoll = undefined;
+  }
+  scheduledJobRefreshAtMs = null;
+  scheduledJobRefreshGraceUntilMs = null;
+}
+
+function getTrackedRefreshJobs() {
+  const trackedJobs = [
+    syncJobObj.value,
+    bulkOperationSendJob.value,
+    bulkOperationPollJob.value,
+    syncJobDetails.value?.jobName ? syncJobDetails.value : selectedSyncJobDetailsJob.value
+  ].filter((job: any) => job?.jobName && !isJobPaused(job));
+
+  return trackedJobs.filter((job: any, index: number, jobs: any[]) => {
+    return jobs.findIndex((candidate: any) => candidate?.jobName === job?.jobName) === index;
+  });
+}
+
+function updateScheduledJobRefreshAt() {
+  const nextRunTimes = getTrackedRefreshJobs()
+    .map((job: any) => getNextRunDateTime(job)?.toMillis() || 0)
+    .filter((time: number) => time > currentTimeMs.value);
+
+  scheduledJobRefreshAtMs = nextRunTimes.length ? Math.min(...nextRunTimes) : null;
+  if (scheduledJobRefreshAtMs && currentTimeMs.value < scheduledJobRefreshAtMs) {
+    scheduledJobRefreshGraceUntilMs = null;
+  }
+}
+
+let lastKnownJobRunStartTime = 0;
+let lastKnownJobRunEndTime = 0;
+
+async function refreshScheduledJobStateIfNeeded() {
+  const shouldRefreshForScheduledRun = !!scheduledJobRefreshAtMs && currentTimeMs.value >= scheduledJobRefreshAtMs;
+  const shouldRefreshDuringGraceWindow = !!scheduledJobRefreshGraceUntilMs && currentTimeMs.value <= scheduledJobRefreshGraceUntilMs;
+
+  let needsRefresh = false;
+
+  if (shouldRefreshForScheduledRun || shouldRefreshDuringGraceWindow) {
+    const isCompleted = currentSyncRun.value?.completed;
+    const hasPendingUpdates = pendingUpdateRequestsCount.value > 0;
+    const hasRunningShopifyOperation = hasRunningShopifyBulkOperation.value;
+
+    if (!isCompleted || hasPendingUpdates || hasRunningShopifyOperation) {
+      needsRefresh = true;
+    }
+  }
+
+  if (!needsRefresh && syncJobObj.value?.jobName) {
+    try {
+      const recentRuns = await fetchJobRuns(syncJobObj.value.jobName, { pageSize: 1 });
+      if (recentRuns && recentRuns.length > 0) {
+        const latestRun = recentRuns[0];
+        const runStartTime = latestRun.startTime ? new Date(latestRun.startTime).getTime() : 0;
+        const runEndTime = latestRun.endTime ? new Date(latestRun.endTime).getTime() : 0;
+        
+        let hasNewActivity = false;
+
+        if (lastKnownJobRunStartTime === 0) {
+          // Initialize without triggering refresh
+          lastKnownJobRunStartTime = runStartTime;
+          lastKnownJobRunEndTime = runEndTime;
+        } else {
+          if (runStartTime > lastKnownJobRunStartTime) {
+            lastKnownJobRunStartTime = runStartTime;
+            hasNewActivity = true;
+          }
+          if (runEndTime > lastKnownJobRunEndTime) {
+            lastKnownJobRunEndTime = runEndTime;
+            hasNewActivity = true;
+          }
+        }
+        
+        if (hasNewActivity) {
+          const infoMessage = latestRun.infoMessage || latestRun.errorMessages || latestRun.messages || "";
+          const hasNoActivity = infoMessage.includes("No bulk operation currently in progress") || 
+                                infoMessage.includes("Aborting, no ShopifyBulkQuery Operation System Messages found to process");
+                                
+          if (!hasNoActivity || !runEndTime) {
+            needsRefresh = true;
+          }
+        }
+      }
+    } catch (err) {
+      logger.error("Failed to check background job runs for auto-refresh", err);
+    }
+  }
+
+  if (!needsRefresh || isScheduledJobRefreshInFlight) {
+    return;
+  }
+
+  isScheduledJobRefreshInFlight = true;
+  const scheduledRefreshAtMs = scheduledJobRefreshAtMs;
+  if (shouldRefreshForScheduledRun && scheduledRefreshAtMs) {
+    scheduledJobRefreshGraceUntilMs = scheduledRefreshAtMs + 2 * 60 * 1000;
+  }
+  scheduledJobRefreshAtMs = null;
+  try {
+    if (activeExperienceMode.value === "returning" && !isLoading.value) {
+      await loadSecondaryData();
+    }
+
+    if (showSyncJobDetailsModal.value && selectedSyncJobDetailsJob.value?.jobName && !syncJobDetailsDirty.value) {
+      await refreshSyncJobDetails();
+    }
+  } finally {
+    isScheduledJobRefreshInFlight = false;
+    updateScheduledJobRefreshAt();
+    if (!scheduledJobRefreshAtMs && scheduledJobRefreshGraceUntilMs && currentTimeMs.value > scheduledJobRefreshGraceUntilMs) {
+      scheduledJobRefreshGraceUntilMs = null;
+    }
   }
 }
 
@@ -2680,23 +2932,7 @@ function getSyncJobRunStatusColor(run: any) {
   return "warning";
 }
 
-function getSyncJobRunDuration(run: any) {
-  if (run.runtime) return `${run.runtime} ms`;
-  if (run.elapsedTime) return `${run.elapsedTime} ms`;
 
-  const startTime = parseDateTimeValue(getSyncJobRunStartedAt(run));
-  const endTime = parseDateTimeValue(getSyncJobRunCompletedAt(run));
-  if (!startTime || !endTime) return "";
-
-  const diff = endTime.diff(startTime, ["minutes", "seconds"]).toObject();
-  const minutes = Math.floor(diff.minutes || 0);
-  const seconds = Math.floor(diff.seconds || 0);
-
-  if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
-  }
-  return `${seconds}s`;
-}
 
 function getSyncJobRunCount(run: any) {
   if (run.objectCount) return `${run.objectCount} ${translate("objects")}`;
