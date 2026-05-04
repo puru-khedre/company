@@ -328,8 +328,7 @@
           <ion-item lines="none" v-if="bulkOperationSendJob?.jobName">
             <ion-label>
               <p>{{ translate("Send update request") }}</p>
-              <p>{{ sendUpdateRequestLastRunLabel }}</p>
-              <p v-if="bulkOperationSendJob.runTime">{{ systemMessageSendJobNextRunLabel }}</p>
+              <p v-if="!['SmsgConsumed', 'SmsgConfirmed', 'SmsgError', 'SmsgCancelled'].includes(systemMessageStatusId)">{{ systemMessageSendJobNextRunLabel }}</p>
             </ion-label>
             <ion-button v-if="systemMessageStatusId === 'SmsgProduced'" slot="end" fill="clear" @click="$emit('run-job-now', bulkOperationSendJob)">
               {{ translate("Run now") }}
@@ -373,10 +372,9 @@
           <ion-item lines="none" v-if="bulkOperationPollJob?.jobName">
             <ion-label>
               <p>{{ translate("Import completed requests") }}</p>
-              <p>{{ importCompletedRequestsLastRunLabel }}</p>
-              <p v-if="bulkOperationPollJob.runTime">{{ bulkOperationPollJobNextRunLabel }}</p>
+              <p v-if="!isCompleteStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus)">{{ bulkOperationPollJobNextRunLabel }}</p>
             </ion-label>
-            <ion-button v-if="isPollableStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus)" slot="end" fill="clear" @click="$emit('run-job-now', bulkOperationPollJob)">
+            <ion-button v-if="isPollableStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus) || systemMessageStatusId === 'SmsgConsumed'" slot="end" fill="clear" @click="$emit('run-job-now', bulkOperationPollJob)">
               {{ translate("Run now") }}
             </ion-button>
           </ion-item>
@@ -401,8 +399,10 @@
             <ion-label>
               {{ translate("Bulk file process") }}
               <p>{{ bulkFileProcessDescription }}</p>
+              <p v-if="mdmLogHasFailedRecords" class="ion-color-danger">{{ mdmLogFailedRecordsLabel }}</p>
+              <p v-else-if="mdmLogProgressLabel">{{ mdmLogProgressLabel }}</p>
             </ion-label>
-            <ion-note slot="end" :color="mdmLogStatusColor">{{ mdmLogStatusLabel }}</ion-note>
+            <ion-badge slot="end" :color="mdmLogBadgeColor">{{ mdmLogBadgeLabel }}</ion-badge>
           </ion-item>
         </ion-card>
 
@@ -414,6 +414,7 @@
           <ion-button slot="end" :disabled="setupCompletionActionDisabled || isCompletingSetup" @click="$emit('complete-setup')">
             <ion-spinner v-if="isCompletingSetup" slot="start" name="crescent" />
             <span v-else>{{ setupCompletionActionLabel }}</span>
+            <ion-icon slot="end" :icon="arrowForwardOutline"></ion-icon>
           </ion-button>
         </ion-item>
       </div>
@@ -445,6 +446,7 @@
           <ion-button slot="end" :disabled="setupCompletionActionDisabled || isCompletingSetup" @click="$emit('complete-setup')">
             <ion-spinner v-if="isCompletingSetup" slot="start" name="crescent" />
             <span v-else>{{ setupCompletionActionLabel }}</span>
+            <ion-icon slot="end" :icon="arrowForwardOutline"></ion-icon>
           </ion-button>
         </ion-item>
       </ion-list>
@@ -627,6 +629,7 @@ import {
   IonToolbar
 } from "@ionic/vue";
 import {
+  arrowForwardOutline,
   closeOutline,
   documentTextOutline,
   pulseOutline,
@@ -821,16 +824,43 @@ const mdmLogId = computed(() => {
   return props.currentSyncRun?.mdmLog?.id || "";
 });
 
-const mdmLogStatusLabel = computed(() => {
-  return props.currentSyncRun?.mdmLog?.statusLabel || translate("Pending");
+const mdmLogFailedRecordCount = computed(() => {
+  return Number(props.currentSyncRun?.mdmLog?.failedRecordCount || 0);
 });
 
-const mdmLogStatusColor = computed(() => {
+const mdmLogTotalRecordCount = computed(() => {
+  return Number(props.currentSyncRun?.mdmLog?.totalRecordCount || 0);
+});
+
+const mdmLogHasFailedRecords = computed(() => {
+  return mdmLogFailedRecordCount.value > 0;
+});
+
+const mdmLogFailedRecordsLabel = computed(() => {
+  if (!mdmLogHasFailedRecords.value) return "";
+
+  if (mdmLogTotalRecordCount.value > 0) {
+    return `${formatCount(mdmLogFailedRecordCount.value)} ${translate("failed of")} ${formatCount(mdmLogTotalRecordCount.value)} ${translate("records processed")}`;
+  }
+
+  return `${formatCount(mdmLogFailedRecordCount.value)} ${translate("failed records")}`;
+});
+
+const mdmLogProgressLabel = computed(() => {
+  if (mdmLogTotalRecordCount.value > 0) {
+    return `${formatCount(mdmLogTotalRecordCount.value)} ${translate("records processed")}`;
+  }
+  return "";
+});
+
+const mdmLogBadgeColor = computed(() => {
+  if (mdmLogHasFailedRecords.value) return "danger";
   return props.currentSyncRun?.mdmLog?.statusColor || "medium";
 });
 
-const mdmRecordCount = computed(() => {
-  return Number(props.currentSyncRun?.mdmLog?.totalRecordCount || 0);
+const mdmLogBadgeLabel = computed(() => {
+  if (mdmLogHasFailedRecords.value) return translate("Errors");
+  return props.currentSyncRun?.mdmLog?.statusLabel || translate("Pending");
 });
 
 const bulkFileProcessDescription = computed(() => {
