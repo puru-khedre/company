@@ -821,6 +821,10 @@ export const ShopifyProductSyncMigrationService = {
   fetchLegacyTeardownState,
   resolveEntryAction,
   teardownLegacySync,
-  enableServiceJob
+  enableServiceJob,
+  cancelLegacySystemMessage,
+  deactivateLegacyServiceJob,
+  deprecateLegacySystemMessageType
 };
+
 

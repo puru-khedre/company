@@ -12,12 +12,12 @@
     <ion-content>
       <main>
         <ion-card v-if="loadErrorMessage">
-            <ion-card-header>
-              <ion-card-title>{{ translate("Upgrade assistant could not load") }}</ion-card-title>
-            </ion-card-header>
+          <ion-card-header>
+            <ion-card-title>{{ translate("Upgrade assistant could not load") }}</ion-card-title>
+          </ion-card-header>
           <ion-card-content>
             <p>{{ loadErrorMessage }}</p>
-              <ion-button fill="outline" @click="loadAssistant">{{ translate("Retry") }}</ion-button>
+            <ion-button fill="outline" @click="loadAssistant">{{ translate("Retry") }}</ion-button>
           </ion-card-content>
         </ion-card>
 
@@ -44,6 +44,7 @@
                 </ion-label>
                 <ion-spinner v-if="assistantState.hasNewProductSyncMessages === null" slot="end" name="crescent" />
                 <ion-badge v-else slot="end" :color="newSyncMessagesBadgeColor">{{ newSyncMessagesBadgeLabel }}</ion-badge>
+
               </ion-item>
               <ion-item lines="none">
                 <ion-label>
@@ -63,14 +64,18 @@
                 <div>
                   <ion-card-title>{{ translate("1. Confirm readiness") }}</ion-card-title>
                   <ion-card-subtitle>{{ translate("Verify the compatible backend release and the shared new-sync jobs before teardown starts.") }}</ion-card-subtitle>
+
                 </div>
-                <ion-button v-if="hasMissingArtifacts" fill="clear" color="danger" @click="copyMissingArtifactsToClipboard">
+                <ion-button v-if="hasMissingArtifacts" fill="clear" color="danger"
+                  @click="copyMissingArtifactsToClipboard">
                   {{ translate("Copy details") }}
                 </ion-button>
               </div>
             </ion-card-header>
             <ion-list lines="full">
-              <ion-item v-for="artifactCheck in assistantState.artifactChecks" :key="artifactCheck.id" :button="artifactCheck.status === 'missing'" @click="artifactCheck.status === 'missing' ? copyArtifactCheckToClipboard(artifactCheck) : null">
+              <ion-item v-for="artifactCheck in assistantState.artifactChecks" :key="artifactCheck.id"
+                :button="artifactCheck.status === 'missing'"
+                @click="artifactCheck.status === 'missing' ? copyArtifactCheckToClipboard(artifactCheck) : null">
                 <ion-label>
                   {{ artifactCheck.label }}
                   <p>{{ artifactCheck.id }}</p>
@@ -78,15 +83,18 @@
                 </ion-label>
                 <ion-spinner v-if="artifactCheck.status === 'checking'" slot="end" name="crescent" />
                 <ion-badge v-else slot="end" :color="getArtifactCheckColor(artifactCheck)">{{ getArtifactCheckLabel(artifactCheck) }}</ion-badge>
+
               </ion-item>
             </ion-list>
             <ion-card-content>
               <ion-button v-if="entryAction === 'current'" expand="block" @click="openProductSync">{{ translate("Open current product sync") }}</ion-button>
+
               <ion-button v-else expand="block" :disabled="!isStep1Done" @click="currentStep = 2">
                 {{ translate("Next") }}
                 <ion-icon slot="end" :icon="arrowForwardOutline" />
               </ion-button>
               <ion-button expand="block" fill="clear" @click="loadAssistant">{{ translate("Refresh checks") }}</ion-button>
+
             </ion-card-content>
           </ion-card>
 
@@ -95,43 +103,119 @@
             <ion-card-header>
               <ion-card-title>{{ translate("2. Deactivate the legacy sync") }}</ion-card-title>
               <ion-card-subtitle>{{ translate("Use the same Moqui APIs as Job Manager to cancel unfinished legacy messages, pause legacy jobs, and deprecate legacy message types in place.") }}</ion-card-subtitle>
+
             </ion-card-header>
             <ion-list lines="full">
-              <ion-item>
-                <ion-label>
-                  {{ translate("Legacy system message types") }}
-                  <p>{{ legacySystemMessageTypesSummary }}</p>
-                  <p>{{ translate("These types are deprecated in place by clearing their bound services and paths.") }}</p>
+              <template v-if="assistantState.legacySystemMessageTypes.length">
+                <ion-list-header>
+                  <ion-label>
+                    {{ translate("Legacy system message types") }}
+                  </ion-label>
+                  <ion-button v-if="assistantState.legacySystemMessageTypes.some(t => t.status === 'active')" slot="end"
+                    fill="clear" :disabled="isTeardownSectionRunning['type'] || isTeardownRunning"
+                    @click="teardownSection('type')">
+                    <ion-spinner v-if="isTeardownSectionRunning['type']" name="crescent" slot="start" />
+                    {{ translate("Deactivate all") }}
+                  </ion-button>
+                </ion-list-header>
+                <ion-item v-for="type in assistantState.legacySystemMessageTypes" :key="type.id" class="hover-action">
+                  <ion-label>
+                    {{ type.label }}
+                    <p>{{ type.id }}</p>
+                    <p>{{ type.note }}</p>
+                  </ion-label>
+                  <div class="teardown-action" slot="end">
+                    <ion-badge :color="getLegacyItemColor(type.status)" :class="{ 'hide-on-hover': type.status === 'active' }">
+                      {{ getLegacyItemLabel(type.status) }}
+                    </ion-badge>
+
+                    <ion-button v-if="type.status === 'active'" fill="outline" class="hover-button"
+                      :disabled="isTeardownItemRunning[type.id] || isTeardownSectionRunning['type'] || isTeardownRunning"
+                      @click="teardownItem(type, 'type')">
+                      <ion-spinner v-if="isTeardownItemRunning[type.id]" name="crescent" slot="start" />
+                      {{ translate("Deactivate") }}
+                    </ion-button>
+                  </div>
+
+                </ion-item>
+              </template>
+
+              <template v-if="assistantState.legacyServiceJobs.length">
+                <ion-list-header>
+                  <ion-label>
+                    {{ translate("Legacy service jobs") }}
+                  </ion-label>
+                  <ion-button v-if="assistantState.legacyServiceJobs.some(j => j.status === 'active')" slot="end"
+                    fill="clear" :disabled="isTeardownSectionRunning['job'] || isTeardownRunning"
+                    @click="teardownSection('job')">
+                    <ion-spinner v-if="isTeardownSectionRunning['job']" name="crescent" slot="start" />
+                    {{ translate("Deactivate all") }}
+                  </ion-button>
+                </ion-list-header>
+                <ion-item v-for="job in assistantState.legacyServiceJobs" :key="job.id" class="hover-action">
+                  <ion-label>
+                    {{ job.label }}
+                    <p>{{ job.id }}</p>
+                    <p>{{ job.note }}</p>
+                  </ion-label>
+                  <div slot="end">
+                    <ion-badge :color="getLegacyItemColor(job.status)" :class="{ 'hide-on-hover': job.status === 'active' }">
+                      {{ getLegacyItemLabel(job.status) }}
+                    </ion-badge>
+                    <ion-button v-if="job.status === 'active'" fill="outline" class="hover-button" :disabled="isTeardownItemRunning[job.id] || isTeardownSectionRunning['job'] || isTeardownRunning" @click="teardownItem(job, 'job')">
+                      <ion-spinner v-if="isTeardownItemRunning[job.id]" name="crescent" slot="start" />
+                      {{ translate("Deactivate") }}
+                    </ion-button>
+                  </div>
+
+                </ion-item>
+              </template>
+
+              <template v-if="assistantState.legacySystemMessages.length">
+                <ion-list-header>
+                  <ion-label>
+                    {{ translate("Legacy system messages") }}
+                  </ion-label>
+                  <ion-button v-if="assistantState.legacySystemMessages.some(m => m.status === 'active')" slot="end"
+                    fill="clear" :disabled="isTeardownSectionRunning['message'] || isTeardownRunning"
+                    @click="teardownSection('message')">
+                    <ion-spinner v-if="isTeardownSectionRunning['message']" name="crescent" slot="start" />
+                    {{ translate("Cancel all") }}
+                  </ion-button>
+                </ion-list-header>
+                <ion-item v-for="message in assistantState.legacySystemMessages" :key="message.id" class="hover-action">
+                  <ion-label>
+                    {{ message.label }}
+                    <p>{{ message.id }}</p>
+                    <p>{{ message.note }}</p>
+                  </ion-label>
+                  <div slot="end">
+                    <ion-badge :color="getLegacyItemColor(message.status)" :class="{ 'hide-on-hover': message.status === 'active' }">
+                      {{ getLegacyItemLabel(message.status) }}
+                    </ion-badge>
+                    <ion-button v-if="message.status === 'active'" fill="outline" class="hover-button" :disabled="isTeardownItemRunning[message.id] || isTeardownSectionRunning['message'] || isTeardownRunning" @click="teardownItem(message, 'message')">
+                      <ion-spinner v-if="isTeardownItemRunning[message.id]" name="crescent" slot="start" />
+                      {{ translate("Cancel") }}
+                    </ion-button>
+                  </div>
+
+                </ion-item>
+              </template>
+
+              <ion-item v-if="!canRunTeardown && !isTeardownRunning" lines="none">
+                <ion-label color="success">
+                  <ion-icon :icon="checkmarkCircleOutline" slot="start" />
+                  {{ translate("All legacy artifacts have been deactivated or are already terminal.") }}
                 </ion-label>
-                <ion-note slot="end">{{ legacySystemMessageTypesCount }}</ion-note>
-              </ion-item>
-              <ion-item>
-                <ion-label>
-                  {{ translate("Legacy service jobs") }}
-                  <p>{{ legacyServiceJobsSummary }}</p>
-                  <p>{{ translate("These jobs are paused and their service name is replaced with a no-op marker so accidental runs do nothing.") }}</p>
-                </ion-label>
-                <ion-note slot="end">{{ legacyServiceJobsCount }}</ion-note>
-              </ion-item>
-              <ion-item lines="none">
-                <ion-label>
-                  {{ translate("Legacy system messages") }}
-                  <p>{{ legacySystemMessagesSummary }}</p>
-                  <p>{{ translate("Only non-terminal legacy messages are cancelled. Confirmed or consumed history is left intact.") }}</p>
-                </ion-label>
-                <ion-note slot="end">{{ legacySystemMessagesCount }}</ion-note>
               </ion-item>
             </ion-list>
+
             <ion-card-content>
               <p>{{ teardownStepDetail }}</p>
               <p v-if="teardownErrorMessage" class="ion-color-danger">{{ teardownErrorMessage }}</p>
               <p v-else-if="teardownSuccessMessage">{{ teardownSuccessMessage }}</p>
-              <ion-button
-                expand="block"
-                v-if="canRunTeardown"
-                :disabled="isTeardownRunning"
-                @click="confirmLegacyTeardown"
-              >
+              <ion-button expand="block" v-if="canRunTeardown" :disabled="isTeardownRunning"
+                @click="confirmLegacyTeardown">
                 <ion-spinner v-if="isTeardownRunning" name="crescent" slot="start" />
                 {{ teardownActionLabel }}
               </ion-button>
@@ -140,8 +224,9 @@
                 <ion-icon slot="end" :icon="arrowForwardOutline" />
               </ion-button>
               <ion-button expand="block" fill="clear" :disabled="isTeardownRunning" @click="currentStep = 1">{{ translate("Back") }}</ion-button>
+
             </ion-card-content>
-            
+
             <!-- Live teardown activity log -->
             <ion-list v-if="teardownLog.length" lines="full">
               <ion-list-header>{{ translate("Teardown activity") }}</ion-list-header>
@@ -175,9 +260,11 @@
             <ion-card-header>
               <ion-card-title>{{ translate("3. Setup the new sync") }}</ion-card-title>
               <ion-card-subtitle>{{ translate("Once readiness checks pass and the old sync is deactivated, continue to the current product-sync setup flow.") }}</ion-card-subtitle>
+
               <ion-progress-bar :value="setupProgressValue" style="margin-top: 16px;"></ion-progress-bar>
               <p style="margin-top: 8px; font-size: 14px; color: var(--ion-color-medium);">
                 {{ translate("{completed} of {total} setup steps complete", { completed: setupProgressCompleted, total: setupProgressTotal }) }}
+
               </p>
             </ion-card-header>
             <ion-list lines="full">
@@ -186,15 +273,17 @@
                   {{ translate("Per-shop sync job pattern") }}
                   <p>{{ perShopPatternLabel }}</p>
                   <p>{{ translate("The app will configure or verify the shop-specific job from the shared sync template.") }}</p>
+
                 </ion-label>
                 <ion-spinner v-if="assistantState.syncJobConfigured === null" slot="end" name="crescent" />
                 <ion-badge v-else slot="end" :color="syncJobBadgeColor">{{ syncJobBadgeLabel }}</ion-badge>
-                <ion-button v-if="!assistantState.syncJobConfigured" slot="end" fill="outline" :disabled="isConfiguringSyncJob" @click="configureSyncJobForShop">
+                <ion-button v-if="!assistantState.syncJobConfigured" slot="end" fill="outline"
+                  :disabled="isConfiguringSyncJob" @click="configureSyncJobForShop">
                   <ion-spinner v-if="isConfiguringSyncJob" name="crescent" slot="start" />
                   {{ translate("Configure") }}
                 </ion-button>
               </ion-item>
-              
+
               <ion-item v-for="job in sharedInfrastructureJobs" :key="job.id">
                 <ion-label>
                   {{ job.label }}
@@ -203,12 +292,13 @@
                 </ion-label>
                 <ion-spinner v-if="job.status === 'checking'" slot="end" name="crescent" />
                 <ion-badge v-else slot="end" :color="getJobStatusColor(job)">{{ getJobStatusLabel(job) }}</ion-badge>
-                <ion-button v-if="job.status === 'verified' && job.isPaused" slot="end" fill="outline" :disabled="isEnablingJob[job.id]" @click="enableJob(job)">
+                <ion-button v-if="job.status === 'verified' && job.isPaused" slot="end" fill="outline"
+                  :disabled="isEnablingJob[job.id]" @click="enableJob(job)">
                   <ion-spinner v-if="isEnablingJob[job.id]" name="crescent" slot="start" />
                   {{ translate("Enable") }}
                 </ion-button>
               </ion-item>
-              
+
               <ion-item lines="none">
                 <ion-label>
                   {{ translate("Next step") }}
@@ -218,6 +308,7 @@
             </ion-list>
             <ion-card-content>
               <ion-button v-if="entryAction !== 'request-upgrade'" expand="block" :disabled="!isStep3Done" @click="openProductSync">{{ entryAction === "current" ? translate("Open current product sync") : translate("Go to new product sync setup") }}</ion-button>
+
               <ion-button expand="block" fill="clear" @click="currentStep = 2">{{ translate("Back") }}</ion-button>
             </ion-card-content>
           </ion-card>
@@ -254,7 +345,7 @@ import {
   alertController,
   onIonViewWillEnter
 } from "@ionic/vue";
-import { arrowForwardOutline } from "ionicons/icons";
+import { arrowForwardOutline, checkmarkCircleOutline } from "ionicons/icons";
 import { computed, defineProps, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useStore } from "vuex";
@@ -285,6 +376,9 @@ const teardownLog = ref<ProductSyncMigrationTeardownStep[]>([]);
 const teardownFailedSteps = ref<ProductSyncMigrationTeardownStep[]>([]);
 const isConfiguringSyncJob = ref(false);
 const isEnablingJob = ref<Record<string, boolean>>({});
+const isTeardownItemRunning = ref<Record<string, boolean>>({});
+const isTeardownSectionRunning = ref<Record<string, boolean>>({});
+
 const assistantState = ref<ProductSyncMigrationAssistantState>({
   componentRelease: "",
   minimumComponentRelease: migrationConfig.minimumComponentRelease,
@@ -423,15 +517,10 @@ const teardownStepDetail = computed(() => {
 
   return translate("No active legacy sync artifacts were found for this shop.");
 });
-const legacySystemMessagesPreview = computed(() => {
-  return assistantState.value.legacySystemMessages.slice(0, 5);
-});
-const remainingLegacySystemMessageCount = computed(() => {
-  return Math.max(assistantState.value.legacySystemMessages.length - legacySystemMessagesPreview.value.length, 0);
-});
+
 const sharedInfrastructureJobs = computed(() => {
-  return assistantState.value.artifactChecks.filter(check => 
-    check.id === migrationConfig.incoming.serviceJobs.send || 
+  return assistantState.value.artifactChecks.filter(check =>
+    check.id === migrationConfig.incoming.serviceJobs.send ||
     check.id === migrationConfig.incoming.serviceJobs.poll
   );
 });
@@ -502,15 +591,8 @@ async function loadAssistant() {
       }
     );
 
-    // Auto-advance if state allows (only if we haven't manually moved away from step 1)
-    if (currentStep.value === 1) {
-      if (isStep1Done.value) {
-        currentStep.value = 2;
-        if (isStep2Done.value) {
-          currentStep.value = 3;
-        }
-      }
-    }
+    // Auto-advance logic removed to ensure users always start on Step 1 and manually proceed.
+
   } catch (error: any) {
     loadErrorMessage.value = error?.message || translate("Failed to load the product sync upgrade assistant.");
   }
@@ -625,7 +707,7 @@ async function configureSyncJobForShop() {
       productStoreId: shop.value.productStore?.productStoreId || shop.value.productStoreId,
       productIdentifierEnumId: shop.value.productStore?.productIdentifierEnumId || shop.value.productIdentifierEnumId
     });
-    
+
     await showToast(translate("Product sync job scheduled successfully."));
     await loadAssistant();
   } catch (error) {
@@ -656,7 +738,7 @@ async function copyMissingArtifactsToClipboard() {
 
   const details = missingArtifacts.map(check => `${check.label} (${check.id}): ${check.note}`).join("\n");
   const textToCopy = `${translate("Missing readiness artifacts")}:\n${details}`;
-  
+
   await copyToClipboard(textToCopy);
 }
 
@@ -747,11 +829,63 @@ async function teardownLegacySync() {
     isTeardownRunning.value = false;
   }
 }
+
+async function teardownItem(item: ProductSyncMigrationLegacyItem, kind: "type" | "job" | "message") {
+  isTeardownItemRunning.value[item.id] = true;
+  try {
+    if (kind === "type") {
+      await ShopifyProductSyncMigrationService.deprecateLegacySystemMessageType(item.id);
+    } else if (kind === "job") {
+      await ShopifyProductSyncMigrationService.deactivateLegacyServiceJob(item.id);
+    } else if (kind === "message") {
+      await ShopifyProductSyncMigrationService.cancelLegacySystemMessage(item.id);
+    }
+    await showToast(translate("Artifact deactivated successfully."));
+    await loadAssistant();
+  } catch (error) {
+    logger.error(`Failed to teardown legacy ${kind} ${item.id}`, error);
+    await showToast(translate("Failed to deactivate artifact."));
+  } finally {
+    isTeardownItemRunning.value[item.id] = false;
+  }
+}
+
+async function teardownSection(kind: "type" | "job" | "message") {
+  isTeardownSectionRunning.value[kind] = true;
+  try {
+    let items: ProductSyncMigrationLegacyItem[] = [];
+    if (kind === "type") {
+      items = assistantState.value.legacySystemMessageTypes.filter(t => t.status === "active");
+    } else if (kind === "job") {
+      items = assistantState.value.legacyServiceJobs.filter(j => j.status === "active");
+    } else if (kind === "message") {
+      items = assistantState.value.legacySystemMessages.filter(m => m.status === "active");
+    }
+
+    if (!items.length) return;
+
+    await Promise.allSettled(items.map(async (item) => {
+      if (kind === "type") {
+        return ShopifyProductSyncMigrationService.deprecateLegacySystemMessageType(item.id);
+      } else if (kind === "job") {
+        return ShopifyProductSyncMigrationService.deactivateLegacyServiceJob(item.id);
+      } else if (kind === "message") {
+        return ShopifyProductSyncMigrationService.cancelLegacySystemMessage(item.id);
+      }
+    }));
+
+    await showToast(translate("Section deactivated successfully."));
+    await loadAssistant();
+  } catch (error) {
+    logger.error(`Failed to teardown legacy section ${kind}`, error);
+    await showToast(translate("Failed to deactivate section."));
+  } finally {
+    isTeardownSectionRunning.value[kind] = false;
+  }
+}
 </script>
 
-
 <style scoped>
-
 main {
   max-width: 70ch;
   margin-inline: auto;
@@ -763,4 +897,30 @@ main {
   align-items: flex-start;
 }
 
+ion-item .teardown-action {
+  display: flex;
+  flex-direction: column;
+}
+
+.hover-button {
+  display: none;
+}
+
+.hover-action:hover .hide-on-hover {
+  display: none;
+}
+
+/* Ensure the button is visible when a spinner is active (item is running) */
+.hover-button:has(ion-spinner) {
+  display: inline;
+}
+
+.hover-action:hover .hover-button {
+  display: inline;
+}
+
+/* Ensure the badge is hidden when a spinner is active (item is running) */
+.hover-action:has(ion-spinner) .hide-on-hover {
+  display: inline;
+}
 </style>
