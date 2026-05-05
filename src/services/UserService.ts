@@ -68,7 +68,7 @@ const getUserAccount = async (userId: string): Promise<any> => {
 
 const setUserTimeZone = async (payload: any): Promise <any>  => {
   return api({
-    url: "setUserTimeZone",
+    url: "admin/user/profile",
     method: "post",
     data: payload
   });
