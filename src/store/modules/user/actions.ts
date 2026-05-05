@@ -144,7 +144,10 @@ const actions: ActionTree<UserState, RootState> = {
     const current: any = state.current;
     if(current.timeZone !== payload.tzId) {
       try {
-        await UserService.setUserTimeZone(payload);
+        await UserService.setUserTimeZone({
+          userId: current.userId,
+          timeZone: payload.tzId
+        });
         current.timeZone = payload.tzId;
         commit(types.USER_INFO_UPDATED, current);
         Settings.defaultZone = current.timeZone;
