@@ -134,7 +134,7 @@ The following identifiers are confirmed in local source and should be treated as
 | Product sync DataManager config contract | `SYNC_SHOPIFY_PRODUCT` | `company/src/views/ShopifyProductSync.vue`, `company/src/views/ShopifyProductSyncHistory.vue`, `company/src/services/ShopifyProductSyncService.ts`, `mantle-shopify-connector/service/co/hotwax/shopify/system/ShopifySystemMessageServices.xml` | Required by the app contract, but not found in local seed XML. Treat as a runtime artifact the app must create or verify. |
 | Data document for job parameter lookup | `SERVICE_JOB_PARAMETER` | `company/src/services/ShopifyProductSyncService.ts` | Needed to discover whether a per-shop sync job already exists. |
 | Data document for error log lookup | `DATA_MANAGER_LOG_AND_PARAMETER` | `company/src/services/ShopifyProductSyncService.ts` | Needed for recent failed record lookups. |
-| Data document for OMS product/variant counts | `PROD_STORE_PRODUCTS_COUNT` | `company/src/services/ShopifyProductSyncService.ts` | Needed for review and reconcile counts. |
+| Data document for OMS product/variant counts | `PRODUCT_STORE_PRODUCT` | `company/src/services/ShopifyProductSyncService.ts` | Needed for review and reconcile counts. |
 
 ## Confirmed Legacy Product Sync IDs
 
@@ -284,7 +284,7 @@ These are the artifacts that should be treated as shop runtime data rather than 
 | Shared send job | `send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery` |
 | Shared poll job | `poll_ShopifyBulkOperationResult` |
 | Webhook message type | `BulkOperationsFinish` |
-| Data documents | `SERVICE_JOB_PARAMETER`, `DATA_MANAGER_LOG_AND_PARAMETER`, `PROD_STORE_PRODUCTS_COUNT` |
+| Data documents | `SERVICE_JOB_PARAMETER`, `DATA_MANAGER_LOG_AND_PARAMETER`, `PRODUCT_STORE_PRODUCT` |
 
 ## Source-of-Truth Matrix For Implementation
 
@@ -310,7 +310,7 @@ This is the matrix the app code should follow when implemented.
 | DataManagerConfig | `SYNC_SHOPIFY_PRODUCT` | New runtime contract | App-created or tenant runtime | create or verify |
 | Data document | `SERVICE_JOB_PARAMETER` | New shared | Deployment seed | verify exists |
 | Data document | `DATA_MANAGER_LOG_AND_PARAMETER` | New shared | Deployment seed | verify exists |
-| Data document | `PROD_STORE_PRODUCTS_COUNT` | New shared | Deployment seed | verify exists |
+| Data document | `PRODUCT_STORE_PRODUCT` | New shared | Deployment seed | verify exists |
 
 ## App Migration Config Plan
 
@@ -378,7 +378,7 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
     dataDocuments: [
       "SERVICE_JOB_PARAMETER",
       "DATA_MANAGER_LOG_AND_PARAMETER",
-      "PROD_STORE_PRODUCTS_COUNT"
+      "PRODUCT_STORE_PRODUCT"
     ],
     webhookTopic: "bulk_operations/finish"
   },
@@ -446,7 +446,7 @@ The following are in scope but are not fully confirmed by local source alone:
 3. The exact source repository and seed file for the required data documents:
    - `SERVICE_JOB_PARAMETER`
    - `DATA_MANAGER_LOG_AND_PARAMETER`
-   - `PROD_STORE_PRODUCTS_COUNT`
+   - `PRODUCT_STORE_PRODUCT`
 4. The exact canonical old per-shop queue-job names for every legacy tenant variant.
 5. Whether any generic old sender job must be deleted, or whether removing old message types is sufficient.
 

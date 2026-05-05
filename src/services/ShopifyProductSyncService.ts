@@ -1066,7 +1066,7 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
       url: "oms/dataDocumentView",
       method: "post",
       data: {
-        dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+        dataDocumentId: "PRODUCT_STORE_PRODUCT",
         pageIndex: 0,
         pageSize: 1,
         customParametersMap: {
@@ -1081,7 +1081,7 @@ const fetchReviewStats = async (payload: any): Promise<ShopifyProductSyncReviewS
       url: "oms/dataDocumentView",
       method: "post",
       data: {
-        dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+        dataDocumentId: "PRODUCT_STORE_PRODUCT",
         pageIndex: 0,
         pageSize: 1,
         customParametersMap: {
@@ -1138,7 +1138,7 @@ const fetchPreflight = async (payload: any): Promise<any[]> => {
       url: "oms/dataDocumentView",
       method: "post",
       data: {
-        dataDocumentId: "PROD_STORE_PRODUCTS_COUNT",
+        dataDocumentId: "PRODUCT_STORE_PRODUCT",
         customParametersMap: {
           productStoreId,
           shopifyProductId: shopifyVariantIds
