@@ -724,7 +724,7 @@ const systemMessageCreatedTime = computed(() => {
 });
 
 const shopIdParameter = computed(() => {
-  return (props.syncJobObj?.serviceJobParameters || []).find((param: any) => param.parameterName === "shopId" || param.parameterName === "shopifyShopId");
+  return (props.syncJobObj?.serviceJobParameters || []).find((param: any) => param.parameterName === "shopId");
 });
 
 const systemMessageStatusLabel = computed(() => {

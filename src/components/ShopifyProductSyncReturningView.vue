@@ -218,12 +218,11 @@
             <p>{{ translate("Select products to run the product sync for on demand") }}</p>
           </ion-label>
         </ion-item>
-        <ion-item disabled>
+        <ion-item button detail @click="emit('open-replay-sync')">
           <ion-label>
             {{ translate("Replay sync from a certain time") }}
             <p>{{ translate("Rewind the last sync time to reimport updates") }}</p>
           </ion-label>
-          <ion-badge slot="end" color="medium">{{ translate("Coming soon") }}</ion-badge>
         </ion-item>
         <ion-item button detail @click="emit('open-resync-entire-catalog')">
           <ion-label>
@@ -499,7 +498,7 @@ const props = defineProps<{
   totalDetailedErrorsCount: number
   updateFilesToProcessCount: number | string
 }>();
-const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job", "download-file", "view-error-details", "update:detailed-error-query", "show-error-modal", "refresh-errors", "resync-product"]);
+const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-replay-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job", "download-file", "view-error-details", "update:detailed-error-query", "show-error-modal", "refresh-errors", "resync-product"]);
 
 
 

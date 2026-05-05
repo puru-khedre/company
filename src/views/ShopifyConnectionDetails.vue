@@ -208,6 +208,7 @@ import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCa
 import { translate } from "@/i18n";
 import { formatDateTime, parseDateTimeValue } from "@/utils";
 import { DateTime } from "luxon";
+import { selectMostRecentSystemMessage } from "@/utils/shopifyProductSync";
 import { computed, defineProps, ref } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
@@ -644,7 +645,7 @@ async function loadProductsInventorySummary() {
 
 async function loadTrackProgressDetails() {
   try {
-    const trackProgressMessage = await selectTrackProgressSystemMessage(productSyncSummary.value.syncRunState?.systemMessages || []);
+    const trackProgressMessage = selectMostRecentSystemMessage(productSyncSummary.value.syncRunState?.systemMessages || []);
     if (trackProgressMessage?.systemMessageId) {
       await fetchSyncRun(trackProgressMessage.systemMessageId, trackProgressMessage);
     }
@@ -707,52 +708,6 @@ function openProductTypes() {
 }
 
 // Moved formatDateTime to @/utils
-
-async function selectTrackProgressSystemMessage(systemMessages: any[]) {
-  if (!systemMessages.length) return null;
-
-  const consumedMessages = systemMessages.filter((message) => hasSystemMessageStatus(message, ["smsgconsumed", "consumed", "smsgconfirmed", "confirmed"]));
-  const oldestConsumedMessages = sortSystemMessagesOldestFirst(consumedMessages);
-
-  const mdmLogResults = await Promise.all(
-    oldestConsumedMessages.map(async (message) => {
-      const mdmLog = await fetchMdmLogBySystemMessageId(message.systemMessageId);
-      return { message, mdmLog };
-    })
-  );
-
-  for (const { message, mdmLog } of mdmLogResults) {
-    if (mdmLog?.logId && !isTerminalMdmLogStatus(mdmLog.statusId)) {
-      return message;
-    }
-  }
-
-  return getOldestSystemMessageByStatus(systemMessages, ["smsgreceived", "received"]) ||
-    getOldestSystemMessageByStatus(systemMessages, ["smsgsent", "sent"]) ||
-    getOldestSystemMessageByStatus(systemMessages, ["smsgproduced", "produced"]) ||
-    sortSystemMessagesNewestFirst(consumedMessages)[0] ||
-    null;
-}
-
-function getOldestSystemMessageByStatus(systemMessages: any[], statuses: string[]) {
-  return sortSystemMessagesOldestFirst(systemMessages.filter((message) => hasSystemMessageStatus(message, statuses)))[0];
-}
-
-function hasSystemMessageStatus(systemMessage: any, statuses: string[]) {
-  return statuses.includes(normalizeStatusValue(systemMessage?.statusId));
-}
-
-function isTerminalMdmLogStatus(statusId: string) {
-  return ["dmlsuccess", "dmlerror", "dmlcancelled", "dmlcanceled"].includes(normalizeStatusValue(statusId));
-}
-
-function sortSystemMessagesOldestFirst(systemMessages: any[]) {
-  return [...systemMessages].sort((firstMessage, secondMessage) => getSystemMessageTime(firstMessage) - getSystemMessageTime(secondMessage));
-}
-
-function sortSystemMessagesNewestFirst(systemMessages: any[]) {
-  return [...systemMessages].sort((firstMessage, secondMessage) => getSystemMessageTime(secondMessage) - getSystemMessageTime(firstMessage));
-}
 
 function getSystemMessageTime(systemMessage: any) {
   return parseDateTimeValue(getSystemMessageTimeValue(systemMessage))?.toMillis() || 0;

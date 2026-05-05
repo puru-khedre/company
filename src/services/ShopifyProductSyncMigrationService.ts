@@ -61,7 +61,7 @@ export interface ProductSyncMigrationAssistantState {
 }
 
 function getShopId(payload: any) {
-  return String(payload?.shopId || payload?.id || payload?.shop?.shopId || payload?.shopifyShopId || "").trim();
+  return String(payload?.shopId || payload?.id || payload?.shop?.shopId || "").trim();
 }
 
 function buildDeprecatedLabel(value: string, fallback: string) {
@@ -693,7 +693,11 @@ async function fetchAssistantState(
     { id: PRODUCT_SYNC_MIGRATION_CONFIG.incoming.dataManagerConfig, type: "dataManagerConfig", label: "Data manager config", note: "Required config for processing imported Shopify product sync files." },
     { id: "SERVICE_JOB_PARAMETER", type: "dataDocument", label: "Service job parameters document", note: "Required for verifying per-shop sync job configuration via Data Document." },
     { id: "DATA_MANAGER_LOG_AND_PARAMETER", type: "dataDocument", label: "Data manager logs document", note: "Required for tracking sync progress and error counts via Data Document." },
+<<<<<<< 4-shopify-integration-ui
+    { id: "PRODUCT_STORE_PRODUCT", type: "dataDocument", label: "Product store counts document", note: "Required for preflight checks and catalog metrics via Data Document." }
+=======
     { id: "PROD_STORE_PRODUCTS_COUNT", type: "dataDocument", label: "Product store counts document", note: "Required for preflight checks and catalog metrics via Data Document." }
+>>>>>>> 4-shopify-integration-ui
   ];
 
   state.artifactChecks = artifactCheckDefinitions.map(def => ({ id: def.id, label: def.label, note: def.note, status: "checking" }));

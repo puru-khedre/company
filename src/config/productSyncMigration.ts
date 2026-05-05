@@ -43,7 +43,7 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
     },
     serviceJobs: {
       baseSync: "sync_ShopifyProductUpdates",
-      perShopPattern: "sync_ShopifyProductUpdates_{shopifyShopId}",
+      perShopPattern: "sync_ShopifyProductUpdates_{shopId}",
       send: "send_ProducedBulkOperationSystemMessage_ShopifyBulkQuery",
       poll: "poll_ShopifyBulkOperationResult"
     },
@@ -51,7 +51,7 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
     dataDocuments: [
       "SERVICE_JOB_PARAMETER",
       "DATA_MANAGER_LOG_AND_PARAMETER",
-      "PROD_STORE_PRODUCTS_COUNT"
+      "PRODUCT_STORE_PRODUCT"
     ],
     webhookTopic: "bulk_operations/finish"
   },

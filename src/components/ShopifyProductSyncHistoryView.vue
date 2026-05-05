@@ -232,7 +232,7 @@ function canViewQuery(run: any) {
 
 function getStatusIcon(status: string) {
   const normalizedStatus = normalizeStatus(status);
-  if (["completed", "finished", "success", "confirmed", "consumed", "smsgconfirmed", "smsgconsumed", "dmlsuccess", "dmlsfinished"].includes(normalizedStatus)) return checkmarkCircleOutline;
+  if (["completed", "finished", "success", "confirmed", "consumed", "smsgconfirmed", "smsgconsumed", "dmlsuccess", "dmlsfinished", "skipped"].includes(normalizedStatus)) return checkmarkCircleOutline;
   if (["completedwitherrors", "error", "failed", "cancelled", "canceled", "crashed", "smsgerror", "dmlerror", "dmlsfailed", "dmlscrashed", "dmlscancelled"].includes(normalizedStatus)) return alertCircleOutline;
   if (["running", "sent", "pending", "produced", "queued", "smsgsent", "smsgproduced", "dmlsrunning", "dmlspending", "dmlsqueued"].includes(normalizedStatus)) return syncCircleOutline;
   return helpCircleOutline;
@@ -275,7 +275,7 @@ function hasRunError(run: any) {
 }
 
 function isCompleteStatus(status: string) {
-  return ["completed", "finished", "success", "confirmed", "consumed", "smsgconfirmed", "smsgconsumed", "dmlsuccess", "dmlsfinished"].includes(normalizeStatus(status));
+  return ["completed", "finished", "success", "confirmed", "consumed", "smsgconfirmed", "smsgconsumed", "dmlsuccess", "dmlsfinished", "skipped"].includes(normalizeStatus(status));
 }
 
 function normalizeStatus(status: string) {
