@@ -29,11 +29,13 @@
           <ion-label>{{ translate("Updates synced") }}</ion-label>
           <ion-label slot="end"><AnimatedNumber :value="Number(lastSyncTotalRecordCount) || 0" /></ion-label>
         </ion-item>
-        <ion-item button :detail="isSyncScheduled" @click="isSyncScheduled ? emit('open-sync-job-details') : undefined">
+        <ion-item :button="!isSecondaryLoading && isSyncScheduled" :detail="!isSecondaryLoading && isSyncScheduled" @click="!isSecondaryLoading && isSyncScheduled ? emit('open-sync-job-details') : undefined">
           <ion-label>{{ translate("Next sync time") }}
-            <p v-if="isSyncScheduled">{{ nextSyncLabel }}</p>
+            <p v-if="isSecondaryLoading"><ion-skeleton-text animated style="width: 60%" /></p>
+            <p v-else-if="isSyncScheduled">{{ nextSyncLabel }}</p>
           </ion-label>
-          <ion-badge slot="end" color="warning" v-if="isSyncPaused">{{ translate("Paused") }}</ion-badge>
+          <ion-spinner slot="end" v-if="isSecondaryLoading" name="crescent" />
+          <ion-badge slot="end" color="warning" v-else-if="isSyncPaused">{{ translate("Paused") }}</ion-badge>
           <ion-label slot="end" v-else-if="isSyncScheduled">{{ nextSyncRelativeLabel }}</ion-label>
           <ion-button slot="end" fill="outline" color="primary" v-else @click.stop="emit('open-sync-job-details', syncJobObj)">{{ translate("Schedule") }}</ion-button>
         </ion-item>
