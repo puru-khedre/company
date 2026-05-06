@@ -37,15 +37,6 @@
                 <ion-spinner v-if="assistantState.isEligible === null" slot="end" name="crescent" />
                 <ion-badge v-else slot="end" :color="eligibilityBadgeColor">{{ eligibilityBadgeLabel }}</ion-badge>
               </ion-item>
-              <ion-item>
-                <ion-label>
-                  {{ translate("New product sync messages") }}
-                  <p>{{ newSyncMessagesDetail }}</p>
-                </ion-label>
-                <ion-spinner v-if="assistantState.hasNewProductSyncMessages === null" slot="end" name="crescent" />
-                <ion-badge v-else slot="end" :color="newSyncMessagesBadgeColor">{{ newSyncMessagesBadgeLabel }}</ion-badge>
-
-              </ion-item>
               <ion-item lines="none">
                 <ion-label>
                   {{ translate("Per-shop sync job") }}
@@ -102,22 +93,26 @@
           <ion-card v-if="currentStep === 2">
             <ion-card-header>
               <ion-card-title>{{ translate("2. Deactivate the legacy sync") }}</ion-card-title>
-              <ion-card-subtitle>{{ translate("Use the same Moqui APIs as Job Manager to cancel unfinished legacy messages, pause legacy jobs, and deprecate legacy message types in place.") }}</ion-card-subtitle>
+              <ion-card-subtitle>{{ translate("Turn off the old product sync for this shop so future product updates run through the new sync only.") }}</ion-card-subtitle>
 
             </ion-card-header>
             <ion-list lines="full">
               <template v-if="assistantState.legacySystemMessageTypes.length">
-                <ion-list-header>
-                  <ion-label>
+                <ion-item-divider color="light">
                     {{ translate("Legacy system message types") }}
-                  </ion-label>
-                  <ion-button v-if="assistantState.legacySystemMessageTypes.some(t => t.status === 'active')" slot="end"
+                  <ion-button v-if="assistantState.legacySystemMessageTypes.some(type => isActionableLegacyItem(type, 'type'))" slot="end"
                     fill="clear" :disabled="isTeardownSectionRunning['type'] || isTeardownRunning"
                     @click="teardownSection('type')">
                     <ion-spinner v-if="isTeardownSectionRunning['type']" name="crescent" slot="start" />
                     {{ translate("Deactivate all") }}
                   </ion-button>
-                </ion-list-header>
+                </ion-item-divider>
+                <ion-card-content>
+                  <p>
+                    {{ translate("Deactivating a type clears the old sync bindings and marks the name as deprecated.") }}
+                    {{ legacySystemMessageTypesSummary }}
+                  </p>
+                </ion-card-content>
                 <ion-item v-for="type in assistantState.legacySystemMessageTypes" :key="type.id" class="hover-action">
                   <ion-label>
                     {{ type.label }}
@@ -125,15 +120,15 @@
                     <p>{{ type.note }}</p>
                   </ion-label>
                   <div class="teardown-action" slot="end">
-                    <ion-badge :color="getLegacyItemColor(type.status)" :class="{ 'hide-on-hover': type.status === 'active' }">
+                    <ion-badge :color="getLegacyItemColor(type.status)" :class="{ 'hide-on-hover': isActionableLegacyItem(type, 'type') }">
                       {{ getLegacyItemLabel(type.status) }}
                     </ion-badge>
 
-                    <ion-button v-if="type.status === 'active'" fill="outline" class="hover-button"
+                    <ion-button v-if="isActionableLegacyItem(type, 'type')" fill="outline" class="hover-button"
                       :disabled="isTeardownItemRunning[type.id] || isTeardownSectionRunning['type'] || isTeardownRunning"
                       @click="teardownItem(type, 'type')">
                       <ion-spinner v-if="isTeardownItemRunning[type.id]" name="crescent" slot="start" />
-                      {{ translate("Deactivate") }}
+                      {{ getLegacyActionLabel(type, 'type') }}
                     </ion-button>
                   </div>
 
@@ -141,17 +136,22 @@
               </template>
 
               <template v-if="assistantState.legacyServiceJobs.length">
-                <ion-list-header>
-                  <ion-label>
+
+                <ion-item-divider color="light">
                     {{ translate("Legacy service jobs") }}
-                  </ion-label>
-                  <ion-button v-if="assistantState.legacyServiceJobs.some(j => j.status === 'active')" slot="end"
+                  <ion-button v-if="assistantState.legacyServiceJobs.some(job => isActionableLegacyItem(job, 'job'))" slot="end"
                     fill="clear" :disabled="isTeardownSectionRunning['job'] || isTeardownRunning"
                     @click="teardownSection('job')">
                     <ion-spinner v-if="isTeardownSectionRunning['job']" name="crescent" slot="start" />
-                    {{ translate("Deactivate all") }}
+                    {{ translate("Finish all") }}
                   </ion-button>
-                </ion-list-header>
+                </ion-item-divider>
+                <ion-card-content>
+                  <p>
+                    {{ translate("Deactivating a job pauses it and clears the old service target so it can no longer run work.") }}
+                    {{ legacyServiceJobsSummary }}
+                  </p>
+                </ion-card-content>
                 <ion-item v-for="job in assistantState.legacyServiceJobs" :key="job.id" class="hover-action">
                   <ion-label>
                     {{ job.label }}
@@ -159,12 +159,12 @@
                     <p>{{ job.note }}</p>
                   </ion-label>
                   <div slot="end">
-                    <ion-badge :color="getLegacyItemColor(job.status)" :class="{ 'hide-on-hover': job.status === 'active' }">
+                    <ion-badge :color="getLegacyItemColor(job.status)" :class="{ 'hide-on-hover': isActionableLegacyItem(job, 'job') }">
                       {{ getLegacyItemLabel(job.status) }}
                     </ion-badge>
-                    <ion-button v-if="job.status === 'active'" fill="outline" class="hover-button" :disabled="isTeardownItemRunning[job.id] || isTeardownSectionRunning['job'] || isTeardownRunning" @click="teardownItem(job, 'job')">
+                    <ion-button v-if="isActionableLegacyItem(job, 'job')" fill="outline" class="hover-button" :disabled="isTeardownItemRunning[job.id] || isTeardownSectionRunning['job'] || isTeardownRunning" @click="teardownItem(job, 'job')">
                       <ion-spinner v-if="isTeardownItemRunning[job.id]" name="crescent" slot="start" />
-                      {{ translate("Deactivate") }}
+                      {{ getLegacyActionLabel(job, 'job') }}
                     </ion-button>
                   </div>
 
@@ -172,17 +172,21 @@
               </template>
 
               <template v-if="assistantState.legacySystemMessages.length">
-                <ion-list-header>
-                  <ion-label>
+                <ion-item-divider color="light">
                     {{ translate("Legacy system messages") }}
-                  </ion-label>
-                  <ion-button v-if="assistantState.legacySystemMessages.some(m => m.status === 'active')" slot="end"
+                  <ion-button v-if="assistantState.legacySystemMessages.some(message => isActionableLegacyItem(message, 'message'))" slot="end"
                     fill="clear" :disabled="isTeardownSectionRunning['message'] || isTeardownRunning"
                     @click="teardownSection('message')">
                     <ion-spinner v-if="isTeardownSectionRunning['message']" name="crescent" slot="start" />
                     {{ translate("Cancel all") }}
                   </ion-button>
-                </ion-list-header>
+                </ion-item-divider>
+                <ion-card-content>
+                  <p>
+                    {{ translate("Only unfinished legacy messages appear here. Cancel them so the old sync cannot keep processing.") }}
+                    {{ legacySystemMessagesSummary }}
+                  </p>
+                </ion-card-content>
                 <ion-item v-for="message in assistantState.legacySystemMessages" :key="message.id" class="hover-action">
                   <ion-label>
                     {{ message.label }}
@@ -190,17 +194,24 @@
                     <p>{{ message.note }}</p>
                   </ion-label>
                   <div slot="end">
-                    <ion-badge :color="getLegacyItemColor(message.status)" :class="{ 'hide-on-hover': message.status === 'active' }">
+                    <ion-badge :color="getLegacyItemColor(message.status)" :class="{ 'hide-on-hover': isActionableLegacyItem(message, 'message') }">
                       {{ getLegacyItemLabel(message.status) }}
                     </ion-badge>
-                    <ion-button v-if="message.status === 'active'" fill="outline" class="hover-button" :disabled="isTeardownItemRunning[message.id] || isTeardownSectionRunning['message'] || isTeardownRunning" @click="teardownItem(message, 'message')">
+                    <ion-button v-if="isActionableLegacyItem(message, 'message')" fill="outline" class="hover-button" :disabled="isTeardownItemRunning[message.id] || isTeardownSectionRunning['message'] || isTeardownRunning" @click="teardownItem(message, 'message')">
                       <ion-spinner v-if="isTeardownItemRunning[message.id]" name="crescent" slot="start" />
-                      {{ translate("Cancel") }}
+                      {{ getLegacyActionLabel(message, 'message') }}
                     </ion-button>
                   </div>
 
                 </ion-item>
               </template>
+              <ion-item v-else lines="none">
+                <ion-label>
+                  {{ translate("No unfinished legacy system messages need action for this shop.") }}
+                  <p>{{ translate("Finished and cancelled legacy messages are hidden here so you only review work that still needs attention.") }}</p>
+                </ion-label>
+                <ion-badge slot="end" color="success">{{ translate("Ready") }}</ion-badge>
+              </ion-item>
 
               <ion-item v-if="!canRunTeardown && !isTeardownRunning" lines="none">
                 <ion-label color="success">
@@ -333,10 +344,10 @@ import {
   IonHeader,
   IonIcon,
   IonItem,
+  IonItemDivider,
   IonLabel,
   IonList,
   IonListHeader,
-  IonNote,
   IonPage,
   IonProgressBar,
   IonSpinner,
@@ -353,9 +364,10 @@ import { translate } from "@/i18n";
 import { PRODUCT_SYNC_MIGRATION_CONFIG } from "@/config/productSyncMigration";
 import {
   type ProductSyncMigrationAssistantState,
+  type ProductSyncMigrationEntryAction,
   type ProductSyncMigrationLegacyItem,
   type ProductSyncMigrationTeardownStep,
-  type ProductSyncMigrationEntryAction,
+  isActionableLegacyItem,
   ShopifyProductSyncMigrationService
 } from "@/services/ShopifyProductSyncMigrationService";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
@@ -428,21 +440,6 @@ const eligibilityBadgeColor = computed(() => {
   if (assistantState.value.isEligible === null) return "medium";
   return assistantState.value.isEligible ? "success" : "warning";
 });
-const newSyncMessagesDetail = computed(() => {
-  if (assistantState.value.hasNewProductSyncMessages) {
-    return translate("This shop already has new product sync messages in the database.");
-  }
-
-  return translate("No new product sync messages were found for this shop yet.");
-});
-const newSyncMessagesBadgeLabel = computed(() => {
-  if (assistantState.value.hasNewProductSyncMessages === null) return translate("Checking");
-  return assistantState.value.hasNewProductSyncMessages ? translate("Active") : translate("Not started");
-});
-const newSyncMessagesBadgeColor = computed(() => {
-  if (assistantState.value.hasNewProductSyncMessages === null) return "medium";
-  return assistantState.value.hasNewProductSyncMessages ? "success" : "medium";
-});
 const perShopSyncJobDetail = computed(() => {
   if (assistantState.value.syncJobConfigured && assistantState.value.syncJobName) {
     return assistantState.value.syncJobName;
@@ -458,31 +455,24 @@ const syncJobBadgeColor = computed(() => {
   if (assistantState.value.syncJobConfigured === null) return "medium";
   return assistantState.value.syncJobConfigured ? "success" : "medium";
 });
-const legacySystemMessageTypesCount = computed(() => {
-  return assistantState.value.legacySystemMessageTypes.length;
-});
 const legacySystemMessageTypesSummary = computed(() => {
   const activeCount = assistantState.value.legacySystemMessageTypes.filter((item) => item.status === "active").length;
+  const partialCount = assistantState.value.legacySystemMessageTypes.filter((item) => item.status === "partial").length;
   const deprecatedCount = assistantState.value.legacySystemMessageTypes.filter((item) => item.status === "deprecated").length;
-  return translate("{activeCount} still active, {deprecatedCount} already deprecated.", { activeCount, deprecatedCount });
-});
-const legacyServiceJobsCount = computed(() => {
-  return assistantState.value.legacyServiceJobs.length;
+  return translate("{activeCount} active, {partialCount} partially deactivated, {deprecatedCount} done.", { activeCount, partialCount, deprecatedCount });
 });
 const legacyServiceJobsSummary = computed(() => {
   const activeCount = assistantState.value.legacyServiceJobs.filter((item) => item.status === "active").length;
+  const partialCount = assistantState.value.legacyServiceJobs.filter((item) => item.status === "partial").length;
   const deactivatedCount = assistantState.value.legacyServiceJobs.filter((item) => item.status === "deactivated").length;
-  return translate("{activeCount} still active, {deactivatedCount} already deactivated.", { activeCount, deactivatedCount });
-});
-const legacySystemMessagesCount = computed(() => {
-  return assistantState.value.legacySystemMessagesTotalCount;
+  return translate("{activeCount} active, {partialCount} partially deactivated, {deactivatedCount} done.", { activeCount, partialCount, deactivatedCount });
 });
 const legacySystemMessagesSummary = computed(() => {
   if (!assistantState.value.legacySystemMessagesTotalCount) {
-    return translate("No legacy system messages were found for this shop.");
+    return translate("No unfinished legacy system messages were found for this shop.");
   }
 
-  return translate("Showing {count} legacy product-sync messages that exactly match the configured product-sync type IDs.", { count: assistantState.value.legacySystemMessages.length });
+  return translate("Showing {count} unfinished legacy product-sync messages for this shop.", { count: assistantState.value.legacySystemMessages.length });
 });
 const perShopPatternLabel = computed(() => {
   return migrationConfig.incoming.serviceJobs.perShopPattern;
@@ -499,9 +489,9 @@ const nextStepDetail = computed(() => {
   return translate("Request the backend upgrade first, then return here to complete readiness review and setup.");
 });
 const canRunTeardown = computed(() => {
-  return assistantState.value.legacySystemMessageTypes.some((item) => item.status === "active") ||
-    assistantState.value.legacyServiceJobs.some((item) => item.status === "active") ||
-    assistantState.value.legacySystemMessages.some((item) => item.status === "active");
+  return assistantState.value.legacySystemMessageTypes.some((item) => isActionableLegacyItem(item, "type")) ||
+    assistantState.value.legacyServiceJobs.some((item) => isActionableLegacyItem(item, "job")) ||
+    assistantState.value.legacySystemMessages.some((item) => isActionableLegacyItem(item, "message"));
 });
 const teardownActionLabel = computed(() => {
   if (isTeardownRunning.value) {
@@ -569,7 +559,6 @@ async function loadAssistant() {
   assistantState.value = {
     ...assistantState.value,
     isEligible: null,
-    hasNewProductSyncMessages: null,
     syncJobConfigured: null,
     artifactChecks: assistantState.value.artifactChecks.map(check => ({ ...check, status: "checking" })),
     legacySystemMessageTypes: assistantState.value.legacySystemMessageTypes.map(item => ({ ...item, status: "checking" })),
@@ -604,16 +593,14 @@ function openProductSync() {
   router.push(`/shopify-connection-details/${props.id}/product-sync`);
 }
 
-function openConnectionDetails() {
-  router.push(`/shopify-connection-details/${props.id}`);
-}
-
 function getLegacyItemLabel(status: ProductSyncMigrationLegacyItem["status"]) {
   switch (status) {
     case "checking":
       return translate("Checking");
     case "active":
       return translate("Active");
+    case "partial":
+      return translate("Partially deactivated");
     case "deprecated":
       return translate("Deprecated");
     case "deactivated":
@@ -634,6 +621,7 @@ function getLegacyItemColor(status: ProductSyncMigrationLegacyItem["status"]) {
     case "checking":
       return "medium";
     case "active":
+    case "partial":
       return "warning";
     case "deprecated":
     case "deactivated":
@@ -645,6 +633,19 @@ function getLegacyItemColor(status: ProductSyncMigrationLegacyItem["status"]) {
     default:
       return "danger";
   }
+}
+
+
+function getLegacyActionLabel(item: ProductSyncMigrationLegacyItem, kind: "type" | "job" | "message") {
+  if (kind === "message") {
+    return translate("Cancel");
+  }
+
+  if (item.status === "partial") {
+    return translate("Finish teardown");
+  }
+
+  return translate("Deactivate");
 }
 
 function getArtifactCheckLabel(artifactCheck: any) {
@@ -833,13 +834,7 @@ async function teardownLegacySync() {
 async function teardownItem(item: ProductSyncMigrationLegacyItem, kind: "type" | "job" | "message") {
   isTeardownItemRunning.value[item.id] = true;
   try {
-    if (kind === "type") {
-      await ShopifyProductSyncMigrationService.deprecateLegacySystemMessageType(item.id);
-    } else if (kind === "job") {
-      await ShopifyProductSyncMigrationService.deactivateLegacyServiceJob(item.id);
-    } else if (kind === "message") {
-      await ShopifyProductSyncMigrationService.cancelLegacySystemMessage(item.id);
-    }
+    await runTeardownAction(item, kind);
     await showToast(translate("Artifact deactivated successfully."));
     await loadAssistant();
   } catch (error) {
@@ -855,24 +850,18 @@ async function teardownSection(kind: "type" | "job" | "message") {
   try {
     let items: ProductSyncMigrationLegacyItem[] = [];
     if (kind === "type") {
-      items = assistantState.value.legacySystemMessageTypes.filter(t => t.status === "active");
+      items = assistantState.value.legacySystemMessageTypes.filter((item) => isActionableLegacyItem(item, kind));
     } else if (kind === "job") {
-      items = assistantState.value.legacyServiceJobs.filter(j => j.status === "active");
+      items = assistantState.value.legacyServiceJobs.filter((item) => isActionableLegacyItem(item, kind));
     } else if (kind === "message") {
-      items = assistantState.value.legacySystemMessages.filter(m => m.status === "active");
+      items = assistantState.value.legacySystemMessages.filter((item) => isActionableLegacyItem(item, kind));
     }
 
     if (!items.length) return;
 
-    await Promise.allSettled(items.map(async (item) => {
-      if (kind === "type") {
-        return ShopifyProductSyncMigrationService.deprecateLegacySystemMessageType(item.id);
-      } else if (kind === "job") {
-        return ShopifyProductSyncMigrationService.deactivateLegacyServiceJob(item.id);
-      } else if (kind === "message") {
-        return ShopifyProductSyncMigrationService.cancelLegacySystemMessage(item.id);
-      }
-    }));
+    for (const item of items) {
+      await runTeardownAction(item, kind);
+    }
 
     await showToast(translate("Section deactivated successfully."));
     await loadAssistant();
@@ -882,6 +871,20 @@ async function teardownSection(kind: "type" | "job" | "message") {
   } finally {
     isTeardownSectionRunning.value[kind] = false;
   }
+}
+
+async function runTeardownAction(item: ProductSyncMigrationLegacyItem, kind: "type" | "job" | "message") {
+  if (kind === "type") {
+    await ShopifyProductSyncMigrationService.deprecateLegacySystemMessageType(item.id);
+    return;
+  }
+
+  if (kind === "job") {
+    await ShopifyProductSyncMigrationService.deactivateLegacyServiceJob(item.id);
+    return;
+  }
+
+  await ShopifyProductSyncMigrationService.cancelLegacySystemMessage(item.id);
 }
 </script>
 

@@ -1,9 +1,9 @@
 export const PRODUCT_SYNC_MIGRATION_CONFIG = {
-  minimumComponentRelease: "ProductSyncMigrationGate_2026_05",
+  minimumComponentRelease: "v5.2.0",
   eligibleComponentReleases: [
     "product-sync",
-    "ProductSyncMigrationGate_2026_05",
-    "UpcomingRelease"
+    "UpcomingRelease",
+    "v5.2.0"
   ],
   outgoing: {
     systemMessageTypes: [

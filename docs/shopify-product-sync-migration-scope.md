@@ -228,7 +228,7 @@ Suggested deprecation convention:
 Suggested service job deactivation convention:
 
 - First try to delete legacy product-sync-only jobs when the data model allows it.
-- If delete is blocked or risky, rename the job with a `Deprecated` marker and clear the service name or equivalent execution fields.
+- If delete is blocked or risky, keep the same job primary key, pause the job, and clear the service name or equivalent execution fields.
 - Also clear or neutralize parameters that could still target a legacy product-sync path.
 - Prefer deactivation over speculative hard deletion when the live tenant model is uncertain.
 
@@ -297,8 +297,8 @@ This is the matrix the app code should follow when implemented.
 | SystemMessageType | `ShopifyProductUpdatesFeed` | Legacy | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
 | SystemMessageType | `GenerateOMSUpdateProductsFeed` | Legacy | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
 | SystemMessageType | `GenerateOMSUpdateProductsFeedNew` | Legacy/intermediate | Tenant runtime from old bridge seeds | rename as deprecated and clear bound services |
-| ServiceJob | `poll_SystemMessageFileSftp_ShopifyNewProductsFeed` | Legacy | Tenant runtime | delete if safe, otherwise rename as deprecated and clear execution fields |
-| ServiceJob | `poll_SystemMessageFileSftp_ShopifyUpdateProductsFeed` | Legacy | Tenant runtime | delete if safe, otherwise rename as deprecated and clear execution fields |
+| ServiceJob | `poll_SystemMessageFileSftp_ShopifyNewProductsFeed` | Legacy | Tenant runtime | delete if safe, otherwise keep the same job id, pause it, and clear execution fields |
+| ServiceJob | `poll_SystemMessageFileSftp_ShopifyUpdateProductsFeed` | Legacy | Tenant runtime | delete if safe, otherwise keep the same job id, pause it, and clear execution fields |
 | ServiceJob | `poll_BulkOperationResult_ShopifyBulkQuery` | Older bulk-query | Deployment/runtime depending on upgrade path | replace with current poller or deactivate safely |
 | SystemMessageType | `BulkQueryShopifyProductUpdates` | New | Deployment seed | verify exists |
 | ServiceJob | `sync_ShopifyProductUpdates` | New | Deployment seed | verify exists |

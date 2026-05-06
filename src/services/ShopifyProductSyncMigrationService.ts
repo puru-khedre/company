@@ -2,6 +2,7 @@ import api from "@/api";
 import logger from "@/logger";
 import { PRODUCT_SYNC_MIGRATION_CONFIG, isProductSyncMigrationEligibleRelease } from "@/config/productSyncMigration";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
+import { DateTime } from "luxon";
 
 export type ProductSyncMigrationEntryAction = "current" | "setup" | "request-upgrade";
 
@@ -40,7 +41,7 @@ export interface ProductSyncMigrationArtifactCheck {
 export interface ProductSyncMigrationLegacyItem {
   id: string;
   label: string;
-  status: "active" | "deprecated" | "deactivated" | "cancelled" | "terminal" | "missing" | "failed" | "checking";
+  status: "active" | "partial" | "deprecated" | "deactivated" | "cancelled" | "terminal" | "missing" | "failed" | "checking";
   note: string;
 }
 
@@ -60,6 +61,14 @@ export interface ProductSyncMigrationAssistantState {
   legacySystemMessages: ProductSyncMigrationLegacyItem[];
 }
 
+export function isActionableLegacyItem(item: ProductSyncMigrationLegacyItem, kind: "type" | "job" | "message") {
+  if (kind === "message") {
+    return item.status === "active";
+  }
+
+  return item.status === "active" || item.status === "partial";
+}
+
 function getShopId(payload: any) {
   return String(payload?.shopId || payload?.id || payload?.shop?.shopId || "").trim();
 }
@@ -69,6 +78,14 @@ function buildDeprecatedLabel(value: string, fallback: string) {
   if (!normalizedValue) return "Deprecated";
   if (/deprecated/i.test(normalizedValue)) return normalizedValue;
   return `${normalizedValue} [Deprecated]`;
+}
+
+function hasDeprecatedLabel(value: string) {
+  return /deprecated/i.test(String(value || "").trim());
+}
+
+function getDisplayLabel(fallback: string, description: string) {
+  return String(description || fallback || "").trim() || fallback;
 }
 
 function normalizeStatusId(value: string) {
@@ -89,6 +106,120 @@ function getLegacySystemMessageLabel(message: any) {
 
 function isLegacyProductSyncMessage(systemMessage: any, systemMessageTypeId: string) {
   return String(systemMessage?.systemMessageTypeId || "").trim() === String(systemMessageTypeId || "").trim();
+}
+
+function formatLegacyDateTime(value: any) {
+  if (value === undefined || value === null || value === "") return "";
+
+  const normalizedValue = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+  const candidates = [
+    typeof normalizedValue === "number" ? DateTime.fromMillis(normalizedValue) : DateTime.invalid("unsupported"),
+    DateTime.fromISO(String(value)),
+    DateTime.fromSQL(String(value)),
+    DateTime.fromJSDate(new Date(value))
+  ];
+  const dateTime = candidates.find((candidate) => candidate.isValid);
+
+  return dateTime ? dateTime.toLocaleString(DateTime.DATETIME_MED) : "";
+}
+
+export function describeLegacySystemMessageTypeState(systemMessageTypeId: string, systemMessageType: any): ProductSyncMigrationLegacyItem {
+  if (!systemMessageType?.systemMessageTypeId) {
+    return {
+      id: systemMessageTypeId,
+      label: systemMessageTypeId,
+      status: "missing",
+      note: "This legacy system message type is not present."
+    };
+  }
+
+  const label = getDisplayLabel(systemMessageTypeId, systemMessageType.description);
+  const sendServiceName = String(systemMessageType.sendServiceName || "").trim();
+  const consumeServiceName = String(systemMessageType.consumeServiceName || "").trim();
+  const fileHandlingFields = [
+    systemMessageType.sendPath,
+    systemMessageType.receivePath,
+    systemMessageType.receiveMovePath,
+    systemMessageType.receiveFilePattern,
+    systemMessageType.receiveResponseEnumId
+  ].filter((value: string) => String(value || "").trim());
+  const hasExecutionFields = !!(sendServiceName || consumeServiceName || fileHandlingFields.length);
+  const nameDeprecated = hasDeprecatedLabel(systemMessageType.description);
+
+  let status: ProductSyncMigrationLegacyItem["status"] = "active";
+  if (!hasExecutionFields && nameDeprecated) {
+    status = "deprecated";
+  } else if (!hasExecutionFields || nameDeprecated) {
+    status = "partial";
+  }
+
+  const stateParts = [
+    sendServiceName ? `Send service still points to ${sendServiceName}.` : "Send service cleared.",
+    consumeServiceName ? `Consume service still points to ${consumeServiceName}.` : "Consume service cleared.",
+    fileHandlingFields.length ? "File handling is still configured." : "File handling cleared.",
+    nameDeprecated ? "Name is marked deprecated." : "Name still needs a deprecated label."
+  ];
+
+  return {
+    id: systemMessageTypeId,
+    label,
+    status,
+    note: stateParts.join(" ")
+  };
+}
+
+export function describeLegacyServiceJobState(jobDetail: any): ProductSyncMigrationLegacyItem {
+  const jobName = String(jobDetail?.jobName || "").trim();
+  if (!jobName) {
+    return {
+      id: "",
+      label: "",
+      status: "missing",
+      note: "This legacy service job is not present."
+    };
+  }
+
+  const label = getDisplayLabel(jobName, jobDetail.description);
+  const paused = String(jobDetail.paused || "").toUpperCase() === "Y";
+  const serviceName = String(jobDetail.serviceName || "").trim();
+  const serviceConfigured = !!serviceName && serviceName !== "_NA_";
+
+  let status: ProductSyncMigrationLegacyItem["status"] = "active";
+  if (paused && !serviceConfigured) {
+    status = "deactivated";
+  } else if (paused || !serviceConfigured) {
+    status = "partial";
+  }
+
+  const stateParts = [
+    paused ? "Job is paused." : "Job is still scheduled.",
+    serviceConfigured ? `Service still points to ${serviceName}.` : "Service is cleared."
+  ];
+
+  return {
+    id: jobName,
+    label,
+    status,
+    note: stateParts.join(" ")
+  };
+}
+
+export function buildLegacySystemMessageItem(systemMessage: any): ProductSyncMigrationLegacyItem | null {
+  const statusId = String(systemMessage?.statusId || "").trim();
+  const normalizedStatusId = normalizeStatusId(statusId);
+
+  if (normalizedStatusId.includes("cancel") || isTerminalLegacyMessageStatus(statusId)) {
+    return null;
+  }
+
+  const formattedInitDate = formatLegacyDateTime(systemMessage?.initDate);
+
+  return {
+    id: String(systemMessage?.systemMessageId || "").trim(),
+    label: getLegacySystemMessageLabel(systemMessage),
+    status: "active",
+    note: `${statusId || "Unknown status"}${formattedInitDate ? ` · ${formattedInitDate}` : ""}`
+  };
 }
 
 async function fetchMaargInfo() {
@@ -262,34 +393,7 @@ async function fetchLegacySystemMessageTypeState(): Promise<ProductSyncMigration
   return Promise.all(PRODUCT_SYNC_MIGRATION_CONFIG.outgoing.systemMessageTypes.map(async (systemMessageTypeId) => {
     try {
       const systemMessageType = await fetchSystemMessageTypeEntity(systemMessageTypeId);
-      if (!systemMessageType?.systemMessageTypeId) {
-        return {
-          id: systemMessageTypeId,
-          label: systemMessageTypeId,
-          status: "missing",
-          note: "This legacy system message type is not present."
-        } as ProductSyncMigrationLegacyItem;
-      }
-
-      const executionFields = [
-        systemMessageType.sendServiceName,
-        systemMessageType.consumeServiceName,
-        systemMessageType.sendPath,
-        systemMessageType.receivePath,
-        systemMessageType.receiveMovePath,
-        systemMessageType.receiveFilePattern,
-        systemMessageType.receiveResponseEnumId
-      ].filter((value: string) => String(value || "").trim());
-      const isDeprecated = /deprecated/i.test(String(systemMessageType.description || "")) || !executionFields.length;
-
-      return {
-        id: systemMessageTypeId,
-        label: systemMessageTypeId,
-        status: isDeprecated ? "deprecated" : "active",
-        note: isDeprecated ?
-          "Already marked deprecated or no longer has active service bindings." :
-          "Still has active service bindings and should be deprecated."
-      } as ProductSyncMigrationLegacyItem;
+      return describeLegacySystemMessageTypeState(systemMessageTypeId, systemMessageType);
     } catch (error) {
       logger.warn(`Failed to inspect legacy system message type ${systemMessageTypeId}`, error);
       return {
@@ -315,17 +419,7 @@ async function fetchLegacyServiceJobState(): Promise<ProductSyncMigrationLegacyI
         } as ProductSyncMigrationLegacyItem;
       }
 
-      const serviceName = String(jobDetail.serviceName || "").trim();
-      const isDeactivated = String(jobDetail.paused || "").toUpperCase() === "Y" || serviceName === "_NA_" || !serviceName;
-
-      return {
-        id: jobName,
-        label: jobName,
-        status: isDeactivated ? "deactivated" : "active",
-        note: isDeactivated ?
-          "Already paused or configured as a no-op job." :
-          "Still points to an executable service and should be deactivated."
-      } as ProductSyncMigrationLegacyItem;
+      return describeLegacyServiceJobState(jobDetail);
     } catch (error) {
       logger.warn(`Failed to inspect legacy service job ${jobName}`, error);
       return {
@@ -395,26 +489,13 @@ async function fetchLegacySystemMessages(payload: any): Promise<{ items: Product
     return !!systemMessageId && list.findIndex((item: any) => String(item?.systemMessageId || "").trim() === systemMessageId) === index;
   });
 
+  const actionableSystemMessages = dedupedSystemMessages
+    .map((systemMessage: any) => buildLegacySystemMessageItem(systemMessage))
+    .filter((item: ProductSyncMigrationLegacyItem | null): item is ProductSyncMigrationLegacyItem => !!item);
+
   return {
-    items: dedupedSystemMessages.map((systemMessage: any) => {
-      const statusId = String(systemMessage?.statusId || "").trim();
-      const normalizedStatusId = normalizeStatusId(statusId);
-      let status: ProductSyncMigrationLegacyItem["status"] = "active";
-
-      if (normalizedStatusId.includes("cancel")) {
-        status = "cancelled";
-      } else if (isTerminalLegacyMessageStatus(statusId)) {
-        status = "terminal";
-      }
-
-      return {
-        id: String(systemMessage?.systemMessageId || "").trim(),
-        label: getLegacySystemMessageLabel(systemMessage),
-        status,
-        note: `${statusId || "Unknown status"}${systemMessage?.initDate ? ` · ${systemMessage.initDate}` : ""}`
-      };
-    }),
-    totalCount: dedupedSystemMessages.length
+    items: actionableSystemMessages,
+    totalCount: actionableSystemMessages.length
   };
 }
 
@@ -469,7 +550,7 @@ async function deactivateLegacyServiceJob(jobName: string): Promise<void> {
     method: "PUT",
     data: {
       jobName,
-      description: buildDeprecatedLabel(jobDetail.description, jobName),
+      description: jobDetail.description || "",
       paused: "Y",
       serviceName: "_NA_",
       cronExpression: jobDetail.cronExpression || "",
@@ -733,35 +814,18 @@ async function fetchAssistantState(
     }
   }
 
-  // 4. Detect existing new product sync messages or history
+  // 4. Resolve system message remote id (needed for upgrade setup)
   if (shopId) {
     try {
       state.systemMessageRemoteId = await ShopifyProductSyncService.fetchShopSystemMessageRemoteId({
         shopId,
         shop: payload?.shop
       });
-      const syncRunState = await ShopifyProductSyncService.fetchProductUpdateSyncRunState({
-        systemMessageRemoteId: state.systemMessageRemoteId,
-        shopId
-      });
-      state.hasNewProductSyncMessages = !!syncRunState.latestSystemMessage || !!syncRunState.systemMessages?.length;
-
-      if (!state.hasNewProductSyncMessages) {
-        const response = await api({
-          url: `oms/shopifyShops/${shopId}/productSync/history`,
-          method: "GET",
-          params: { limit: 1 }
-        }) as any;
-        state.hasNewProductSyncMessages = Array.isArray(response?.data?.runs) && response.data.runs.length > 0;
-      }
       onProgress?.({
-        hasNewProductSyncMessages: state.hasNewProductSyncMessages,
         systemMessageRemoteId: state.systemMessageRemoteId
       });
     } catch (error) {
-      logger.warn("Failed to detect existing product sync history for shop", error);
-      state.hasNewProductSyncMessages = false;
-      onProgress?.({ hasNewProductSyncMessages: false });
+      logger.warn("Failed to resolve system message remote id for migration assistant", error);
     }
   }
 
@@ -803,16 +867,30 @@ async function fetchAssistantState(
   return state;
 }
 
-function resolveEntryAction(payload: Pick<ProductSyncMigrationAssistantState, "hasNewProductSyncMessages" | "isEligible">): ProductSyncMigrationEntryAction {
-  if (payload.hasNewProductSyncMessages === true) {
-    return "current";
+function resolveEntryAction(state: ProductSyncMigrationAssistantState): ProductSyncMigrationEntryAction {
+  // If we know it's not eligible, request upgrade
+  if (state.isEligible === false) {
+    return "request-upgrade";
   }
 
-  if (payload.isEligible === true) {
+  // If still checking, default to setup
+  if (state.isEligible === null) {
     return "setup";
   }
 
-  return "request-upgrade";
+  // Check if everything is done based on current configuration
+  const hasMissingArtifacts = state.artifactChecks.some(check => check.status === "missing");
+  const hasActionableLegacyItems =
+    state.legacySystemMessageTypes.some(item => isActionableLegacyItem(item, "type")) ||
+    state.legacyServiceJobs.some(item => isActionableLegacyItem(item, "job")) ||
+    state.legacySystemMessages.some(item => isActionableLegacyItem(item, "message"));
+  const hasPendingSetup = state.syncJobConfigured !== true || state.artifactChecks.some(check => check.isPaused);
+
+  if (!hasMissingArtifacts && !hasActionableLegacyItems && !hasPendingSetup) {
+    return "current";
+  }
+
+  return "setup";
 }
 
 export const ShopifyProductSyncMigrationService = {
@@ -826,5 +904,3 @@ export const ShopifyProductSyncMigrationService = {
   deactivateLegacyServiceJob,
   deprecateLegacySystemMessageType
 };
-
-
