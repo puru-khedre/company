@@ -825,7 +825,7 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
     logger.warn("Failed to resolve Shopify access scope for product sync setup", error);
   }
   const productUpdateHistory = getProductUpdateHistoryRecords(await requestBackend<ProductUpdateHistoryResponse | any[]>({
-    url: "oms/productUpdateHistory",
+    url: "oms/products/productUpdateHistories",
     method: "get",
     params: {
       shopId: payload.shopId,

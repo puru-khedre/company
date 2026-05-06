@@ -145,7 +145,7 @@ export function useProductUpdateHistory() {
     state.loading = true;
     try {
       const response = await api({
-        url: "oms/productUpdateHistory",
+        url: "oms/products/productUpdateHistories",
         method: "GET",
         params: {
           ...params,

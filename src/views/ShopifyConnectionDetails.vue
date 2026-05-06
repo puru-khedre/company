@@ -49,13 +49,21 @@
             animated 
             class="product-sync-skeleton"
           />
-          <ion-card v-else-if="shouldShowProductSyncWidget" class="widget product-sync" button @click="openProductSyncEntry()">
+          <ion-card
+            v-else-if="shouldShowProductSyncWidget"
+            class="widget product-sync"
+            role="button"
+            tabindex="0"
+            @pointerup.capture="openProductSyncEntry()"
+            @keydown.enter="openProductSyncEntry()"
+            @keydown.space.prevent="openProductSyncEntry()"
+          >
             <ion-card-header>
-              <ion-card-title>{{ translate("Product sync") }}</ion-card-title>
-              <ion-card-subtitle>{{ productSyncCardSubtitle }}</ion-card-subtitle>
+              <ion-card-title @click.capture="openProductSyncEntry()">{{ translate("Product sync") }}</ion-card-title>
+              <ion-card-subtitle @click.capture="openProductSyncEntry()">{{ productSyncCardSubtitle }}</ion-card-subtitle>
             </ion-card-header>
             <div class="product-sync-activity-graph">
-              <div class="product-sync-activity-canvas">
+              <div class="product-sync-activity-canvas" @click.capture="openProductSyncEntry()">
                 <svg
                   class="product-sync-activity-svg"
                   viewBox="0 0 320 96"
@@ -93,7 +101,7 @@
                 </svg>
               </div>
             </div>
-            <div class="history">
+            <div class="history" @click.capture="openProductSyncEntry()">
               <ion-list lines="full">
                 <ion-item lines="full">
                   <ion-label>
@@ -111,7 +119,7 @@
                 </ion-item>
               </ion-list>
             </div>
-            <div class="current" v-if="currentSyncRun && currentSyncRun.systemMessageId">
+            <div class="current" v-if="currentSyncRun && currentSyncRun.systemMessageId" @click.capture="openProductSyncEntry()">
              <ion-list>
               <ion-item lines="full">
                 <ion-label>
@@ -752,7 +760,7 @@ ion-card.widget:hover {
   box-shadow: 3px 8px 18px -2px rgba(0,0,0, .2), -2px -2px 13px -6px rgba(0,0,0, .2);
 }
 
-.widget.product-sync::part(native) {
+.widget.product-sync {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
