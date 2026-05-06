@@ -476,10 +476,10 @@
                         <ion-item v-for="auditLog in syncJobAuditHistory" :key="getSyncJobAuditHistoryKey(auditLog)">
                           <ion-label>
                             {{ getSyncJobAuditFieldLabel(auditLog) }}
-                            <p>{{ formatDateTime(getSyncJobAuditChangedAt(auditLog)) }}</p>
                             <p v-if="getSyncJobAuditChangedBy(auditLog)">{{ translate("Changed by") }}: {{ getSyncJobAuditChangedByLabel(auditLog) }}</p>
                             <p>{{ getSyncJobAuditChangeLabel(auditLog) }}</p>
                           </ion-label>
+                          <ion-note slot="end">{{ formatDateTime(getSyncJobAuditChangedAt(auditLog)) }}</ion-note>
                         </ion-item>
                       </template>
                     </ion-list>
@@ -818,6 +818,7 @@ const syncJobDraftActive = ref(true);
 const syncJobDetailsRecentRuns = ref<any[]>([]);
 const syncJobAuditHistory = ref<any[]>([]);
 const syncJobAuditUsers = ref<Record<string, any>>({});
+const latestPauseAuditByJobName = ref<Record<string, any>>({});
 const isSyncJobAuditHistoryLoading = ref(false);
 const syncJobAuditHistoryError = ref("");
 const selectedSyncJobDetailsJob = ref<any>(null);
@@ -1186,16 +1187,19 @@ const syncJobProductLabel = computed(() => {
   return product?.productName || product?.internalName || productId;
 });
 const syncJobLastRunLabel = computed(() => {
+  if (isSyncJobPaused.value) {
+    return getPausedJobSummaryLabel(syncJobObj.value);
+  }
   if (syncJobRecentRuns.value.length) {
     const latestRun = syncJobRecentRuns.value[0];
-    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
+    return `${translate("Last run")}: ${formatJobDateTimeLabel(getSyncJobRunStartedAt(latestRun), { sameDayTimeOnly: true })} · ${getSyncJobRunStatus(latestRun)}`;
   }
   return translate("No recent runs");
 });
 const syncJobDetailsLastRunLabel = computed(() => {
   if (syncJobDetailsRecentRuns.value.length) {
     const latestRun = syncJobDetailsRecentRuns.value[0];
-    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
+    return `${formatJobDateTimeLabel(getSyncJobRunStartedAt(latestRun), { sameDayTimeOnly: true })} · ${getSyncJobRunStatus(latestRun)}`;
   }
   return translate("No recent runs");
 });
@@ -1243,16 +1247,22 @@ const isBulkOperationPollJobPaused = computed(() => {
   return isJobPaused(bulkOperationPollJob.value);
 });
 const bulkOperationSendJobLastRunLabel = computed(() => {
+  if (isBulkOperationSendJobPaused.value) {
+    return getPausedJobSummaryLabel(bulkOperationSendJob.value);
+  }
   if (bulkOperationSendJobRecentRuns.value.length) {
     const latestRun = bulkOperationSendJobRecentRuns.value[0];
-    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
+    return `${translate("Last run")}: ${formatJobDateTimeLabel(getSyncJobRunStartedAt(latestRun), { sameDayTimeOnly: true })} · ${getSyncJobRunStatus(latestRun)}`;
   }
   return translate("No recent runs");
 });
 const bulkOperationPollJobLastRunLabel = computed(() => {
+  if (isBulkOperationPollJobPaused.value) {
+    return getPausedJobSummaryLabel(bulkOperationPollJob.value);
+  }
   if (bulkOperationPollJobRecentRuns.value.length) {
     const latestRun = bulkOperationPollJobRecentRuns.value[0];
-    return `${translate("Last run")}: ${formatDateTime(getSyncJobRunStartedAt(latestRun))} · ${getSyncJobRunStatus(latestRun)}`;
+    return `${translate("Last run")}: ${formatJobDateTimeLabel(getSyncJobRunStartedAt(latestRun), { sameDayTimeOnly: true })} · ${getSyncJobRunStatus(latestRun)}`;
   }
   return translate("No recent runs");
 });
@@ -1664,6 +1674,7 @@ async function loadWizard() {
 
 async function loadSecondaryData() {
   isSecondaryLoading.value = true;
+  latestPauseAuditByJobName.value = {};
   try {
     const summary = await ShopifyProductSyncService.fetchDashboardSummary({
       shopId: props.id,
@@ -1701,6 +1712,12 @@ async function loadSecondaryData() {
       await loadBulkOperationMonitoringJobs();
     } catch (e) {
       logger.error("Failed to load bulk operation monitoring jobs", e);
+    }
+
+    try {
+      await loadPausedJobAuditSummaries();
+    } catch (e) {
+      logger.error("Failed to load paused job audit summaries", e);
     }
 
     await Promise.all([
@@ -2083,6 +2100,65 @@ function getRelativeOrAbsoluteLabel(value: string) {
   return dateTime.toRelative({ base: DateTime.fromMillis(currentTimeMs.value) }) || formatDateTime(value);
 }
 
+function formatJobDateTimeLabel(value: any, { sameDayTimeOnly = false } = {}) {
+  const dateTime = parseDateTimeValue(value);
+  if (!dateTime || !dateTime.isValid) return translate("Unavailable");
+
+  const baseDateTime = DateTime.fromMillis(currentTimeMs.value);
+  if (sameDayTimeOnly && dateTime.hasSame(baseDateTime, "day")) {
+    return dateTime.toLocaleString(DateTime.TIME_SIMPLE);
+  }
+
+  return formatDateTime(value);
+}
+
+async function loadPausedJobAuditSummaries() {
+  const pausedJobs = [syncJobObj.value, bulkOperationSendJob.value, bulkOperationPollJob.value]
+    .filter((job: any) => job?.jobName && isJobPaused(job));
+
+  if (!pausedJobs.length) {
+    latestPauseAuditByJobName.value = {};
+    return;
+  }
+
+  const auditEntries = await Promise.all(pausedJobs.map(async (job: any) => {
+    const auditHistory = await fetchJobAuditHistory(job.jobName, { pageSize: 25, pageIndex: 0 });
+    return {
+      jobName: job.jobName,
+      auditLog: auditHistory.find((auditLog: any) => isPauseActivatedAudit(auditLog)) || null
+    };
+  }));
+
+  await loadSyncJobAuditUsers(auditEntries.map((entry) => entry.auditLog).filter(Boolean));
+
+  latestPauseAuditByJobName.value = auditEntries.reduce((acc: Record<string, any>, entry) => {
+    if (entry.auditLog) {
+      acc[entry.jobName] = entry.auditLog;
+    }
+    return acc;
+  }, {});
+}
+
+function isPauseActivatedAudit(auditLog: any) {
+  const changedFieldName = String(auditLog?.changedFieldName || "").toLowerCase();
+  const newValue = String(auditLog?.newValueText ?? auditLog?.newValue ?? "").toUpperCase();
+  return changedFieldName === "paused" && (newValue === "Y" || newValue === "TRUE");
+}
+
+function getPausedJobSummaryLabel(job: any) {
+  const auditLog = latestPauseAuditByJobName.value[job?.jobName];
+  if (!auditLog) return translate("Paused");
+
+  const changedByLabel = getSyncJobAuditChangedByLabel(auditLog);
+  const changedAtLabel = getRelativeOrAbsoluteLabel(getSyncJobAuditChangedAt(auditLog));
+
+  if (changedByLabel && changedAtLabel) {
+    return `${translate("Paused by")} ${changedByLabel} ${changedAtLabel}`;
+  }
+
+  return translate("Paused");
+}
+
 function normalizeSyncStepStatus(statusId: string) {
   return String(statusId || "").toLowerCase().replace(/[_\-\s]/g, "");
 }
@@ -2222,6 +2298,10 @@ async function updateSyncJob(payload: any, successMessage: string) {
 
     if (showSyncJobDetailsModal.value) {
       await refreshSyncJobDetails();
+    }
+
+    if (activeExperienceMode.value === "returning") {
+      await loadPausedJobAuditSummaries();
     }
 
     showToast(successMessage);
@@ -3072,7 +3152,7 @@ function getJobNextRunLabel(job: any) {
     return translate("Scheduled");
   }
 
-  return `${nextRun.toLocaleString(DateTime.DATETIME_SHORT)} (${getRelativeNextRunLabel(job)})`;
+  return `${formatJobDateTimeLabel(nextRun.toISO(), { sameDayTimeOnly: true })} (${getRelativeNextRunLabel(job)})`;
 }
 
 // Moved formatDateTime to @/utils
