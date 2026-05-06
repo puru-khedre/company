@@ -24,9 +24,9 @@
             <p>{{ translate("Shopify bulk operation") }}</p>
           </ion-label>
           <ion-label class="stat">
-            <ion-chip outline :color="run.mdmStatusColor">
-              <ion-label>{{ run.mdmStatusLabel }}</ion-label>
-              <ion-icon :icon="getStatusIcon(run.mdmStatus)" />
+            <ion-chip outline :color="getMdmStatusColor(run)">
+              <ion-label>{{ getMdmStatusLabel(run) }}</ion-label>
+              <ion-icon :icon="getMdmStatusIcon(run)" />
             </ion-chip>
             <p>{{ translate("Bulk import") }}</p>
           </ion-label>
@@ -236,6 +236,25 @@ function getStatusIcon(status: string) {
   if (["completedwitherrors", "error", "failed", "cancelled", "canceled", "crashed", "smsgerror", "dmlerror", "dmlsfailed", "dmlscrashed", "dmlscancelled"].includes(normalizedStatus)) return alertCircleOutline;
   if (["running", "sent", "pending", "produced", "queued", "smsgsent", "smsgproduced", "dmlsrunning", "dmlspending", "dmlsqueued"].includes(normalizedStatus)) return syncCircleOutline;
   return helpCircleOutline;
+}
+
+function hasCompletedMdmWithErrors(run: any) {
+  return Number(run?.failedRecordCount || 0) > 0 && isCompleteStatus(run?.mdmStatus);
+}
+
+function getMdmStatusLabel(run: any) {
+  if (hasCompletedMdmWithErrors(run)) return translate("Finished with errors");
+  return run?.mdmStatusLabel || translate("Pending");
+}
+
+function getMdmStatusColor(run: any) {
+  if (hasCompletedMdmWithErrors(run)) return "danger";
+  return run?.mdmStatusColor || "medium";
+}
+
+function getMdmStatusIcon(run: any) {
+  if (hasCompletedMdmWithErrors(run)) return alertCircleOutline;
+  return getStatusIcon(run?.mdmStatus);
 }
 
 function getRunIcon(run: any) {
