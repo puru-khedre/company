@@ -654,15 +654,44 @@ const fetchShopifyAccessState = async (payload: any): Promise<ShopifyProductSync
 };
 
 
-function getLatestSystemMessage(systemMessages: any[], dateFields: string[]) {
-  return systemMessages.reduce((latest: any, systemMessage: any) => {
-    const systemMessageTimestamp = Math.max(...dateFields.map(field => getTimestampValue(systemMessage?.[field])));
-    
-    if (!latest) return systemMessage;
+const getSystemMessageRank = (systemMessage: any) => {
+  const statusId = String(systemMessage?.statusId || "").toLowerCase();
+  const logStatusId = String(systemMessage?.logStatusId || "").toLowerCase();
 
-    const latestTimestamp = Math.max(...dateFields.map(field => getTimestampValue(latest?.[field])));
+  let rank = 0;
+  if (logStatusId === "dmlsrunning") rank = 5;
+  else if (logStatusId === "dmlspending" || statusId === "smsgconsumed" || statusId === "consumed") rank = 4;
+  else if (statusId === "smsgreceived" || statusId === "smsgreceived") rank = 3.5;
+  else if (statusId === "msgsent" || statusId === "smsgsent" || statusId === "sent") rank = 3;
+  else if (statusId === "msgproduced" || statusId === "smsgproduced" || statusId === "produced") rank = 2;
+  else if (logStatusId === "dmlsfinished" || logStatusId === "dmlserror" || statusId === "smsgerror" || statusId === "error") rank = 1;
 
-    return systemMessageTimestamp > latestTimestamp ? systemMessage : latest;
+  console.log(`Rank: ${rank} | ID: ${systemMessage?.systemMessageId} | SM Status: ${statusId} | Log Status: ${logStatusId}`);
+  return rank;
+};
+
+function getLatestSystemMessage(systemMessages: any[]) {
+  return systemMessages.reduce((latest: any, current: any) => {
+    if (!latest) return current;
+
+    const latestRank = getSystemMessageRank(latest);
+    const currentRank = getSystemMessageRank(current);
+
+    if (currentRank > latestRank) {
+      console.log(`Higher rank found: ${currentRank} > ${latestRank}. Choosing ID: ${current.systemMessageId}`);
+      return current;
+    }
+    if (currentRank < latestRank) {
+      return latest;
+    }
+
+    const currentTimestamp = getTimestampValue(current.lastUpdatedStamp);
+    const latestTimestamp = getTimestampValue(latest.lastUpdatedStamp);
+
+    if (currentTimestamp > latestTimestamp) {
+      return current;
+    }
+    return latest;
   }, undefined);
 }
 
@@ -687,11 +716,11 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
         customParametersMap: {
           systemMessageTypeId: "BulkQueryShopifyProductUpdates",
           remoteInternalId: shopId,
-          remoteInternalIdType: "HOTWAX_SHOP_ID"
+          remoteInternalIdType: "HOTWAX_SHOP_ID",
+          orderByField: "-lastUpdatedStamp"
         },
         pageSize,
-        pageIndex,
-        orderByField: "-initDate"
+        pageIndex
       }
     });
 
@@ -706,9 +735,10 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     const isConsumed = statusId === "smsgconsumed" || statusId === "consumed" || statusId === "smsgconfirmed" || statusId === "confirmed";
     return isConsumed && systemMessage.logId;
   });
-  const latestConfirmedSystemMessage = getLatestSystemMessage(confirmedMessages, ["processedDate", "lastUpdatedStamp", "initDate"]);
-  const latestConsumedSystemMessage = getLatestSystemMessage(consumedMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
-  const latestSystemMessage = getLatestSystemMessage(systemMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
+  const latestConfirmedSystemMessage = getLatestSystemMessage(confirmedMessages);
+  const latestConsumedSystemMessage = getLatestSystemMessage(consumedMessages);
+  const latestSystemMessage = getLatestSystemMessage(systemMessages);
+  
 
   return {
     latestSystemMessage,
@@ -815,7 +845,7 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
   const [productUpdateHistory, syncCheckResponse, shopifyAccessState] = await Promise.all([
     // Fetch history for dashboard display
     requestBackend<ProductUpdateHistoryResponse | any[]>({
-      url: "oms/productUpdateHistory",
+      url: "oms/products/productUpdateHistories",
       method: "get",
       params: {
         shopId,

@@ -65,7 +65,7 @@ describe("shopify product sync service", () => {
     });
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "oms/productUpdateHistory");
+    assert.equal(calls[0].url, "oms/products/productUpdateHistories");
     assert.equal(calls[0].params.shopId, "SHOP_10000");
     assert.equal(calls[0].params.pageSize, 1);
     assert.equal(result.hasLinkedOmsProducts, true);

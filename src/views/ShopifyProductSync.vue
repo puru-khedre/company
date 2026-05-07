@@ -694,9 +694,6 @@ import {
   alertController,
   modalController
 } from "@ionic/vue";
-import {
-  selectMostRecentSystemMessage
-} from "@/utils/shopifyProductSync";
 import { closeOutline, refreshOutline, saveOutline } from "ionicons/icons";
 import cronstrue from "cronstrue";
 
@@ -1743,7 +1740,7 @@ async function loadSecondaryData() {
 }
 
 function applyDashboardSummary(summary: ShopifyProductSyncDashboardSummary) {
-  latestSystemMessage.value = selectMostRecentSystemMessage(summary.syncRunState.systemMessages || []);
+  latestSystemMessage.value = summary.syncRunState.latestSystemMessage || null;
   latestConfirmedSystemMessage.value = summary.syncRunState.latestConfirmedSystemMessage || null;
   latestConsumedSystemMessage.value = summary.syncRunState.latestConsumedSystemMessage || null;
   lastProductUpdateSyncedAt.value = summary.syncRunState.lastSyncedAt || "";

@@ -76,7 +76,7 @@ describe("shopify product sync implementation compliance", () => {
     assert.equal(/DUMMY_/.test(service), false);
     assert.equal(service.includes("productSync/setup"), false);
     assert.equal(service.includes("productSync/productStores"), false);
-    assert.equal(service.includes("oms/productUpdateHistory"), true);
+    assert.equal(service.includes("oms/products/productUpdateHistories"), true);
   });
 
   test("production source does not contain dummy or product sync fallback implementations", () => {
