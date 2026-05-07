@@ -657,20 +657,31 @@ const fetchShopifyAccessState = async (payload: any): Promise<ShopifyProductSync
 const getSystemMessageRank = (systemMessage: any) => {
   const statusId = String(systemMessage?.statusId || "").toLowerCase();
   const logStatusId = String(systemMessage?.logStatusId || "").toLowerCase();
+  const logId = systemMessage?.logId;
 
-  let rank = 0;
-  if (logStatusId === "dmlsrunning") rank = 5;
-  else if (logStatusId === "dmlspending" || statusId === "smsgconsumed" || statusId === "consumed") rank = 4;
-  else if (statusId === "smsgreceived" || statusId === "smsgreceived") rank = 3.5;
-  else if (statusId === "msgsent" || statusId === "smsgsent" || statusId === "sent") rank = 3;
-  else if (statusId === "msgproduced" || statusId === "smsgproduced" || statusId === "produced") rank = 2;
-  else if (logStatusId === "dmlsfinished" || logStatusId === "dmlserror" || statusId === "smsgerror" || statusId === "error") rank = 1;
+  // Terminal status: 
+  // 1. mdm logId is present AND its statusId is DmlsFinished or DmlsError
+  // 2. mdm logId is NOT present AND statusId is SmsgConsumed (handles empty Shopify runs)
+  const isTerminal = (logId && (logStatusId === "dmlsfinished" || logStatusId === "dmlserror")) ||
+                     (!logId && (statusId === "smsgconsumed" || statusId === "consumed"));
 
-  console.log(`Rank: ${rank} | ID: ${systemMessage?.systemMessageId} | SM Status: ${statusId} | Log Status: ${logStatusId}`);
-  return rank;
+  if (isTerminal) {
+    return 1;
+  }
+
+  // Any other case is considered "In Progress" and gets a higher rank (>= 2)
+  if (logStatusId === "dmlsrunning") return 5;
+  if (logStatusId === "dmlspending" || statusId === "smsgconsumed" || statusId === "consumed") return 4.5;
+  if (statusId === "smsgreceived") return 3.5;
+  if (statusId === "msgsent" || statusId === "smsgsent" || statusId === "sent") return 3;
+  if (statusId === "msgproduced" || statusId === "smsgproduced" || statusId === "produced") return 2.5;
+
+  // Default for any unknown in-progress status
+  return 0;
 };
 
 function getLatestSystemMessage(systemMessages: any[]) {
+  console.log("")
   return systemMessages.reduce((latest: any, current: any) => {
     if (!latest) return current;
 

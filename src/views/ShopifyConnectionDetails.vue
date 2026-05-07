@@ -216,7 +216,6 @@ import { IonBackButton, IonBadge, IonCard, IonCardHeader, IonCardSubtitle, IonCa
 import { translate } from "@/i18n";
 import { formatDateTime, parseDateTimeValue } from "@/utils";
 import { DateTime } from "luxon";
-import { selectMostRecentSystemMessage } from "@/utils/shopifyProductSync";
 import { computed, defineProps, ref } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
@@ -653,7 +652,7 @@ async function loadProductsInventorySummary() {
 
 async function loadTrackProgressDetails() {
   try {
-    const trackProgressMessage = selectMostRecentSystemMessage(productSyncSummary.value.syncRunState?.systemMessages || []);
+    const trackProgressMessage = productSyncSummary.value.syncRunState.latestSystemMessage;
     if (trackProgressMessage?.systemMessageId) {
       await fetchSyncRun(trackProgressMessage.systemMessageId, trackProgressMessage);
     }
