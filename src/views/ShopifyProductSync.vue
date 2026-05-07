@@ -925,7 +925,7 @@ const selectedIdentifierLabel = computed(() => {
   return identifier?.description || identifier?.enumId || translate("Setup");
 });
 const hasLinkedOmsProducts = computed(() => {
-  return !!setupState.value.hasLinkedOmsProducts || productUpdateHistories.value.length > 0;
+  return !!setupState.value.hasLinkedOmsProducts
 });
 const productStoreHasLinkedProducts = computed(() => {
   return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);

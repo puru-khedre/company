@@ -810,30 +810,48 @@ const fetchRunningBulkOperation = async (payload: any): Promise<ShopifyRunningBu
 }
 
 const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupState> => {
+  const shopId = payload.shopId || payload.shop?.shopId;
   const pageSize = payload.historyPageSize || 1;
-  let shopifyAccessState: ShopifyProductSyncAccessState = {
-    systemMessageRemoteId: "",
-    accessScopeEnumId: "",
-    hasWriteAccess: false,
-    status: "unavailable",
-    label: "Unavailable"
-  };
+  const [productUpdateHistory, syncCheckResponse, shopifyAccessState] = await Promise.all([
+    // Fetch history for dashboard display
+    requestBackend<ProductUpdateHistoryResponse | any[]>({
+      url: "oms/productUpdateHistory",
+      method: "get",
+      params: {
+        shopId,
+        pageSize,
+        orderByField: "-lastUpdatedStamp"
+      }
+    }, "Shopify product update history endpoint").then(getProductUpdateHistoryRecords).catch(() => []),
 
-  try {
-    shopifyAccessState = await fetchShopifyAccessState(payload);
-  } catch (error) {
-    logger.warn("Failed to resolve Shopify access scope for product sync setup", error);
-  }
-  const productUpdateHistory = getProductUpdateHistoryRecords(await requestBackend<ProductUpdateHistoryResponse | any[]>({
-    url: "oms/products/productUpdateHistories",
-    method: "get",
-    params: {
-      shopId: payload.shopId,
-      pageSize,
-      orderByField: "-lastUpdatedStamp"
-    }
-  }, "Shopify product update history endpoint"));
-  const hasLinkedOmsProducts = productUpdateHistory.length > 0;
+    // Check for existing consumed sync messages to determine mode
+    requestBackend<any>({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
+        customParametersMap: {
+          systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+          remoteInternalId: shopId,
+          remoteInternalIdType: "HOTWAX_SHOP_ID",
+          statusId: "SmsgConsumed"
+        },
+        fieldsToSelect: "systemMessageId",
+        orderByField: "-initDate",
+        pageSize: 1
+      }
+    }).catch(() => ({ entityValueList: [] })),
+
+    fetchShopifyAccessState(payload).catch(() => ({
+      systemMessageRemoteId: "",
+      accessScopeEnumId: "",
+      hasWriteAccess: false,
+      status: "unavailable",
+      label: "Unavailable"
+    } as ShopifyProductSyncAccessState))
+  ]);
+
+  const hasLinkedOmsProducts = Number(syncCheckResponse.entityValueList.length || 0) > 0;
 
   return validateSetupState({
     productUpdateHistory,
