@@ -2,6 +2,7 @@ import { reactive, toRefs } from 'vue';
 import api from '@/api';
 import logger from '@/logger';
 import { clearStorage, getErrorRecords, setErrorRecords } from '@/utils/storage';
+import Papa from 'papaparse';
 
 export function useDataManagerLog() {
   const state = reactive({
@@ -52,7 +53,11 @@ export function useDataManagerLog() {
         await setErrorRecords(errorLogContentId, state.errorLogs);
       } else {
         state.errorLogs = typeof state.errorCsvRecords === 'string'
-          ? state.errorCsvRecords.split(/\r?\n(?=(?:[^"]*"[^"]*")*[^"]*$)/).filter(Boolean)
+          ? (Papa.parse<Record<string, any>>(state.errorCsvRecords, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (header) => header.trim()
+          }).data || [])
           : [];
       }
       state.loading = false;

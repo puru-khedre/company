@@ -107,7 +107,10 @@ const parseDateTimeValue = (value: string | number) => {
     DateTime.fromFormat(value, "yyyy-MM-dd HH:mm:ss.SSS"),
     DateTime.fromSQL(value),
     DateTime.fromISO(value),
-    DateTime.fromRFC2822(value), DateTime.fromHTTP(value), DateTime.fromFormat(normalizedValue, "dd LLL yyyy HH:mm:ss ZZZ"), DateTime.fromFormat(normalizedValue, "dd LLL yyyy HH:mm:ss z")
+    DateTime.fromRFC2822(value),
+    DateTime.fromHTTP(value),
+    DateTime.fromFormat(normalizedValue, "dd LLL yyyy HH:mm:ss ZZZ"),
+    DateTime.fromFormat(normalizedValue, "dd LLL yyyy HH:mm:ss z")
   ];
 
   return candidates.find((candidate) => candidate.isValid) || null;
