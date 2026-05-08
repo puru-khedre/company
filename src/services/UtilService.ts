@@ -72,6 +72,14 @@ const fetchOrganization = async (payload: any): Promise<any> => {
   })
 }
 
+const fetchStatusItems = async (payload: any): Promise<any> => {
+  return api({
+    url: "oms/statuses",
+    method: "get",
+    params: payload
+  })
+}
+
 export const UtilService = {
   fetchDBICCountries,
   fetchEnums,
@@ -81,5 +89,6 @@ export const UtilService = {
   fetchFacilities,
   fetchOperatingCountries,
   fetchOrganization,
-  fetchShipmentMethodTypes
+  fetchShipmentMethodTypes,
+  fetchStatusItems
 }
