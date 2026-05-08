@@ -654,15 +654,53 @@ const fetchShopifyAccessState = async (payload: any): Promise<ShopifyProductSync
 };
 
 
-function getLatestSystemMessage(systemMessages: any[], dateFields: string[]) {
-  return systemMessages.reduce((latest: any, systemMessage: any) => {
-    const systemMessageTimestamp = Math.max(...dateFields.map(field => getTimestampValue(systemMessage?.[field])));
-    
-    if (!latest) return systemMessage;
+const getSystemMessageRank = (systemMessage: any) => {
+  const statusId = String(systemMessage?.statusId || "").toLowerCase();
+  const logStatusId = String(systemMessage?.logStatusId || "").toLowerCase();
+  const logId = systemMessage?.logId;
 
-    const latestTimestamp = Math.max(...dateFields.map(field => getTimestampValue(latest?.[field])));
+  // Terminal status: 
+  // 1. mdm logId is present AND its statusId is DmlsFinished or DmlsError
+  // 2. mdm logId is NOT present AND statusId is SmsgConsumed (handles empty Shopify runs)
+  const isTerminal = (logId && (logStatusId === "dmlsfinished" || logStatusId === "dmlserror")) ||
+                     (!logId && (statusId === "smsgconsumed" || statusId === "consumed"));
 
-    return systemMessageTimestamp > latestTimestamp ? systemMessage : latest;
+  if (isTerminal) {
+    return 1;
+  }
+
+  // Any other case is considered "In Progress" and gets a higher rank (>= 2)
+  if (logStatusId === "dmlsrunning") return 5;
+  if (logStatusId === "dmlspending" || statusId === "smsgconsumed" || statusId === "consumed") return 4.5;
+  if (statusId === "smsgreceived") return 3.5;
+  if (statusId === "msgsent" || statusId === "smsgsent" || statusId === "sent") return 3;
+  if (statusId === "msgproduced" || statusId === "smsgproduced" || statusId === "produced") return 2.5;
+
+  // Default for any unknown in-progress status
+  return 0;
+};
+
+function getLatestSystemMessage(systemMessages: any[]) {
+  return systemMessages.reduce((latest: any, current: any) => {
+    if (!latest) return current;
+
+    const latestRank = getSystemMessageRank(latest);
+    const currentRank = getSystemMessageRank(current);
+
+    if (currentRank > latestRank) {
+      return current;
+    }
+    if (currentRank < latestRank) {
+      return latest;
+    }
+
+    const currentTimestamp = getTimestampValue(current.lastUpdatedStamp);
+    const latestTimestamp = getTimestampValue(latest.lastUpdatedStamp);
+
+    if (currentTimestamp > latestTimestamp) {
+      return current;
+    }
+    return latest;
   }, undefined);
 }
 
@@ -673,32 +711,27 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     throw new Error("Shop ID is required to find product update sync system messages.");
   }
 
-  const pageSize = 1000;
-  let pageIndex = 0;
-  let systemMessages: any[] = [];
-  let page;
+  const systemMessageId = payload.systemMessageId;
+  const pageSize = systemMessageId ? 1 : 100;
+  
+  const response = await requestBackend<any>({
+    url: "oms/dataDocumentView",
+    method: "post",
+    data: {
+      dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
+      customParametersMap: {
+        systemMessageId,
+        systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+        remoteInternalId: shopId,
+        remoteInternalIdType: "HOTWAX_SHOP_ID",
+        orderByField: "-lastUpdatedStamp"
+      },
+      pageSize,
+      pageIndex: 0
+    }
+  });
 
-  do {
-    const response = await requestBackend<any>({
-      url: "oms/dataDocumentView",
-      method: "post",
-      data: {
-        dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
-        customParametersMap: {
-          systemMessageTypeId: "BulkQueryShopifyProductUpdates",
-          remoteInternalId: shopId,
-          remoteInternalIdType: "HOTWAX_SHOP_ID"
-        },
-        pageSize,
-        pageIndex,
-        orderByField: "-initDate"
-      }
-    });
-
-    page = response?.entityValueList || [];
-    systemMessages = systemMessages.concat(page);
-    pageIndex++;
-  } while (page.length === pageSize);
+  const systemMessages = response?.entityValueList || [];
 
   const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed" || systemMessage.statusId === "SmsgConsumed");
   const consumedMessages = systemMessages.filter((systemMessage: any) => {
@@ -706,9 +739,10 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     const isConsumed = statusId === "smsgconsumed" || statusId === "consumed" || statusId === "smsgconfirmed" || statusId === "confirmed";
     return isConsumed && systemMessage.logId;
   });
-  const latestConfirmedSystemMessage = getLatestSystemMessage(confirmedMessages, ["processedDate", "lastUpdatedStamp", "initDate"]);
-  const latestConsumedSystemMessage = getLatestSystemMessage(consumedMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
-  const latestSystemMessage = getLatestSystemMessage(systemMessages, ["initDate", "lastUpdatedStamp", "processedDate"]);
+  const latestConfirmedSystemMessage = getLatestSystemMessage(confirmedMessages);
+  const latestConsumedSystemMessage = getLatestSystemMessage(consumedMessages);
+  const latestSystemMessage = getLatestSystemMessage(systemMessages);
+  
 
   return {
     latestSystemMessage,
@@ -810,30 +844,48 @@ const fetchRunningBulkOperation = async (payload: any): Promise<ShopifyRunningBu
 }
 
 const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupState> => {
+  const shopId = payload.shopId || payload.shop?.shopId;
   const pageSize = payload.historyPageSize || 1;
-  let shopifyAccessState: ShopifyProductSyncAccessState = {
-    systemMessageRemoteId: "",
-    accessScopeEnumId: "",
-    hasWriteAccess: false,
-    status: "unavailable",
-    label: "Unavailable"
-  };
+  const [productUpdateHistory, syncCheckResponse, shopifyAccessState] = await Promise.all([
+    // Fetch history for dashboard display
+    requestBackend<ProductUpdateHistoryResponse | any[]>({
+      url: "oms/products/productUpdateHistories",
+      method: "get",
+      params: {
+        shopId,
+        pageSize,
+        orderByField: "-lastUpdatedStamp"
+      }
+    }, "Shopify product update history endpoint").then(getProductUpdateHistoryRecords).catch(() => []),
 
-  try {
-    shopifyAccessState = await fetchShopifyAccessState(payload);
-  } catch (error) {
-    logger.warn("Failed to resolve Shopify access scope for product sync setup", error);
-  }
-  const productUpdateHistory = getProductUpdateHistoryRecords(await requestBackend<ProductUpdateHistoryResponse | any[]>({
-    url: "oms/products/productUpdateHistories",
-    method: "get",
-    params: {
-      shopId: payload.shopId,
-      pageSize,
-      orderByField: "-lastUpdatedStamp"
-    }
-  }, "Shopify product update history endpoint"));
-  const hasLinkedOmsProducts = productUpdateHistory.length > 0;
+    // Check for existing consumed sync messages to determine mode
+    requestBackend<any>({
+      url: "oms/dataDocumentView",
+      method: "post",
+      data: {
+        dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
+        customParametersMap: {
+          systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+          remoteInternalId: shopId,
+          remoteInternalIdType: "HOTWAX_SHOP_ID",
+          statusId: "SmsgConsumed"
+        },
+        fieldsToSelect: "systemMessageId",
+        orderByField: "-initDate",
+        pageSize: 1
+      }
+    }).catch(() => ({ entityValueList: [] })),
+
+    fetchShopifyAccessState(payload).catch(() => ({
+      systemMessageRemoteId: "",
+      accessScopeEnumId: "",
+      hasWriteAccess: false,
+      status: "unavailable",
+      label: "Unavailable"
+    } as ShopifyProductSyncAccessState))
+  ]);
+
+  const hasLinkedOmsProducts = Number(syncCheckResponse.entityValueList.length || 0) > 0;
 
   return validateSetupState({
     productUpdateHistory,
@@ -1337,6 +1389,43 @@ const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDa
   };
 };
 
+const fetchWebhookSubscriptions = async (payload: any): Promise<any> => {
+  const response = await requestBackend<any>({
+    url: "shopify/webhook-subscription",
+    method: "get",
+    params: {
+      systemMessageRemoteId: payload.systemMessageRemoteId,
+      queryParams: {
+        topics: payload.topic
+      }
+    }
+  });
+
+  return response?.webhookList || [];
+}
+
+const subscribeWebhook = async (payload: any): Promise<any> => {
+  return await requestBackend<any>({
+    url: "shopify/webhook-subscription",
+    method: "post",
+    data: {
+      systemMessageRemoteId: payload.systemMessageRemoteId,
+      topic: payload.topic
+    }
+  });
+};
+
+const unsubscribeWebhook = async (payload: any): Promise<any> => {
+  return await requestBackend<any>({
+    url: "shopify/webhook-subscription",
+    method: "delete",
+    data: {
+      systemMessageRemoteId: payload.systemMessageRemoteId,
+      webhookSubscriptionId: payload.webhookSubscriptionId
+    }
+  });
+};
+
 export const ShopifyProductSyncService = {
   fetchShopifyAccessState,
   fetchDashboardSummary,
@@ -1357,5 +1446,8 @@ export const ShopifyProductSyncService = {
   fetchSyncJobConfig,
   configureSyncJob,
   fetchErrorRecordCount,
-  fetchUpdateFilesToProcessCount
+  fetchUpdateFilesToProcessCount,
+  fetchWebhookSubscriptions,
+  subscribeWebhook,
+  unsubscribeWebhook
 };

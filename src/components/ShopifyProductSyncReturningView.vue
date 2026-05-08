@@ -170,6 +170,15 @@
           </ion-label>
           <ion-icon slot="end" :icon="importCompletedRequestsPaused ? pauseCircleOutline : checkmarkCircleOutline"></ion-icon>
         </ion-item>
+        <ion-item v-if="isWebhookSupported" button detail @click="emit('toggle-webhook', !isWebhookSubscribed)">
+          <ion-label>
+            {{ translate("Bulk operations finish webhook") }}
+            <p v-if="isWebhookSubscribed">{{ translate("Active") }}</p>
+            <p v-else>{{ translate("Inactive") }}</p>
+          </ion-label>
+          <ion-spinner v-if="isWebhookLoading" slot="end" name="crescent" />
+          <ion-icon v-else slot="end" :icon="isWebhookSubscribed ? checkmarkCircleOutline : pauseCircleOutline"></ion-icon>
+        </ion-item>
       </ion-list>
     </ion-card>
     <ion-card>
@@ -499,8 +508,11 @@ const props = defineProps<{
   hasDetailedErrors: boolean
   totalDetailedErrorsCount: number
   updateFilesToProcessCount: number | string
+  isWebhookSubscribed?: boolean
+  isWebhookLoading?: boolean
+  isWebhookSupported?: boolean
 }>();
-const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-replay-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job", "download-file", "view-error-details", "update:detailed-error-query", "show-error-modal", "refresh-errors", "resync-product"]);
+const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-replay-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job", "download-file", "view-error-details", "update:detailed-error-query", "show-error-modal", "refresh-errors", "resync-product", "toggle-webhook"]);
 
 
 

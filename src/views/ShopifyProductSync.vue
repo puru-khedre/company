@@ -92,6 +92,10 @@
           @open-step-details="openStepDetails"
           @run-job="runSyncJob"
           @download-file="downloadRawFile"
+          :is-webhook-subscribed="isWebhookSubscribed"
+          :is-webhook-loading="isWebhookLoading"
+          :is-webhook-supported="isWebhookSupported"
+          @toggle-webhook="toggleWebhookSubscription"
         />
 
         <shopify-product-sync-wizard-view
@@ -694,9 +698,6 @@ import {
   alertController,
   modalController
 } from "@ionic/vue";
-import {
-  selectMostRecentSystemMessage
-} from "@/utils/shopifyProductSync";
 import { closeOutline, refreshOutline, saveOutline } from "ionicons/icons";
 import cronstrue from "cronstrue";
 
@@ -863,6 +864,9 @@ const syncJobRecentRuns = ref<any[]>([]);
 const detailedErrorSearchQuery = ref("");
 const selectedErrorRecord = ref<any>(null);
 const showErrorDetailsModal = ref(false);
+const webhookSubscriptions = ref<any[]>([]);
+const isWebhookLoading = ref(false);
+const isWebhookSupported = ref(false);
 let progressPoll: number | undefined;
 let nextSyncRefreshPoll: number | undefined;
 let scheduledJobRefreshAtMs: number | null = null;
@@ -925,7 +929,7 @@ const selectedIdentifierLabel = computed(() => {
   return identifier?.description || identifier?.enumId || translate("Setup");
 });
 const hasLinkedOmsProducts = computed(() => {
-  return !!setupState.value.hasLinkedOmsProducts || productUpdateHistories.value.length > 0;
+  return !!setupState.value.hasLinkedOmsProducts
 });
 const productStoreHasLinkedProducts = computed(() => {
   return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);
@@ -990,6 +994,11 @@ const hasRelatedShops = computed(() => {
 });
 const activeExperienceMode = computed(() => {
   return resolveProductSyncExperienceMode(experienceMode.value, hasLinkedOmsProducts.value);
+});
+const isWebhookSubscribed = computed(() => {
+  return webhookSubscriptions.value.some((subscription: any) => 
+    subscription.node.topic === "BULK_OPERATIONS_FINISH"
+  );
 });
 const activeExperienceModeLabel = computed(() => {
   return activeExperienceMode.value === "returning" ? translate("Returning user") : translate("First-time setup");
@@ -1650,6 +1659,8 @@ async function loadWizard() {
       await loadProductStoreContext(draft.value.selectedProductStoreId);
     }
 
+    await loadWebhookSubscriptions();
+
     // Dev override to land on a specific step
     if (route.query.step) {
       currentStep.value = route.query.step as ProductSyncWizardStep;
@@ -1734,6 +1745,8 @@ async function loadSecondaryData() {
         logger.error("Failed to fetch failed records for MDM logs", e);
       }
     }
+
+    await loadWebhookSubscriptions();
   } catch (error) {
     logger.error("Error loading secondary data", error);
   } finally {
@@ -1743,7 +1756,7 @@ async function loadSecondaryData() {
 }
 
 function applyDashboardSummary(summary: ShopifyProductSyncDashboardSummary) {
-  latestSystemMessage.value = selectMostRecentSystemMessage(summary.syncRunState.systemMessages || []);
+  latestSystemMessage.value = summary.syncRunState.latestSystemMessage || null;
   latestConfirmedSystemMessage.value = summary.syncRunState.latestConfirmedSystemMessage || null;
   latestConsumedSystemMessage.value = summary.syncRunState.latestConsumedSystemMessage || null;
   lastProductUpdateSyncedAt.value = summary.syncRunState.lastSyncedAt || "";
@@ -2790,9 +2803,8 @@ async function runJobNow(job: any) {
 async function performSync(params: any, successMsg: string, modalRef: any, loadingRef: any) {
   loadingRef.value = true;
   try {
+    currentSyncRun.value = {} as any;
     const job = syncJobObj.value;
-    if (!job) throw new Error("Sync job not found");
-
     const resp: any = await ShopifyProductSyncService.syncShopifyProducts({
       shopId: props.id,
       ...params
@@ -2803,7 +2815,7 @@ async function performSync(params: any, successMsg: string, modalRef: any, loadi
     currentSyncRun.value = {} as any;
     progressState.value = {
       ...progressState.value,
-      syncJobId: job.jobName,
+      syncJobId: job?.jobName || "",
       systemMessageId: resp.systemMessageId || "",
       systemMessageState: "SmsgProduced",
       status: "queued",
@@ -2850,7 +2862,11 @@ async function loadProgress() {
   let loadedRunState = false;
   try {
     const [syncRunStateResult, sendJobResult, pollJobResult, sendJobRunsResult, pollJobRunsResult] = await Promise.allSettled([
-      ShopifyProductSyncService.fetchProductUpdateSyncRunState(selectedShopSystemMessageRemoteId.value),
+      ShopifyProductSyncService.fetchProductUpdateSyncRunState({
+        systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+        shopId: props.id,
+        systemMessageId: progressState.value?.systemMessageId
+      }),
       fetchJobDetail(BULK_OPERATION_SEND_JOB_NAME),
       fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME),
       fetchJobRuns(BULK_OPERATION_SEND_JOB_NAME, { pageSize: 1, pageIndex: 0 }),
@@ -2903,12 +2919,20 @@ async function loadProgress() {
     }
 
     if (latestMessage) {
+      const status = normalizeProductSyncStatus({ 
+        systemMessageState: latestMessage.statusId,
+        logStatusId: latestMessage.logStatusId,
+        logId: latestMessage.logId
+      });
+
       progressState.value = {
         syncJobId: syncJobId.value || "",
-        status: normalizeProductSyncStatus({ systemMessageState: latestMessage.statusId }),
+        status,
         systemMessageState: latestMessage.statusId,
-        completed: ["SmsgConfirmed", "SmsgCancelled", "SmsgError"].includes(latestMessage.statusId),
-        systemMessageId: latestMessage.systemMessageId
+        logStatusId: latestMessage.logStatusId,
+        logId: latestMessage.logId,
+        systemMessageId: latestMessage.systemMessageId,
+        completed: ["completed", "error", "cancelled"].includes(status)
       } as any;
 
       if (latestMessage.systemMessageId) {
@@ -3382,4 +3406,53 @@ function assertBackendDataAvailable(payload: any, message: string) {
   }
 }
 
+async function loadWebhookSubscriptions() {
+  if (!selectedShopSystemMessageRemoteId.value) return;
+  isWebhookLoading.value = true;
+  try {
+    webhookSubscriptions.value = await ShopifyProductSyncService.fetchWebhookSubscriptions({
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      topic: "BULK_OPERATIONS_FINISH"
+    });
+    isWebhookSupported.value = true;
+  } catch (error) {
+    logger.error("Failed to load webhook subscriptions", error);
+    isWebhookSupported.value = false;
+  } finally {
+    isWebhookLoading.value = false;
+  }
+}
+
+async function toggleWebhookSubscription(subscribe: boolean) {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shop connection details not fully loaded."));
+    return;
+  }
+  isWebhookLoading.value = true;
+  try {
+    if (subscribe) {
+      await ShopifyProductSyncService.subscribeWebhook({
+        systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+        topic: "BULK_OPERATIONS_FINISH",
+        endPoint: "shopify/webhook/payload"
+      });
+      showToast(translate("Subscribed to bulk operations finish webhook."));
+    } else {
+      const subscription = webhookSubscriptions.value.find((s: any) => s.node.topic === "BULK_OPERATIONS_FINISH");
+      if (subscription) {
+        await ShopifyProductSyncService.unsubscribeWebhook({
+          systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+          webhookSubscriptionId: subscription.node.id
+        });
+        showToast(translate("Unsubscribed from bulk operations finish webhook."));
+      }
+    }
+    await loadWebhookSubscriptions();
+  } catch (error) {
+    logger.error("Failed to toggle webhook subscription", error);
+    showToast(translate("Failed to update webhook subscription."));
+  } finally {
+    isWebhookLoading.value = false;
+  }
+}
 </script>

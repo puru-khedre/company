@@ -40,6 +40,8 @@ export interface ProductSyncPreflightSummary {
 export interface ProductSyncProgressSnapshot {
   status?: string;
   systemMessageState?: ProductSyncMessageState | string;
+  logStatusId?: string;
+  logId?: string;
   completed?: boolean;
 }
 
@@ -137,22 +139,38 @@ export function shouldShowProductSyncProgress(startResult: { success?: boolean; 
 }
 
 export function normalizeProductSyncStatus(progress: ProductSyncProgressSnapshot = {}): string {
-  if (progress.completed) {
+  if (progress.status === "error") {
+    return "error";
+  }
+
+  const systemMessageState = progress.systemMessageState;
+  const logStatusId = progress.logStatusId;
+  const logId = progress.logId;
+
+  // A sync run is considered terminal (completed) if:
+  // 1. There is an MDM log AND it is finished or errored
+  // 2. There is NO MDM log AND the system message is consumed (handling empty Shopify runs)
+  const isTerminal = (logId && (logStatusId === "DmlsFinished" || logStatusId === "DmlsError")) ||
+                     (!logId && (systemMessageState === "SmsgConsumed" || systemMessageState === "SmsgError" || systemMessageState === "SmsgCancelled"));
+
+  if (isTerminal) {
+    if (logStatusId === "DmlsError" || systemMessageState === "SmsgError") return "error";
+    if (systemMessageState === "SmsgCancelled") return "cancelled";
     return "completed";
   }
 
-  if (progress.status) {
-    return progress.status.toLowerCase();
+  if (logStatusId === "DmlsRunning" || logStatusId === "DmlsPending") {
+    return "importing";
   }
 
-  switch (progress.systemMessageState) {
+  switch (systemMessageState) {
     case "SmsgProduced":
       return "queued";
     case "SmsgSent":
       return "running";
     case "SmsgConfirmed":
     case "SmsgConsumed":
-      return "completed";
+      return "importing";
     case "SmsgCancelled":
       return "cancelled";
     case "SmsgError":
