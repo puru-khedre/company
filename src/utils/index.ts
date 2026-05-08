@@ -96,12 +96,21 @@ const parseDateTimeValue = (value: string | number) => {
 
   if (typeof value !== "string") return null;
 
+  if (/^\d+$/.test(value)) {
+    const dateTime = DateTime.fromMillis(Number(value));
+    return dateTime.isValid ? dateTime : null;
+  }
+
+  const normalizedValue = value.replace(/^[A-Za-z]{3},\s*/, "");
   const candidates = [
     DateTime.fromFormat(value, "yyyy-MM-dd'T'HH:mm:ssZZ"),
     DateTime.fromFormat(value, "yyyy-MM-dd HH:mm:ss.SSS"),
     DateTime.fromSQL(value),
     DateTime.fromISO(value),
-    DateTime.fromJSDate(new Date(value))
+    DateTime.fromRFC2822(value),
+    DateTime.fromHTTP(value),
+    DateTime.fromFormat(normalizedValue, "dd LLL yyyy HH:mm:ss ZZZ"),
+    DateTime.fromFormat(normalizedValue, "dd LLL yyyy HH:mm:ss z")
   ];
 
   return candidates.find((candidate) => candidate.isValid) || null;

@@ -936,9 +936,7 @@ const selectedIdentifierLabel = computed(() => {
   const identifier = identifierOptions.value.find((option: any) => option.enumId === draft.value.selectedIdentifierEnumId);
   return identifier?.description || identifier?.enumId || translate("Setup");
 });
-const hasLinkedOmsProducts = computed(() => {
-  return !!setupState.value.hasLinkedOmsProducts
-});
+
 const productStoreHasLinkedProducts = computed(() => {
   return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);
 });
@@ -995,13 +993,13 @@ const shopifyAccessBlockingMessage = computed(() => {
 
   return "";
 });
-const productStoreLocked = computed(() => !!setupState.value.productStoreLocked || hasLinkedOmsProducts.value);
+const productStoreLocked = computed(() => !!setupState.value.productStoreLocked || !!setupState.value.hasLinkedOmsProducts);
 const identifierLocked = computed(() => !!setupState.value.identifierLocked || productStoreHasLinkedProducts.value);
 const hasRelatedShops = computed(() => {
   return relatedShops.value.some((relatedShop: any) => relatedShop.shopId !== props.id);
 });
 const activeExperienceMode = computed(() => {
-  return resolveProductSyncExperienceMode(experienceMode.value, hasLinkedOmsProducts.value);
+  return resolveProductSyncExperienceMode(experienceMode.value, !!setupState.value.hasLinkedOmsProducts);
 });
 const isWebhookSubscribed = computed(() => {
   return webhookSubscriptions.value.some((subscription: any) => 
@@ -1638,11 +1636,10 @@ async function loadWizard() {
     setupState.value = await ShopifyProductSyncService.fetchSetupState({
       shopId: props.id,
       shop: shop.value,
-      productStore: selectedProductStore.value,
-      historyPageSize: 10
+      productStore: selectedProductStore.value
     });
     assertBackendDataAvailable(setupState.value, translate("Product sync setup is unavailable."));
-    setProductUpdateHistory(setupState.value.productUpdateHistory || []);
+    setProductUpdateHistory([]);
 
     draft.value = createProductSyncWizardDraft({
       selectedProductStoreId: setupState.value.selectedProductStoreId || shop.value.productStoreId || "",
@@ -1681,8 +1678,10 @@ async function loadWizard() {
       }
     }
 
-    // Now kick off secondary data in background without blocking
-    loadSecondaryData().catch((e) => logger.error("Failed to load secondary data", e));
+    // Now kick off secondary data in background without blocking if not in first-time mode
+    if (activeExperienceMode.value !== "first-time") {
+      loadSecondaryData().catch((e) => logger.error("Failed to load secondary data", e));
+    }
 
   } catch (error: any) {
     logger.error(error);
@@ -1746,6 +1745,7 @@ async function loadSecondaryData() {
       loadSyncJobLatestRun().catch(e => logger.error("Failed to load sync job latest run", e)),
       loadBulkOperationSendJobLatestRun().catch(e => logger.error("Failed to load bulk operation send job latest run", e)),
       loadBulkOperationPollJobLatestRun().catch(e => logger.error("Failed to load bulk operation poll job latest run", e)),
+      fetchProductUpdateHistory({ shopId: props.id, pageSize: 10 }).catch(e => logger.error("Failed to fetch product update history", e)),
       fetchRecentLogsByConfigId(PRODUCT_SYNC_MDM_CONFIG_ID, PRODUCT_SYNC_ERROR_LOG_LIMIT).catch(e => logger.error("Failed to fetch recent MDM logs", e))
     ]);
 

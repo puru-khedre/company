@@ -2,6 +2,7 @@ import { reactive, toRefs } from 'vue';
 import api from '@/api';
 import logger from '@/logger';
 import { clearStorage, getErrorRecords, setErrorRecords } from '@/utils/storage';
+import Papa from 'papaparse';
 
 export function useDataManagerLog() {
   const state = reactive({
@@ -51,10 +52,12 @@ export function useDataManagerLog() {
         state.errorLogs = JSON.parse(state.errorCsvRecords);
         await setErrorRecords(errorLogContentId, state.errorLogs);
       } else {
-        // Fallback since PapaParse might not be available in this app
-        // Stores raw CSV string as an array of rows
-        state.errorLogs = state.errorCsvRecords && typeof state.errorCsvRecords === 'string' 
-          ? state.errorCsvRecords.split('\n').filter(Boolean) 
+        state.errorLogs = typeof state.errorCsvRecords === 'string'
+          ? (Papa.parse<Record<string, any>>(state.errorCsvRecords, {
+            header: true,
+            skipEmptyLines: true,
+            transformHeader: (header) => header.trim()
+          }).data || [])
           : [];
       }
       state.loading = false;

@@ -38,16 +38,18 @@ function createRejectingApi() {
 }
 
 describe("shopify product sync service", () => {
-  test("fetchSetupState derives returning user state from real product update history", async () => {
+  test("fetchSetupState derives returning user state from product sync system messages", async () => {
     const calls: ApiCall[] = [];
     const service = await loadService(async (request: ApiCall) => {
       calls.push(request);
       return {
         data: {
-          productUpdateHistory: [
+          entityValueList: [
             {
-              shopId: "SHOP_10000",
-              productId: "gid://shopify/Product/100"
+              systemMessageId: "SMSG_100",
+              statusId: "SmsgConfirmed",
+              initDate: "2026-05-02T10:00:00Z",
+              lastUpdatedStamp: "2026-05-02T10:05:00Z"
             }
           ]
         }
@@ -65,9 +67,10 @@ describe("shopify product sync service", () => {
     });
 
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "oms/products/productUpdateHistories");
-    assert.equal(calls[0].params.shopId, "SHOP_10000");
-    assert.equal(calls[0].params.pageSize, 1);
+    assert.equal(calls[0].url, "oms/dataDocumentView");
+    assert.equal(calls[0].data.dataDocumentId, "SYSTEM_MESSAGE_DATA_MANAGER_LOG");
+    assert.equal(calls[0].data.customParametersMap.remoteInternalId, "SHOP_10000");
+    assert.equal(calls.some((call) => call.url === "oms/products/productUpdateHistories"), false);
     assert.equal(result.hasLinkedOmsProducts, true);
     assert.equal(result.productStoreLocked, true);
     assert.equal(result.identifierLocked, true);
@@ -75,10 +78,10 @@ describe("shopify product sync service", () => {
     assert.equal(result.selectedIdentifierEnumId, "SHOPIFY_PRODUCT_SKU");
   });
 
-  test("fetchSetupState returns first-time state only when product update history is really empty", async () => {
+  test("fetchSetupState returns first-time state only when product sync system messages are empty", async () => {
     const service = await loadService(async () => ({
       data: {
-        productUpdateHistory: []
+        entityValueList: []
       }
     }));
 
@@ -99,11 +102,9 @@ describe("shopify product sync service", () => {
     assert.equal(result.selectedIdentifierEnumId, "SHOPIFY_PRODUCT_SKU");
   });
 
-  test("fetchSetupState rejects invalid product update history shapes", async () => {
+  test("fetchSetupState rejects invalid system message response shapes", async () => {
     const service = await loadService(async () => ({
-      data: {
-        productUpdateHistoryCount: 1
-      }
+      data: {}
     }));
 
     await assert.rejects(() => service.fetchSetupState({
@@ -209,6 +210,14 @@ describe("shopify product sync service", () => {
         };
       }
 
+      if (request.url === "oms/dataDocumentView" && request.data?.dataDocumentId === "DATA_MANAGER_LOG_AND_PARAMETER") {
+        return {
+          data: {
+            entityValueListCount: 3
+          }
+        };
+      }
+
       if (request.url === "shopify/graphql" && String(request.data?.queryText).includes("bulkOperations(first: 1")) {
         return {
           data: {
@@ -252,11 +261,12 @@ describe("shopify product sync service", () => {
       }
     });
 
-    assert.equal(summary.syncRunState.lastSyncedAt, "2026-05-02T10:00:00.000Z");
+    assert.equal(Date.parse(summary.syncRunState.lastSyncedAt || ""), Date.parse("2026-05-02T10:00:00.000Z"));
     assert.equal(summary.pendingRequests.count, 1);
     assert.equal(summary.runningOperation?.id, "gid://shopify/BulkOperation/1");
     assert.equal(summary.unsyncedUpdates.count, 7);
-    assert.equal(calls.filter((call) => call.url === "oms/dataDocumentView").length, 2);
+    assert.equal(summary.updateFilesToProcess, 3);
+    assert.equal(calls.filter((call) => call.url === "oms/dataDocumentView").length, 3);
     assert.equal(calls.filter((call) => call.url === "shopify/graphql").length, 2);
   });
 });
