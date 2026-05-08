@@ -167,6 +167,7 @@ const SEARCH_DEBOUNCE_MS = 600;
 const props = defineProps<{
   mode?: ProductPickerMode
   systemMessageRemoteId: string
+  shopId?: string
   lastSyncedAt?: string
   shopifyShopProductCount?: number
 }>();
@@ -236,6 +237,7 @@ async function loadProducts() {
       : {
           products: await ShopifyProductSyncService.fetchUnsyncedProductUpdates({
             systemMessageRemoteId: props.systemMessageRemoteId,
+            shopId: props.shopId,
             lastSyncedAt: props.lastSyncedAt,
             pageSize: 100
           }) as ShopifyProductSyncProductSearchResult[],

@@ -542,7 +542,7 @@
                       {{ translate("Status") }}
                       <p>{{ translate("Message ID") }}: {{ currentStepDetail.id }}</p>
                     </ion-label>
-                    <ion-label slot="end">{{ getStatusDescription(latestSystemMessage?.statusId) }}</ion-label>
+                    <ion-label slot="end">{{ currentSyncRun?.systemMessage?.statusLabel || getStatusDescription(latestSystemMessage?.statusId) }}</ion-label>
                   </ion-item>
                   <ion-item>
                     <ion-label>
@@ -550,7 +550,15 @@
                       <p>{{ translate("The send job posts produced messages to Shopify.") }}</p>
                       <p>{{ BULK_OPERATION_SEND_JOB_NAME }}</p>
                     </ion-label>
-                    <ion-label slot="end">{{ systemMessageSendJobNextRunLabel }}</ion-label>
+                    <ion-button
+                      v-if="normalizeSyncStepStatus(currentSyncRun?.systemMessage?.statusId) === 'smsgproduced' && bulkOperationSendJob?.jobName"
+                      slot="end"
+                      fill="clear"
+                      @click="runJobNow(bulkOperationSendJob)"
+                    >
+                      {{ translate("Send") }}
+                    </ion-button>
+                    <ion-label v-else slot="end">{{ systemMessageSendJobNextRunLabel }}</ion-label>
                   </ion-item>
                   <ion-item>
                     <ion-label>
@@ -563,14 +571,26 @@
                   </ion-item>
                 </ion-list>
                 <ion-accordion-group>
-                  <ion-accordion v-if="latestSystemMessage?.messageText" value="system-message-text">
+                  <ion-accordion v-if="currentSyncRun?.systemMessage?.messageText" value="system-message-text">
                     <ion-item slot="header">
                       <ion-label>{{ translate("Message Text") }}</ion-label>
                     </ion-item>
                     <ion-list slot="content" lines="full">
                       <ion-item>
                         <ion-label>
-                          <p>{{ latestSystemMessage.messageText }}</p>
+                          <p>{{ currentSyncRun.systemMessage.messageText }}</p>
+                        </ion-label>
+                      </ion-item>
+                    </ion-list>
+                  </ion-accordion>
+                  <ion-accordion v-if="currentSyncRun?.systemMessage?.errorText" value="system-message-error-text">
+                    <ion-item slot="header">
+                      <ion-label>{{ translate("Error Text") }}</ion-label>
+                    </ion-item>
+                    <ion-list slot="content" lines="full">
+                      <ion-item>
+                        <ion-label>
+                          <p>{{ currentSyncRun.systemMessage.errorText }}</p>
                         </ion-label>
                       </ion-item>
                     </ion-list>
@@ -1851,6 +1871,7 @@ async function openUnsyncedUpdatesModal() {
     componentProps: {
       mode: "unsynced",
       systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      shopId: props.id,
       lastSyncedAt: lastProductUpdateSyncedAt.value,
       shopifyShopProductCount: shopifyShopProductCount.value
     },

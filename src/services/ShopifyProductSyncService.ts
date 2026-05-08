@@ -361,6 +361,8 @@ export interface ShopifyProductSyncRun {
     statusId?: string;
     statusLabel?: string;
     statusColor?: string;
+    errorText?: string;
+    messageText?: string;
   };
   bulkOperation: {
     id?: string;
@@ -867,7 +869,7 @@ const fetchShopifyShopProductCount = async (payload: any): Promise<ShopifyShopPr
   }
 
   const lastSyncedAt = payload.lastSyncedAt || payload.syncRunState?.lastSyncedAt ||
-    (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+    (await fetchProductUpdateSyncRunState(payload)).lastSyncedAt;
   const response = await requestBackend<ShopifyGraphqlResponse>({
     url: "shopify/graphql",
     method: "post",
@@ -895,7 +897,7 @@ const fetchUnsyncedProductUpdates = async (payload: any): Promise<ShopifyUnsynce
   }
 
   const lastSyncedAt = payload.lastSyncedAt || payload.syncRunState?.lastSyncedAt ||
-    (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+    (await fetchProductUpdateSyncRunState(payload)).lastSyncedAt;
   const response = await requestBackend<ShopifyGraphqlResponse>({
     url: "shopify/graphql",
     method: "post",
