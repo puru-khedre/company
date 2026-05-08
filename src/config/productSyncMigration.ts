@@ -3,7 +3,8 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
   eligibleComponentReleases: [
     "product-sync",
     "UpcomingRelease",
-    "v5.2.0"
+    "v5.2.0",
+    "main"
   ],
   outgoing: {
     systemMessageTypes: [

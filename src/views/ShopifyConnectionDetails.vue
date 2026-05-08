@@ -327,12 +327,20 @@ const productSyncMigrationNoticeAction = computed(() => {
 });
 const productSyncMigrationNotice = computed(() => {
   if (!effectiveProductSyncMigrationEligibility.value.isEligible) {
+    const currentRelease = effectiveProductSyncMigrationEligibility.value.componentRelease;
+    const minimumRelease = effectiveProductSyncMigrationEligibility.value.minimumComponentRelease || translate("the required release");
+
     return {
       state: "upgrade-required",
       label: translate("Upgrade required for new product sync"),
-      detail: translate("Upgrade this instance to {minimumRelease} or newer before moving to the new product sync.", {
-        minimumRelease: effectiveProductSyncMigrationEligibility.value.minimumComponentRelease || translate("the required release")
-      }),
+      detail: currentRelease
+        ? translate("Current backend release: {currentRelease}. Upgrade this instance to {minimumRelease} or newer before moving to the new product sync.", {
+          currentRelease,
+          minimumRelease
+        })
+        : translate("Upgrade this instance to {minimumRelease} or newer before moving to the new product sync.", {
+          minimumRelease
+        }),
       badge: translate("Upgrade required"),
       color: "warning",
       action: "upgrade-assistant"

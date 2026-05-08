@@ -501,8 +501,16 @@
               </ion-list>
             </template>
             <ion-fab vertical="bottom" horizontal="end" slot="fixed">
-              <ion-fab-button @click="saveSyncJobDetails" :disabled="!syncJobDetailsDirty || !isSyncJobDraftScheduleValid || isSyncJobDetailsSaving" :aria-label="translate('Save')">
+              <ion-fab-button
+                v-if="!isSyncJobDetailsSaving"
+                @click="saveSyncJobDetails"
+                :disabled="!syncJobDetailsDirty || !isSyncJobDraftScheduleValid"
+                :aria-label="translate('Save')"
+              >
                 <ion-icon :icon="saveOutline" />
+              </ion-fab-button>
+              <ion-fab-button v-else disabled :aria-label="translate('Saving')">
+                <ion-spinner name="crescent" />
               </ion-fab-button>
             </ion-fab>
           </ion-content>
@@ -2371,11 +2379,15 @@ async function saveSyncJobDetails() {
 
   isSyncJobDetailsSaving.value = true;
   try {
-    await updateSyncJob({
+    const updated = await updateSyncJob({
       jobName: selectedSyncJobDetailsJob.value.jobName,
       cronExpression: syncJobDraftCronExpression.value,
       paused: syncJobDraftActive.value ? "N" : "Y"
     }, translate("Sync job updated successfully."));
+
+    if (updated) {
+      showSyncJobDetailsModal.value = false;
+    }
   } finally {
     isSyncJobDetailsSaving.value = false;
   }
