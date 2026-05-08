@@ -498,6 +498,12 @@ function getTimestampDate(value: any): string | undefined {
   return parseDateTimeValue(value)?.toISO() || undefined;
 }
 
+function getEntityValueList(response: any, context: string): any[] {
+  if (Array.isArray(response?.entityValueList)) return response.entityValueList;
+  if (Number(response?.entityValueListCount || 0) === 0) return [];
+  throw new Error(`${context} response must include array entityValueList.`);
+}
+
 function resolveSystemMessageRemoteId(payload: any): string {
   if (typeof payload === "string") return payload;
   return payload.systemMessageRemoteId ||
@@ -718,8 +724,7 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     }
   });
 
-  assertArrayField(response?.entityValueList, "entityValueList", "Product sync system message history");
-  const systemMessages = response.entityValueList;
+  const systemMessages = getEntityValueList(response, "Product sync system message history");
 
   const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed" || systemMessage.statusId === "SmsgConsumed");
   const consumedMessages = systemMessages.filter((systemMessage: any) => {

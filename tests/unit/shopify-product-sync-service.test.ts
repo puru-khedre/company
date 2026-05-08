@@ -81,7 +81,7 @@ describe("shopify product sync service", () => {
   test("fetchSetupState returns first-time state only when product sync system messages are empty", async () => {
     const service = await loadService(async () => ({
       data: {
-        entityValueList: []
+        entityValueListCount: 0
       }
     }));
 
@@ -104,7 +104,9 @@ describe("shopify product sync service", () => {
 
   test("fetchSetupState rejects invalid system message response shapes", async () => {
     const service = await loadService(async () => ({
-      data: {}
+      data: {
+        entityValueListCount: 1
+      }
     }));
 
     await assert.rejects(() => service.fetchSetupState({
