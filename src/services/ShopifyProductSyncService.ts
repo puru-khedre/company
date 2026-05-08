@@ -1390,6 +1390,43 @@ const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDa
   };
 };
 
+const fetchWebhookSubscriptions = async (payload: any): Promise<any> => {
+  const response = await requestBackend<any>({
+    url: "shopify/webhook-subscription",
+    method: "get",
+    params: {
+      systemMessageRemoteId: payload.systemMessageRemoteId,
+      queryParams: {
+        topics: payload.topic
+      }
+    }
+  });
+
+  return response?.webhookList || [];
+}
+
+const subscribeWebhook = async (payload: any): Promise<any> => {
+  return await requestBackend<any>({
+    url: "shopify/webhook-subscription",
+    method: "post",
+    data: {
+      systemMessageRemoteId: payload.systemMessageRemoteId,
+      topic: payload.topic
+    }
+  });
+};
+
+const unsubscribeWebhook = async (payload: any): Promise<any> => {
+  return await requestBackend<any>({
+    url: "shopify/webhook-subscription",
+    method: "delete",
+    data: {
+      systemMessageRemoteId: payload.systemMessageRemoteId,
+      webhookSubscriptionId: payload.webhookSubscriptionId
+    }
+  });
+};
+
 export const ShopifyProductSyncService = {
   fetchShopifyAccessState,
   fetchDashboardSummary,
@@ -1410,5 +1447,8 @@ export const ShopifyProductSyncService = {
   fetchSyncJobConfig,
   configureSyncJob,
   fetchErrorRecordCount,
-  fetchUpdateFilesToProcessCount
+  fetchUpdateFilesToProcessCount,
+  fetchWebhookSubscriptions,
+  subscribeWebhook,
+  unsubscribeWebhook
 };

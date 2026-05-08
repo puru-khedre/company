@@ -92,6 +92,10 @@
           @open-step-details="openStepDetails"
           @run-job="runSyncJob"
           @download-file="downloadRawFile"
+          :is-webhook-subscribed="isWebhookSubscribed"
+          :is-webhook-loading="isWebhookLoading"
+          :is-webhook-supported="isWebhookSupported"
+          @toggle-webhook="toggleWebhookSubscription"
         />
 
         <shopify-product-sync-wizard-view
@@ -860,6 +864,9 @@ const syncJobRecentRuns = ref<any[]>([]);
 const detailedErrorSearchQuery = ref("");
 const selectedErrorRecord = ref<any>(null);
 const showErrorDetailsModal = ref(false);
+const webhookSubscriptions = ref<any[]>([]);
+const isWebhookLoading = ref(false);
+const isWebhookSupported = ref(false);
 let progressPoll: number | undefined;
 let nextSyncRefreshPoll: number | undefined;
 let scheduledJobRefreshAtMs: number | null = null;
@@ -987,6 +994,11 @@ const hasRelatedShops = computed(() => {
 });
 const activeExperienceMode = computed(() => {
   return resolveProductSyncExperienceMode(experienceMode.value, hasLinkedOmsProducts.value);
+});
+const isWebhookSubscribed = computed(() => {
+  return webhookSubscriptions.value.some((subscription: any) => 
+    subscription.node.topic === "BULK_OPERATIONS_FINISH"
+  );
 });
 const activeExperienceModeLabel = computed(() => {
   return activeExperienceMode.value === "returning" ? translate("Returning user") : translate("First-time setup");
@@ -1647,6 +1659,8 @@ async function loadWizard() {
       await loadProductStoreContext(draft.value.selectedProductStoreId);
     }
 
+    await loadWebhookSubscriptions();
+
     // Dev override to land on a specific step
     if (route.query.step) {
       currentStep.value = route.query.step as ProductSyncWizardStep;
@@ -1731,6 +1745,8 @@ async function loadSecondaryData() {
         logger.error("Failed to fetch failed records for MDM logs", e);
       }
     }
+
+    await loadWebhookSubscriptions();
   } catch (error) {
     logger.error("Error loading secondary data", error);
   } finally {
@@ -2787,9 +2803,8 @@ async function runJobNow(job: any) {
 async function performSync(params: any, successMsg: string, modalRef: any, loadingRef: any) {
   loadingRef.value = true;
   try {
+    currentSyncRun.value = {} as any;
     const job = syncJobObj.value;
-    if (!job) throw new Error("Sync job not found");
-
     const resp: any = await ShopifyProductSyncService.syncShopifyProducts({
       shopId: props.id,
       ...params
@@ -2800,7 +2815,7 @@ async function performSync(params: any, successMsg: string, modalRef: any, loadi
     currentSyncRun.value = {} as any;
     progressState.value = {
       ...progressState.value,
-      syncJobId: job.jobName,
+      syncJobId: job?.jobName || "",
       systemMessageId: resp.systemMessageId || "",
       systemMessageState: "SmsgProduced",
       status: "queued",
@@ -3391,4 +3406,53 @@ function assertBackendDataAvailable(payload: any, message: string) {
   }
 }
 
+async function loadWebhookSubscriptions() {
+  if (!selectedShopSystemMessageRemoteId.value) return;
+  isWebhookLoading.value = true;
+  try {
+    webhookSubscriptions.value = await ShopifyProductSyncService.fetchWebhookSubscriptions({
+      systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      topic: "BULK_OPERATIONS_FINISH"
+    });
+    isWebhookSupported.value = true;
+  } catch (error) {
+    logger.error("Failed to load webhook subscriptions", error);
+    isWebhookSupported.value = false;
+  } finally {
+    isWebhookLoading.value = false;
+  }
+}
+
+async function toggleWebhookSubscription(subscribe: boolean) {
+  if (!selectedShopSystemMessageRemoteId.value) {
+    showToast(translate("Shop connection details not fully loaded."));
+    return;
+  }
+  isWebhookLoading.value = true;
+  try {
+    if (subscribe) {
+      await ShopifyProductSyncService.subscribeWebhook({
+        systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+        topic: "BULK_OPERATIONS_FINISH",
+        endPoint: "shopify/webhook/payload"
+      });
+      showToast(translate("Subscribed to bulk operations finish webhook."));
+    } else {
+      const subscription = webhookSubscriptions.value.find((s: any) => s.node.topic === "BULK_OPERATIONS_FINISH");
+      if (subscription) {
+        await ShopifyProductSyncService.unsubscribeWebhook({
+          systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+          webhookSubscriptionId: subscription.node.id
+        });
+        showToast(translate("Unsubscribed from bulk operations finish webhook."));
+      }
+    }
+    await loadWebhookSubscriptions();
+  } catch (error) {
+    logger.error("Failed to toggle webhook subscription", error);
+    showToast(translate("Failed to update webhook subscription."));
+  } finally {
+    isWebhookLoading.value = false;
+  }
+}
 </script>
