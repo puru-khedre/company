@@ -681,7 +681,6 @@ const getSystemMessageRank = (systemMessage: any) => {
 };
 
 function getLatestSystemMessage(systemMessages: any[]) {
-  console.log("")
   return systemMessages.reduce((latest: any, current: any) => {
     if (!latest) return current;
 
@@ -713,32 +712,27 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     throw new Error("Shop ID is required to find product update sync system messages.");
   }
 
-  const pageSize = 1000;
-  let pageIndex = 0;
-  let systemMessages: any[] = [];
-  let page;
+  const systemMessageId = payload.systemMessageId;
+  const pageSize = systemMessageId ? 1 : 100;
+  
+  const response = await requestBackend<any>({
+    url: "oms/dataDocumentView",
+    method: "post",
+    data: {
+      dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
+      customParametersMap: {
+        systemMessageId,
+        systemMessageTypeId: "BulkQueryShopifyProductUpdates",
+        remoteInternalId: shopId,
+        remoteInternalIdType: "HOTWAX_SHOP_ID",
+        orderByField: "-lastUpdatedStamp"
+      },
+      pageSize,
+      pageIndex: 0
+    }
+  });
 
-  do {
-    const response = await requestBackend<any>({
-      url: "oms/dataDocumentView",
-      method: "post",
-      data: {
-        dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
-        customParametersMap: {
-          systemMessageTypeId: "BulkQueryShopifyProductUpdates",
-          remoteInternalId: shopId,
-          remoteInternalIdType: "HOTWAX_SHOP_ID",
-          orderByField: "-lastUpdatedStamp"
-        },
-        pageSize,
-        pageIndex
-      }
-    });
-
-    page = response?.entityValueList || [];
-    systemMessages = systemMessages.concat(page);
-    pageIndex++;
-  } while (page.length === pageSize);
+  const systemMessages = response?.entityValueList || [];
 
   const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed" || systemMessage.statusId === "SmsgConsumed");
   const consumedMessages = systemMessages.filter((systemMessage: any) => {

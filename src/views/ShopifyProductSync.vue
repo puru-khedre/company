@@ -2847,7 +2847,11 @@ async function loadProgress() {
   let loadedRunState = false;
   try {
     const [syncRunStateResult, sendJobResult, pollJobResult, sendJobRunsResult, pollJobRunsResult] = await Promise.allSettled([
-      ShopifyProductSyncService.fetchProductUpdateSyncRunState(selectedShopSystemMessageRemoteId.value),
+      ShopifyProductSyncService.fetchProductUpdateSyncRunState({
+        systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+        shopId: props.id,
+        systemMessageId: progressState.value?.systemMessageId
+      }),
       fetchJobDetail(BULK_OPERATION_SEND_JOB_NAME),
       fetchJobDetail(BULK_OPERATION_POLL_JOB_NAME),
       fetchJobRuns(BULK_OPERATION_SEND_JOB_NAME, { pageSize: 1, pageIndex: 0 }),
@@ -2900,12 +2904,20 @@ async function loadProgress() {
     }
 
     if (latestMessage) {
+      const status = normalizeProductSyncStatus({ 
+        systemMessageState: latestMessage.statusId,
+        logStatusId: latestMessage.logStatusId,
+        logId: latestMessage.logId
+      });
+
       progressState.value = {
         syncJobId: syncJobId.value || "",
-        status: normalizeProductSyncStatus({ systemMessageState: latestMessage.statusId }),
+        status,
         systemMessageState: latestMessage.statusId,
-        completed: ["SmsgConfirmed", "SmsgCancelled", "SmsgError"].includes(latestMessage.statusId),
-        systemMessageId: latestMessage.systemMessageId
+        logStatusId: latestMessage.logStatusId,
+        logId: latestMessage.logId,
+        systemMessageId: latestMessage.systemMessageId,
+        completed: ["completed", "error", "cancelled"].includes(status)
       } as any;
 
       if (latestMessage.systemMessageId) {

@@ -374,7 +374,7 @@
               <p>{{ translate("Import completed requests") }}</p>
               <p v-if="!isCompleteStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus)">{{ bulkOperationPollJobNextRunLabel }}</p>
             </ion-label>
-            <ion-button v-if="isPollableStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus) || systemMessageStatusId === 'SmsgConsumed'" slot="end" fill="clear" @click="$emit('run-job-now', bulkOperationPollJob)">
+            <ion-button v-if="(isPollableStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus) || systemMessageStatusId === 'SmsgConsumed') && !mdmLogId" slot="end" fill="clear" @click="$emit('run-job-now', bulkOperationPollJob)">
               {{ translate("Run now") }}
             </ion-button>
           </ion-item>
@@ -401,6 +401,7 @@
               <p>{{ bulkFileProcessDescription }}</p>
               <p v-if="mdmLogHasFailedRecords" class="ion-color-danger">{{ mdmLogFailedRecordsLabel }}</p>
               <p v-else-if="mdmLogProgressLabel">{{ mdmLogProgressLabel }}</p>
+              <p v-if="mdmLogId">{{ translate("Data manager log id") }}: {{ mdmLogId }}</p>
             </ion-label>
             <ion-badge slot="end" :color="mdmLogBadgeColor">{{ mdmLogBadgeLabel }}</ion-badge>
           </ion-item>
@@ -851,7 +852,7 @@ function isCompleteStatus(status = "") {
 
 function isPollableStatus(status = "") {
   const normalizedStatus = String(status || "").toLowerCase();
-  return ["running", "created"].includes(normalizedStatus);
+  return ["running", "created", "completed", "complete"].includes(normalizedStatus);
 }
 
 function getStatusIcon(color: string) {
