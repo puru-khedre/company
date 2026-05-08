@@ -312,12 +312,7 @@ const hasActiveLegacyProductSync = computed(() => {
     ...legacyProductSyncState.value.legacySystemMessages
   ].some((item: any) => item?.status === "active");
 });
-const productSyncEntryAction = computed(() => {
-  return ShopifyProductSyncMigrationService.resolveEntryAction({
-    hasNewProductSyncMessages: hasCurrentProductSyncMessages.value,
-    isEligible: effectiveProductSyncMigrationEligibility.value.isEligible
-  });
-});
+
 const productSyncMigrationNoticeAction = computed(() => {
   if (productSyncMigrationNotice.value?.action === "setup") {
     return "setup";
@@ -405,16 +400,6 @@ const productSyncMigrationNotice = computed(() => {
   };
 });
 const productSyncCardSubtitle = computed(() => {
-  if (!hasCurrentProductSyncMessages.value) {
-    if (productSyncEntryAction.value === "setup") {
-      return translate("This shop is eligible to move to the new product sync.");
-    }
-
-    if (productSyncEntryAction.value === "request-upgrade") {
-      return translate("A backend upgrade is required before the new product sync can be set up.");
-    }
-  }
-
   if (hasProductSyncSummaryError.value) {
     return translate("Open product sync to inspect the latest sync status.");
   }
@@ -681,12 +666,11 @@ async function openProductStoreModal() {
 }
 
 function openProductSyncEntry() {
-  if (productSyncEntryAction.value === "current") {
+  if (productSyncMigrationNotice.value?.action === "upgrade-assistant") {
+    router.push(`/shopify-connection-details/${props.id}/product-sync/upgrade-assistant`);
+  } else {
     router.push(`/shopify-connection-details/${props.id}/product-sync`);
-    return;
   }
-
-  router.push(`/shopify-connection-details/${props.id}/product-sync/upgrade-assistant`);
 }
 
 function openProductSyncMigrationNotice() {
