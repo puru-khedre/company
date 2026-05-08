@@ -147,7 +147,7 @@
           </ion-card>
           <section>
             <ion-item
-              v-if="productSyncMigrationNotice"
+              v-if="!isSyncSummaryLoading && productSyncMigrationNotice"
               :data-sync-state="productSyncMigrationNotice.state"
               detail
               class="item-box"
