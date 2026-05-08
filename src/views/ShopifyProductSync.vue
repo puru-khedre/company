@@ -1360,41 +1360,44 @@ const recentSyncUpdates = computed(() => {
   }));
 });
 
+function findNonEmptyString(...values: any[]) {
+  return values.find((value) => String(value || "").trim()) || "";
+}
+
 function getRecentSyncUpdateTitle(history: any) {
   return getRecentSyncVariantTitle(history) || getRecentSyncParentTitle(history) || history.productId;
 }
 
 function getRecentSyncParentTitle(history: any) {
-  return [
+  return findNonEmptyString(
     history.parentTitle,
     history.parentProductName,
     history.productTitle,
     history.diffs?.productTitle,
     history.diffs?.parentTitle,
     history.diffs?.productName
-  ].find((value) => String(value || "").trim()) || "";
+  );
 }
 
 function getRecentSyncVariantTitle(history: any) {
-  return [
+  return findNonEmptyString(
     history.variantTitle,
     history.internalName,
     history.diffs?.variantTitle,
     history.diffs?.title,
     history.diffs?.name,
     history.diffs?.handle
-  ].find((value) => String(value || "").trim()) || "";
+  );
 }
 
 function getRecentSyncSku(history: any) {
   const identifications = getRecentSyncIdentifications(history);
-  return String(
-    history.sku ||
-    history.diffs?.sku ||
-    identifications.sku ||
-    identifications.SKU ||
-    ""
-  ).trim();
+  return findNonEmptyString(
+    history.sku,
+    history.diffs?.sku,
+    identifications.sku,
+    identifications.SKU
+  );
 }
 
 function getRecentSyncShopifyIdLabel(history: any) {
@@ -1435,25 +1438,25 @@ function getRecentSyncIdentifications(history: any) {
 
 function getRecentSyncShopifyProductId(history: any) {
   const identifications = getRecentSyncIdentifications(history);
-  return getShopifyNumericId(
-    history.parentProductId ||
-    history.diffs?.parentProductId ||
-    identifications.shopifyParentProductId ||
-    identifications.shopifyProductId ||
-    identifications.SHOPIFY_PRODUCT_ID ||
-    (String(history.diffs?.id || "").startsWith("gid://shopify/Product/") ? history.diffs?.id : "") ||
+  return getShopifyNumericId(findNonEmptyString(
+    history.parentProductId,
+    history.diffs?.parentProductId,
+    identifications.shopifyParentProductId,
+    identifications.shopifyProductId,
+    identifications.SHOPIFY_PRODUCT_ID,
+    String(history.diffs?.id || "").startsWith("gid://shopify/Product/") ? history.diffs?.id : "",
     history.productId
-  );
+  ));
 }
 
 function getRecentSyncShopifyVariantId(history: any) {
   const identifications = getRecentSyncIdentifications(history);
-  return getShopifyNumericId(
-    identifications.shopifyVariantId ||
-    identifications.SHOPIFY_VARIANT_ID ||
-    (String(history.diffs?.id || "").startsWith("gid://shopify/ProductVariant/") ? history.diffs?.id : "") ||
+  return getShopifyNumericId(findNonEmptyString(
+    identifications.shopifyVariantId,
+    identifications.SHOPIFY_VARIANT_ID,
+    String(history.diffs?.id || "").startsWith("gid://shopify/ProductVariant/") ? history.diffs?.id : "",
     history.productId
-  );
+  ));
 }
 
 function getShopifyNumericId(value: any) {
@@ -2095,24 +2098,26 @@ function getBulkOperationStatusAt(bulkOperation: any) {
 }
 
 function getMdmLogStartedAt(mdmLog: any) {
-  return mdmLog?.startDate ||
-    mdmLog?.startTime ||
-    mdmLog?.startedDate ||
-    mdmLog?.startedAt ||
-    mdmLog?.createdDate ||
-    mdmLog?.createdStamp ||
-    "";
+  return findNonEmptyString(
+    mdmLog?.startDate,
+    mdmLog?.startTime,
+    mdmLog?.startedDate,
+    mdmLog?.startedAt,
+    mdmLog?.createdDate,
+    mdmLog?.createdStamp
+  );
 }
 
 function getMdmLogCompletedAt(mdmLog: any) {
-  return mdmLog?.endDate ||
-    mdmLog?.endTime ||
-    mdmLog?.finishDateTime ||
-    mdmLog?.finishedAt ||
-    mdmLog?.completedDate ||
-    mdmLog?.completedAt ||
-    mdmLog?.lastUpdatedStamp ||
-    "";
+  return findNonEmptyString(
+    mdmLog?.endDate,
+    mdmLog?.endTime,
+    mdmLog?.finishDateTime,
+    mdmLog?.finishedAt,
+    mdmLog?.completedDate,
+    mdmLog?.completedAt,
+    mdmLog?.lastUpdatedStamp
+  );
 }
 
 function getRelativeOrAbsoluteLabel(value: string) {

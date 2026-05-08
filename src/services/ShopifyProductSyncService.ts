@@ -846,7 +846,7 @@ const fetchRunningBulkOperation = async (payload: any): Promise<ShopifyRunningBu
 const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupState> => {
   const shopId = payload.shopId || payload.shop?.shopId;
   const pageSize = payload.historyPageSize || 1;
-  const [productUpdateHistory, syncCheckResponse, shopifyAccessState] = await Promise.all([
+  const [productUpdateHistory, syncRunState, shopifyAccessState] = await Promise.all([
     // Fetch history for dashboard display
     requestBackend<ProductUpdateHistoryResponse | any[]>({
       url: "oms/products/productUpdateHistories",
@@ -858,23 +858,11 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
       }
     }, "Shopify product update history endpoint").then(getProductUpdateHistoryRecords).catch(() => []),
 
-    // Check for existing consumed sync messages to determine mode
-    requestBackend<any>({
-      url: "oms/dataDocumentView",
-      method: "post",
-      data: {
-        dataDocumentId: "SYSTEM_MESSAGE_DATA_MANAGER_LOG",
-        customParametersMap: {
-          systemMessageTypeId: "BulkQueryShopifyProductUpdates",
-          remoteInternalId: shopId,
-          remoteInternalIdType: "HOTWAX_SHOP_ID",
-          statusId: "SmsgConsumed"
-        },
-        fieldsToSelect: "systemMessageId",
-        orderByField: "-initDate",
-        pageSize: 1
-      }
-    }).catch(() => ({ entityValueList: [] })),
+    // Check for existing sync messages to determine mode
+    fetchProductUpdateSyncRunState(payload).catch(e => {
+      logger.error("Failed to fetch product update sync run state for setup", e);
+      return { latestSystemMessage: null } as any;
+    }),
 
     fetchShopifyAccessState(payload).catch(() => ({
       systemMessageRemoteId: "",
@@ -885,7 +873,7 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
     } as ShopifyProductSyncAccessState))
   ]);
 
-  const hasLinkedOmsProducts = Number(syncCheckResponse.entityValueList.length || 0) > 0;
+  const hasLinkedOmsProducts = !!syncRunState.latestSystemMessage;
 
   return validateSetupState({
     productUpdateHistory,
