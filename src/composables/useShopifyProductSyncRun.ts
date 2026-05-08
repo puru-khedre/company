@@ -91,9 +91,9 @@ export function useShopifyProductSyncRun() {
         },
         bulkOperation: {
           id: shopifyBulkOperation?.id || bulkOperationId,
-          status: shopifyBulkOperation?.status,
-          statusLabel: shopifyBulkOperation?.isStatusUnavailable ? translate("Unavailable") : getStatusLabel(shopifyBulkOperation?.status),
-          statusColor: shopifyBulkOperation?.isStatusUnavailable ? "medium" : getStatusColor(shopifyBulkOperation?.status),
+          status: shopifyBulkOperation?.status || systemMessage?.statusId,
+          statusLabel: shopifyBulkOperation?.isStatusUnavailable ? getStatusLabel(systemMessage?.statusId) : getStatusLabel(shopifyBulkOperation?.status),
+          statusColor: shopifyBulkOperation?.isStatusUnavailable ? getStatusColor(systemMessage?.statusId) : getStatusColor(shopifyBulkOperation?.status),
           isStatusUnavailable: shopifyBulkOperation?.isStatusUnavailable,
           objectCount: shopifyBulkOperation?.objectCount,
           rootObjectCount: shopifyBulkOperation?.rootObjectCount,

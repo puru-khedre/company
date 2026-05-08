@@ -1904,7 +1904,7 @@ async function handleSelectedProductsForSync(data: any) {
   try {
     const result = await ShopifyProductSyncService.syncShopifyProductsOnDemand({
       shopId: props.id,
-      shopifyProductIds
+      shopifyProductId: shopifyProductIds
     });
 
     showToast(getSelectedProductSyncResultMessage(result, shopifyProductIds.length));
@@ -2034,7 +2034,7 @@ async function resyncProduct(record: any) {
   try {
     const result = await ShopifyProductSyncService.syncShopifyProductsOnDemand({
       shopId: props.id,
-      shopifyProductIds: [shopifyProductId]
+      shopifyProductId: [shopifyProductId]
     });
 
     showToast(getSelectedProductSyncResultMessage(result, 1));

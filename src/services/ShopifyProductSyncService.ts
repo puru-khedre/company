@@ -1030,17 +1030,19 @@ const syncShopifyProductsOnDemand = async (payload: any): Promise<ShopifyProduct
   if (!payload.shopId) {
     throw new Error("Shopify shop id is required to sync products on demand.");
   }
+  if (!payload.shopifyProductId) {
+    throw new Error("Shopify product id is required to sync products on demand.");
+  }
 
-  const shopifyProductIds = Array.isArray(payload.shopifyProductId) ? payload.shopifyProductId : [payload.shopifyProductId];
   const data: any = {
     shopId: payload.shopId,
-    shopifyProductId: shopifyProductIds
+    shopifyProductId: payload.shopifyProductId
   };
   if (payload.namespace) data.namespace = payload.namespace;
   if (payload.additionalParameters) data.additionalParameters = payload.additionalParameters;
 
   return requestBackend<ShopifyProductSyncOnDemandResult>({
-    url: "shopify/products/syncOnDemand",
+    url: "sob/shopify/syncShopifyProductsOnDemand",
     method: "post",
     data
   }, "Shopify product sync on demand endpoint");
@@ -1353,7 +1355,7 @@ const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDa
 
 const fetchWebhookSubscriptions = async (payload: any): Promise<any> => {
   const response = await requestBackend<any>({
-    url: "shopify/webhook-subscription",
+    url: "shopify/webhook",
     method: "get",
     params: {
       systemMessageRemoteId: payload.systemMessageRemoteId,
@@ -1368,7 +1370,7 @@ const fetchWebhookSubscriptions = async (payload: any): Promise<any> => {
 
 const subscribeWebhook = async (payload: any): Promise<any> => {
   return await requestBackend<any>({
-    url: "shopify/webhook-subscription",
+    url: "shopify/webhook",
     method: "post",
     data: {
       systemMessageRemoteId: payload.systemMessageRemoteId,
@@ -1379,7 +1381,7 @@ const subscribeWebhook = async (payload: any): Promise<any> => {
 
 const unsubscribeWebhook = async (payload: any): Promise<any> => {
   return await requestBackend<any>({
-    url: "shopify/webhook-subscription",
+    url: "shopify/webhook",
     method: "delete",
     data: {
       systemMessageRemoteId: payload.systemMessageRemoteId,
