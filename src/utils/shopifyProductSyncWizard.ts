@@ -138,6 +138,10 @@ export function shouldShowProductSyncProgress(startResult: { success?: boolean; 
   return !!startResult.success && !!(startResult.syncJobId || startResult.progress?.syncJobId);
 }
 
+export function canShowProductSyncReconcile(progress: ProductSyncProgressSnapshot = {}): boolean {
+  return progress.status === "completed" || progress.systemMessageState === "SmsgConfirmed" || progress.systemMessageState === "SmsgConsumed";
+}
+
 export function normalizeProductSyncStatus(progress: ProductSyncProgressSnapshot = {}): string {
   if (progress.status === "error") {
     return "error";
@@ -222,4 +226,3 @@ export function getRawShopifyFileName(run: { mdmLogFileName?: string; logId?: st
   const fileName = String(run.mdmLogFileName || "").split(/[\\/]/).pop();
   return fileName || `shopify-product-sync-${run.logId || run.id}.json`;
 }
-

@@ -51,10 +51,8 @@ export function useDataManagerLog() {
         state.errorLogs = JSON.parse(state.errorCsvRecords);
         await setErrorRecords(errorLogContentId, state.errorLogs);
       } else {
-        // Fallback since PapaParse might not be available in this app
-        // Stores raw CSV string as an array of rows
-        state.errorLogs = state.errorCsvRecords && typeof state.errorCsvRecords === 'string' 
-          ? state.errorCsvRecords.split('\n').filter(Boolean) 
+        state.errorLogs = typeof state.errorCsvRecords === 'string'
+          ? state.errorCsvRecords.split(/\r?\n(?=(?:[^"]*"[^"]*")*[^"]*$)/).filter(Boolean)
           : [];
       }
       state.loading = false;

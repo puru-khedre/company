@@ -100,9 +100,8 @@ Rules:
 
 Important:
 
-- this is not the same predicate as the `/product-sync` page’s `hasLinkedOmsProducts`
-- this page treats any current new-sync message as “new sync exists”
-- the `/product-sync` page treats consumed sync history as the signal for “returning user”
+- this is now consistent with the `/product-sync` page’s `hasLinkedOmsProducts`
+- both pages now treat any current new-sync message as the signal for “new sync exists” or “returning user”
 
 ### 3. `hasShopifyWriteAccess`
 
@@ -378,15 +377,13 @@ This comes from `fetchSetupState()` in `ShopifyProductSyncService`.
 
 `fetchSetupState()` sets `hasLinkedOmsProducts` using:
 
-- a query for consumed `BulkQueryShopifyProductUpdates` messages
-- specifically `statusId === "SmsgConsumed"`
+- `fetchProductUpdateSyncRunState` which fetches the latest messages.
+- Checks if `latestSystemMessage` exists.
 
 Meaning:
 
-- `/product-sync` treats “returning user” as “there is consumed sync history”
-- not merely “there is any new-sync message”
-
-This is stricter than the connection-details page.
+- `/product-sync` now treats “returning user” as “there is any new-sync message” (regardless of status).
+- This aligns it with the connection-details page and fixes the issue where users with running syncs were thrown back to the first-time flow.
 
 ## `/product-sync` Initial Step Resolution
 

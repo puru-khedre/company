@@ -3,7 +3,6 @@ import logger from "@/logger";
 import { parseDateTimeValue } from "@/utils";
 
 export interface ShopifyProductSyncSetupState {
-  productUpdateHistory?: any[];
   hasLinkedOmsProducts: boolean;
   productStoreLocked: boolean;
   identifierLocked: boolean;
@@ -147,11 +146,6 @@ interface SystemMessagesResponse {
 
 interface SystemMessageRemotesResponse {
   systemMessageRemoteList?: any[];
-}
-
-interface ProductUpdateHistoryResponse {
-  productUpdateHistory?: any[];
-  productUpdateHistories?: any[];
 }
 
 const PRODUCT_UPDATE_SYNC_MESSAGE_TYPE_ID = "BulkQueryShopifyProductUpdates";
@@ -466,13 +460,6 @@ function validateSetupState(response: any): ShopifyProductSyncSetupState {
   return response as ShopifyProductSyncSetupState;
 }
 
-function getProductUpdateHistoryRecords(response: any): any[] {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.productUpdateHistory)) return response.productUpdateHistory;
-  if (Array.isArray(response?.productUpdateHistories)) return response.productUpdateHistories;
-  throw new Error("Product update history response must include productUpdateHistory records.");
-}
-
 function validateProductStoreContext(response: any): any {
   const context = "Product sync product store context";
   assertPlainObject(response, context);
@@ -731,7 +718,8 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     }
   });
 
-  const systemMessages = response?.entityValueList || [];
+  assertArrayField(response?.entityValueList, "entityValueList", "Product sync system message history");
+  const systemMessages = response.entityValueList;
 
   const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed" || systemMessage.statusId === "SmsgConsumed");
   const consumedMessages = systemMessages.filter((systemMessage: any) => {
@@ -844,26 +832,8 @@ const fetchRunningBulkOperation = async (payload: any): Promise<ShopifyRunningBu
 }
 
 const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupState> => {
-  const shopId = payload.shopId || payload.shop?.shopId;
-  const pageSize = payload.historyPageSize || 1;
-  const [productUpdateHistory, syncRunState, shopifyAccessState] = await Promise.all([
-    // Fetch history for dashboard display
-    requestBackend<ProductUpdateHistoryResponse | any[]>({
-      url: "oms/products/productUpdateHistories",
-      method: "get",
-      params: {
-        shopId,
-        pageSize,
-        orderByField: "-lastUpdatedStamp"
-      }
-    }, "Shopify product update history endpoint").then(getProductUpdateHistoryRecords).catch(() => []),
-
-    // Check for existing sync messages to determine mode
-    fetchProductUpdateSyncRunState(payload).catch(e => {
-      logger.error("Failed to fetch product update sync run state for setup", e);
-      return { latestSystemMessage: null } as any;
-    }),
-
+  const [syncRunState, shopifyAccessState] = await Promise.all([
+    fetchProductUpdateSyncRunState(payload),
     fetchShopifyAccessState(payload).catch(() => ({
       systemMessageRemoteId: "",
       accessScopeEnumId: "",
@@ -876,7 +846,6 @@ const fetchSetupState = async (payload: any): Promise<ShopifyProductSyncSetupSta
   const hasLinkedOmsProducts = !!syncRunState.latestSystemMessage;
 
   return validateSetupState({
-    productUpdateHistory,
     hasLinkedOmsProducts,
     shopifyAccessState,
     productStoreLocked: hasLinkedOmsProducts,

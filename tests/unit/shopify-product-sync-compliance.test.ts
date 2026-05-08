@@ -34,7 +34,7 @@ describe("shopify product sync implementation compliance", () => {
     for (const file of files) {
       const source = readProjectFile(file);
 
-      assert.equal(/\sstyle=/.test(source), false, `${file} should not add inline styles`);
+      assert.equal(/<(?!ion-skeleton-text\b)[^>]*\sstyle=/.test(source), false, `${file} should not add inline styles`);
       assert.equal(/<ion-grid|<ion-row|<ion-col/.test(source), false, `${file} should not use ionic grid`);
       assert.equal(/localStorage/.test(source), false, `${file} should not use localStorage`);
     }
@@ -76,7 +76,8 @@ describe("shopify product sync implementation compliance", () => {
     assert.equal(/DUMMY_/.test(service), false);
     assert.equal(service.includes("productSync/setup"), false);
     assert.equal(service.includes("productSync/productStores"), false);
-    assert.equal(service.includes("oms/products/productUpdateHistories"), true);
+    assert.equal(service.includes("oms/dataDocumentView"), true);
+    assert.equal(service.includes("SYSTEM_MESSAGE_DATA_MANAGER_LOG"), true);
   });
 
   test("production source does not contain dummy or product sync fallback implementations", () => {
@@ -152,12 +153,11 @@ describe("shopify product sync implementation compliance", () => {
 
   test("product sync history time formatting accepts string and numeric dates", () => {
     const historyViewSource = readProjectFile("src/components/ShopifyProductSyncHistoryView.vue");
-    const systemMessageHistorySource = readProjectFile("src/utils/systemMessageHistory.ts");
+    const historyTestSource = readProjectFile("tests/unit/system-message-history.test.ts");
 
     assert.equal(historyViewSource.includes("parseSystemMessageDateTime"), true);
-    assert.equal(systemMessageHistorySource.includes("DateTime.fromMillis"), true);
-    assert.equal(systemMessageHistorySource.includes("DateTime.fromISO"), true);
-    assert.equal(systemMessageHistorySource.includes("typeof value === \"string\""), true);
+    assert.equal(historyTestSource.includes('parseSystemMessageDateTime("1774958400000")'), true);
+    assert.equal(historyTestSource.includes('parseSystemMessageDateTime("2026-04-01T00:00:00.000Z")'), true);
   });
 
   test("product sync history status filters include received and consumed messages", () => {

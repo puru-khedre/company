@@ -154,6 +154,7 @@ import {
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps, ref } from "vue";
 import { formatDateTime } from "@/utils";
+import { parseSystemMessageDateTime } from "@/utils/systemMessageHistory";
 import {
   alertCircleOutline,
   checkmarkCircleOutline,
@@ -181,7 +182,7 @@ const selectedQueryContent = computed(() => {
 });
 
 function formatTime(time: any) {
-  return formatDateTime(time) || translate("Unavailable");
+  return formatDateTime(parseSystemMessageDateTime(time)) || translate("Unavailable");
 }
 
 function openQueryModal(run: any) {
