@@ -53,11 +53,13 @@
             v-else-if="shouldShowProductSyncWidget"
             class="widget product-sync"
             role="button"
+            button
             tabindex="0"
             @pointerup.capture="openProductSyncEntry()"
             @keydown.enter="openProductSyncEntry()"
             @keydown.space.prevent="openProductSyncEntry()"
           >
+            <div>
             <ion-card-header>
               <ion-card-title @click.capture="openProductSyncEntry()">{{ translate("Product sync") }}</ion-card-title>
               <ion-card-subtitle @click.capture="openProductSyncEntry()">{{ productSyncCardSubtitle }}</ion-card-subtitle>
@@ -143,6 +145,7 @@
                 <ion-badge slot="end" :color="hotwaxImportStatusColor">{{ hotwaxImportStatusLabel }}</ion-badge>
               </ion-item>
              </ion-list>
+            </div>
             </div>
           </ion-card>
           <section>
@@ -751,7 +754,7 @@ ion-card.widget:hover {
   box-shadow: 3px 8px 18px -2px rgba(0,0,0, .2), -2px -2px 13px -6px rgba(0,0,0, .2);
 }
 
-.widget.product-sync {
+.widget.product-sync>div{
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
@@ -761,11 +764,11 @@ ion-card.widget:hover {
   grid-row: 1;
 }
 
-.widget .history {
+.product-sync-grid .history {
   grid-column: 1;
 }
 
-.widget .current {
+.product-sync-grid .current {
   grid-column: 2;
 }
 
