@@ -688,7 +688,6 @@ function getLatestSystemMessage(systemMessages: any[]) {
     const currentRank = getSystemMessageRank(current);
 
     if (currentRank > latestRank) {
-      console.log(`Higher rank found: ${currentRank} > ${latestRank}. Choosing ID: ${current.systemMessageId}`);
       return current;
     }
     if (currentRank < latestRank) {
