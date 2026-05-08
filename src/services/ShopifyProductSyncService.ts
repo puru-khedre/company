@@ -133,6 +133,12 @@ export interface ShopifyProductSyncOnDemandResult {
   rejectedCount?: number;
 }
 
+export interface ShopifyProductSyncActionResult {
+  jobOutput?: string;
+  message?: string;
+  systemMessageId?: string;
+}
+
 interface ShopifyGraphqlResponse {
   response?: any;
   data?: any;
@@ -1072,6 +1078,53 @@ const syncShopifyProducts = async (payload: any): Promise<ShopifyProductSyncOnDe
   }, "Shopify product sync endpoint");
 };
 
+const sendShopifyBulkQueryMessage = async (payload: any): Promise<ShopifyProductSyncActionResult> => {
+  const systemMessageRemoteId = String(payload?.systemMessageRemoteId || "").trim();
+  const queryText = String(payload?.queryText || "").trim();
+
+  if (!systemMessageRemoteId) {
+    throw new Error("System message remote id is required to send a Shopify bulk query message.");
+  }
+  if (!queryText) {
+    throw new Error("Query text is required to send a Shopify bulk query message.");
+  }
+
+  return requestBackend<ShopifyProductSyncActionResult>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText
+    }
+  }, "Shopify GraphQL send endpoint");
+};
+
+const pollBulkOperationResult = async (payload: any): Promise<ShopifyProductSyncActionResult> => {
+  const parentSystemMessageTypeId = String(payload?.parentSystemMessageTypeId || "").trim();
+  if (!parentSystemMessageTypeId) {
+    throw new Error("Parent system message type id is required to poll a Shopify bulk operation result.");
+  }
+
+  return requestBackend<ShopifyProductSyncActionResult>({
+    url: "shopify/bulk/result/poll",
+    method: "post",
+    data: {
+      parentSystemMessageTypeId
+    }
+  }, "Shopify bulk result poll endpoint");
+};
+
+const cancelSystemMessage = async (systemMessageId: string): Promise<ShopifyProductSyncActionResult> => {
+  if (!String(systemMessageId || "").trim()) {
+    throw new Error("System message id is required to cancel a Shopify product sync message.");
+  }
+
+  return requestBackend<ShopifyProductSyncActionResult>({
+    url: `admin/systemMessages/${encodeURIComponent(systemMessageId)}/cancel`,
+    method: "post"
+  }, "System message cancel endpoint");
+};
+
 const fetchProductStoreContext = async (payload: any): Promise<any> => {
   return buildProductStoreContext(payload);
 };
@@ -1405,6 +1458,9 @@ export const ShopifyProductSyncService = {
   searchShopifyProducts,
   syncShopifyProductsOnDemand,
   syncShopifyProducts,
+  sendShopifyBulkQueryMessage,
+  pollBulkOperationResult,
+  cancelSystemMessage,
   fetchSetupState,
   fetchProductStoreContext,
   fetchReviewStats,

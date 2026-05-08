@@ -325,14 +325,36 @@
             </ion-label>
             <ion-badge slot="end" :color="systemMessageStatusColor">{{ systemMessageStatusLabel }}</ion-badge>
           </ion-item>
-          <ion-item lines="none" v-if="bulkOperationSendJob?.jobName">
+          <ion-item lines="none" v-if="systemMessageFsmState.nextJob || systemMessageFsmState.primaryAction || systemMessageFsmState.secondaryActions.length">
             <ion-label>
-              <p>{{ translate("Send update request") }}</p>
-              <p v-if="!['SmsgConsumed', 'SmsgConfirmed', 'SmsgError', 'SmsgCancelled'].includes(systemMessageStatusId)">{{ systemMessageSendJobNextRunLabel }}</p>
+              <p>{{ translate("Next step") }}</p>
+              <p>{{ systemMessageFsmState.nextJobReason }}</p>
+              <p v-if="systemMessageFsmState.nextJob">
+                {{ systemMessageFsmState.nextJob.label }} · {{ systemMessageFsmState.nextJob.nextRunLabel }}
+              </p>
             </ion-label>
-            <ion-button v-if="systemMessageStatusId === 'SmsgProduced'" slot="end" fill="clear" @click="$emit('run-job-now', bulkOperationSendJob)">
-              {{ translate("Run now") }}
-            </ion-button>
+            <ion-buttons slot="end">
+              <ion-button
+                v-if="systemMessageFsmState.primaryAction"
+                fill="clear"
+                :disabled="!!systemMessageActionLoadingId"
+                @click="$emit('run-system-message-action', systemMessageFsmState.primaryAction.id)"
+              >
+                <ion-spinner v-if="systemMessageActionLoadingId === systemMessageFsmState.primaryAction.id" slot="start" name="crescent" />
+                <span v-else>{{ systemMessageFsmState.primaryAction.label }}</span>
+              </ion-button>
+              <ion-button
+                v-for="action in systemMessageFsmState.secondaryActions"
+                :key="action.id"
+                fill="clear"
+                color="medium"
+                :disabled="!!systemMessageActionLoadingId"
+                @click="$emit('run-system-message-action', action.id)"
+              >
+                <ion-spinner v-if="systemMessageActionLoadingId === action.id" slot="start" name="crescent" />
+                <span v-else>{{ action.label }}</span>
+              </ion-button>
+            </ion-buttons>
           </ion-item>
           <ion-item lines="none" v-if="systemMessageErrorMessage">
             <ion-label>
@@ -369,15 +391,6 @@
             <ion-badge :color="bulkOperationStatusColor" slot="end">{{ bulkOperationStatusLabel }}</ion-badge>
           </ion-item>
           <ion-progress-bar :value="bulkOperationProgressValue"></ion-progress-bar>
-          <ion-item lines="none" v-if="bulkOperationPollJob?.jobName">
-            <ion-label>
-              <p>{{ translate("Import completed requests") }}</p>
-              <p v-if="!isCompleteStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus)">{{ bulkOperationPollJobNextRunLabel }}</p>
-            </ion-label>
-            <ion-button v-if="(isPollableStatus(currentSyncRun?.bulkOperation?.status || progressState?.bulkOperationStatus) || systemMessageStatusId === 'SmsgConsumed') && !mdmLogId" slot="end" fill="clear" @click="$emit('run-job-now', bulkOperationPollJob)">
-              {{ translate("Run now") }}
-            </ion-button>
-          </ion-item>
 
           <!-- GraphQL Query Debugging -->
           <ion-accordion-group v-if="currentSyncRun?.bulkOperation?.query">
@@ -569,6 +582,7 @@
 import AnimatedNumber from "@/components/AnimatedNumber.vue";
 import AnimatedDuration from "@/components/AnimatedDuration.vue";
 import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
+import type { ProductSyncFsmState } from "@/utils/shopifyProductSyncFsm";
 import {
   IonAccordion,
   IonAccordionGroup,
@@ -641,9 +655,9 @@ const props = defineProps<{
   progressBadgeColor: string
   progressState: any
   progressStatus: string
-  systemMessageSendJobNextRunLabel: string
-  bulkOperationPollJobNextRunLabel: string
   currentSyncRun?: ShopifyProductSyncRun
+  systemMessageFsmState: ProductSyncFsmState
+  systemMessageActionLoadingId?: string
   isProgressComplete: boolean
   recommendedIdentifierEnumId: string
   relatedShops: any[]
@@ -669,8 +683,6 @@ const props = defineProps<{
   syncJobConfigured: boolean
   syncJobObj: any
   latestSyncJobAuditLabel: string
-  bulkOperationSendJob: any
-  bulkOperationPollJob: any
 }>();
 
 const emit = defineEmits([
@@ -687,11 +699,11 @@ const emit = defineEmits([
   "open-start-sync-modal",
   "open-step-details",
   "product-store-change",
+  "run-system-message-action",
   "start-product-sync",
   "toggle-preflight-warning-confirmation",
   "toggle-product-store-verification",
   "toggle-start-confirmation",
-  "run-job-now"
 ]);
 
 function getPreflightBadgeColor(status: string) {
@@ -730,10 +742,6 @@ const shopIdParameter = computed(() => {
 
 const systemMessageStatusLabel = computed(() => {
   return props.currentSyncRun?.systemMessage?.statusLabel || props.progressState?.systemMessageState || translate("Pending");
-});
-
-const systemMessageStatusId = computed(() => {
-  return props.currentSyncRun?.systemMessage?.statusId || props.progressState?.systemMessageState || "";
 });
 
 const systemMessageStatusColor = computed(() => {
@@ -848,11 +856,6 @@ function formatCount(value: number) {
 
 function isCompleteStatus(status = "") {
   return ["completed", "finished", "success", "complete"].includes(String(status).toLowerCase());
-}
-
-function isPollableStatus(status = "") {
-  const normalizedStatus = String(status || "").toLowerCase();
-  return ["running", "created", "completed", "complete"].includes(normalizedStatus);
 }
 
 function getStatusIcon(color: string) {

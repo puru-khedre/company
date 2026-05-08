@@ -83,6 +83,37 @@
             </ion-label>
             <ion-badge slot="end" :color="currentSyncRun.systemMessage?.statusColor || 'medium'">{{ currentSyncRun.systemMessage?.statusLabel || translate("Pending") }}</ion-badge>
           </ion-item>
+          <ion-item v-if="systemMessageFsmState.nextJob || systemMessageFsmState.primaryAction || systemMessageFsmState.secondaryActions.length" lines="none">
+            <ion-label>
+              {{ translate("Next step") }}
+              <p>{{ systemMessageFsmState.nextJobReason }}</p>
+              <p v-if="systemMessageFsmState.nextJob">
+                {{ systemMessageFsmState.nextJob.label }} · {{ systemMessageFsmState.nextJob.nextRunLabel }}
+              </p>
+            </ion-label>
+            <ion-buttons slot="end">
+              <ion-button
+                v-if="systemMessageFsmState.primaryAction"
+                fill="clear"
+                :disabled="!!systemMessageActionLoadingId"
+                @click="emit('run-system-message-action', systemMessageFsmState.primaryAction.id)"
+              >
+                <ion-spinner v-if="systemMessageActionLoadingId === systemMessageFsmState.primaryAction.id" slot="start" name="crescent" />
+                <span v-else>{{ systemMessageFsmState.primaryAction.label }}</span>
+              </ion-button>
+              <ion-button
+                v-for="action in systemMessageFsmState.secondaryActions"
+                :key="action.id"
+                fill="clear"
+                color="medium"
+                :disabled="!!systemMessageActionLoadingId"
+                @click="emit('run-system-message-action', action.id)"
+              >
+                <ion-spinner v-if="systemMessageActionLoadingId === action.id" slot="start" name="crescent" />
+                <span v-else>{{ action.label }}</span>
+              </ion-button>
+            </ion-buttons>
+          </ion-item>
           <ion-item button detail @click="emit('open-step-details', { type: 'bulkOperation', id: currentSyncRun.bulkOperation?.id })" :disabled="!currentSyncRun.bulkOperation?.id">
             <ion-label>
               {{ translate("Shopify bulk operation") }}
@@ -452,6 +483,7 @@ import AnimatedDuration from "@/components/AnimatedDuration.vue";
 
 import ShopifyProductSyncActionsPopover from "./ShopifyProductSyncActionsPopover.vue";
 import type { ShopifyProductSyncRun } from "@/services/ShopifyProductSyncService";
+import type { ProductSyncFsmState } from "@/utils/shopifyProductSyncFsm";
 
 const props = defineProps<{
 
@@ -462,9 +494,6 @@ const props = defineProps<{
   lastSyncTotalRecordCount: number | string
   nextSyncLabel: string
   nextSyncRelativeLabel: string
-  systemMessageSendJobNextRunLabel: string
-  bulkOperationPollJobNextRunLabel: string
-  systemMessageMetaLabel: string
   systemMessageProgressLabel: string
   bulkOperationProgressLabel: string
   mdmLogMetaLabel: string
@@ -472,6 +501,8 @@ const props = defineProps<{
   summarySubtitle: string
   errorLookbackCount: number
   currentSyncRun?: ShopifyProductSyncRun
+  systemMessageFsmState: ProductSyncFsmState
+  systemMessageActionLoadingId?: string
   recentSyncUpdates: Array<{
     id: string,
     internalName: string,
@@ -512,7 +543,7 @@ const props = defineProps<{
   isWebhookLoading?: boolean
   isWebhookSupported?: boolean
 }>();
-const emit = defineEmits(["open-history", "schedule-sync", "run-job", "open-unsynced-updates", "open-specific-products-sync", "open-replay-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job", "download-file", "view-error-details", "update:detailed-error-query", "show-error-modal", "refresh-errors", "resync-product", "toggle-webhook"]);
+const emit = defineEmits(["open-history", "schedule-sync", "run-job", "run-system-message-action", "open-unsynced-updates", "open-specific-products-sync", "open-replay-sync", "open-resync-entire-catalog", "open-sync-job-details", "open-step-details", "toggle-pause-sync-job", "download-file", "view-error-details", "update:detailed-error-query", "show-error-modal", "refresh-errors", "resync-product", "toggle-webhook"]);
 
 
 
