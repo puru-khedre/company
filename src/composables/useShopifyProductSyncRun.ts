@@ -44,16 +44,9 @@ export function useShopifyProductSyncRun() {
 
   const getSystemMessageErrorText = (systemMessageErrors: any[]) => {
     const errors = Array.isArray(systemMessageErrors) ? systemMessageErrors : [];
+
     for (const error of errors) {
-      const messageCandidates = [
-        error?.errorText,
-        error?.errorMessage,
-        error?.message,
-        error?.reason,
-        error?.error,
-        error?.description
-      ];
-      const errorText = messageCandidates.find((message: any) => String(message || "").trim());
+      const errorText = String(error?.errorText || "").trim();
       if (errorText) return errorText;
     }
 
@@ -86,14 +79,15 @@ export function useShopifyProductSyncRun() {
           ...systemMessage,
           systemMessageErrors,
           errorText: getSystemMessageErrorText(systemMessageErrors),
+          messageText: String(systemMessage?.messageText || "").trim(),
           statusLabel: getStatusLabel(systemMessage?.statusId),
           statusColor: getStatusColor(systemMessage?.statusId)
         },
         bulkOperation: {
           id: shopifyBulkOperation?.id || bulkOperationId,
-          status: shopifyBulkOperation?.status,
-          statusLabel: shopifyBulkOperation?.isStatusUnavailable ? translate("Unavailable") : getStatusLabel(shopifyBulkOperation?.status),
-          statusColor: shopifyBulkOperation?.isStatusUnavailable ? "medium" : getStatusColor(shopifyBulkOperation?.status),
+          status: shopifyBulkOperation?.status || systemMessage?.statusId,
+          statusLabel: shopifyBulkOperation?.isStatusUnavailable ? getStatusLabel(systemMessage?.statusId) : getStatusLabel(shopifyBulkOperation?.status),
+          statusColor: shopifyBulkOperation?.isStatusUnavailable ? getStatusColor(systemMessage?.statusId) : getStatusColor(shopifyBulkOperation?.status),
           isStatusUnavailable: shopifyBulkOperation?.isStatusUnavailable,
           objectCount: shopifyBulkOperation?.objectCount,
           rootObjectCount: shopifyBulkOperation?.rootObjectCount,

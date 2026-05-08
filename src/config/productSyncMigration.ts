@@ -4,6 +4,7 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
     "product-sync",
     "UpcomingRelease",
     "v5.2.0",
+    "feature-shopify-delta-sync-seevices",
     "main"
   ],
   outgoing: {

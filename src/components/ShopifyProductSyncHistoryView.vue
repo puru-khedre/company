@@ -42,6 +42,36 @@
               <p>{{ translate("Produced messages wait for the send job to post them to Shopify. The Shopify bulk operation ID appears after Shopify accepts the request.") }}</p>
             </ion-label>
           </ion-item>
+          <div class="system-message list-item">
+            <ion-item lines="none">
+              <ion-label>
+                {{ translate("System message") }}
+                <p>{{ run.id }}</p>
+                <p>{{ translate("status") }}: {{ run.systemMessageStatus }}</p>
+              </ion-label>
+            </ion-item>
+            <div>
+              <ion-chip
+                v-if="run.systemMessageMessageText"
+                outline
+                color="primary"
+                @click.stop="openSystemMessageDetailModal(run, 'message')"
+              >
+                <ion-label>{{ translate("Message text") }}</ion-label>
+              </ion-chip>
+            </div>
+            <div>
+              <ion-chip
+                v-if="run.systemMessageErrorText"
+                outline
+                color="danger"
+                @click.stop="openSystemMessageDetailModal(run, 'error')"
+              >
+                <ion-label>{{ translate("Error details") }}</ion-label>
+              </ion-chip>
+            </div>
+            <div></div>
+          </div>
           <div class="shopify-bulk-operation list-item">
             <ion-item lines="none">
               <ion-label>
@@ -76,7 +106,10 @@
               <p>{{ translate("total record count") }}</p>
             </ion-label>
             <ion-label class="stat">
-              {{ run.failedRecordCount }}
+              <ion-chip outline :color="getFailedRecordsChipColor(run)" :disabled="!canDownloadFailedRecordsFile(run)" @click.stop="emitDownloadFailedRecordsFile(run)">
+                <ion-icon :icon="downloadOutline" />
+                <ion-label>{{ run.failedRecordCount }}</ion-label>
+              </ion-chip>
               <p>{{ translate("failed record count") }}</p>
             </ion-label>
             <div></div>
@@ -128,6 +161,41 @@
       </ion-list>
     </ion-content>
   </ion-modal>
+
+  <ion-modal :is-open="isSystemMessageDetailModalOpen" @didDismiss="closeSystemMessageDetailModal">
+    <ion-header>
+      <ion-toolbar>
+        <ion-buttons slot="start">
+          <ion-button @click="closeSystemMessageDetailModal" :aria-label="translate('Close')">
+            <ion-icon slot="icon-only" :icon="closeOutline" />
+          </ion-button>
+        </ion-buttons>
+        <ion-title>{{ systemMessageDetailModalTitle }}</ion-title>
+      </ion-toolbar>
+    </ion-header>
+    <ion-content>
+      <ion-list lines="full">
+        <ion-item>
+          <ion-label>
+            {{ translate("System message id") }}
+            <p>{{ selectedSystemMessageDetailRun?.id }}</p>
+          </ion-label>
+        </ion-item>
+        <ion-item>
+          <ion-label>
+            {{ translate("Status") }}
+            <p>{{ selectedSystemMessageDetailRun?.systemMessageStatus || translate("Unavailable") }}</p>
+          </ion-label>
+        </ion-item>
+        <ion-item>
+          <ion-label>{{ systemMessageDetailModalTitle }}</ion-label>
+        </ion-item>
+        <ion-item>
+          <ion-textarea :value="selectedSystemMessageDetailContent" readonly auto-grow />
+        </ion-item>
+      </ion-list>
+    </ion-content>
+  </ion-modal>
 </template>
 
 <script setup lang="ts">
@@ -172,13 +240,28 @@ defineProps<{
 }>();
 const emit = defineEmits<{
   (event: "downloadRawFile", run: any): void
+  (event: "downloadFailedRecordsFile", run: any): void
 }>();
 
 const isQueryModalOpen = ref(false);
 const selectedQueryRun = ref<any>(null);
+const isSystemMessageDetailModalOpen = ref(false);
+const selectedSystemMessageDetailRun = ref<any>(null);
+const selectedSystemMessageDetailType = ref<"message" | "error">("message");
 
 const selectedQueryContent = computed(() => {
   return formatQueryContent(selectedQueryRun.value);
+});
+const selectedSystemMessageDetailContent = computed(() => {
+  if (selectedSystemMessageDetailType.value === "error") {
+    return selectedSystemMessageDetailRun.value?.systemMessageErrorText || "";
+  }
+  return selectedSystemMessageDetailRun.value?.systemMessageMessageText || "";
+});
+const systemMessageDetailModalTitle = computed(() => {
+  return selectedSystemMessageDetailType.value === "error"
+    ? translate("Error details")
+    : translate("Message text");
 });
 
 function formatTime(time: any) {
@@ -196,17 +279,45 @@ function closeQueryModal() {
   selectedQueryRun.value = null;
 }
 
+function openSystemMessageDetailModal(run: any, detailType: "message" | "error") {
+  const content = detailType === "error" ? run?.systemMessageErrorText : run?.systemMessageMessageText;
+  if (!content) return;
+
+  selectedSystemMessageDetailRun.value = run;
+  selectedSystemMessageDetailType.value = detailType;
+  isSystemMessageDetailModalOpen.value = true;
+}
+
+function closeSystemMessageDetailModal() {
+  isSystemMessageDetailModalOpen.value = false;
+  selectedSystemMessageDetailRun.value = null;
+  selectedSystemMessageDetailType.value = "message";
+}
+
 function emitDownloadRawFile(run: any) {
   if (!canDownloadRawFile(run)) return;
   emit("downloadRawFile", run);
+}
+
+function emitDownloadFailedRecordsFile(run: any) {
+  if (!canDownloadFailedRecordsFile(run)) return;
+  emit("downloadFailedRecordsFile", run);
 }
 
 function canDownloadRawFile(run: any) {
   return !!run?.mdmLogConfigId && (!!run?.mdmLogContentId || !!run?.mdmImportId);
 }
 
+function canDownloadFailedRecordsFile(run: any) {
+  return Number(run?.failedRecordCount || 0) > 0 && !!run?.mdmLogConfigId && (!!run?.mdmErrorLogContentId || !!run?.mdmImportId);
+}
+
 function getDownloadChipColor(run: any) {
   return canDownloadRawFile(run) ? "primary" : "medium";
+}
+
+function getFailedRecordsChipColor(run: any) {
+  return canDownloadFailedRecordsFile(run) ? "danger" : "medium";
 }
 
 function formatQueryContent(run: any) {

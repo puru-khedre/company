@@ -53,9 +53,8 @@
               </ion-label>
             </div>
 
-            <ion-button fill="clear" color="medium" @click.stop="openShopifyConnectionActionsPopover($event)">
-              <ion-icon slot="icon-only" :icon="ellipsisVerticalOutline" />
-            </ion-button>
+            <div></div>
+
           </div>
         </main>
       </div>
@@ -64,13 +63,13 @@
 </template>
 
 <script setup lang="ts">
-import { IonButton, IonButtons, IonChip, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonMenuButton, IonPage, IonSearchbar, IonTitle, IonToggle, IonToolbar, onIonViewWillEnter, popoverController } from "@ionic/vue";
-import { ellipsisVerticalOutline, filterOutline, flashOutline, informationCircleOutline, openOutline, storefrontOutline } from "ionicons/icons";
+import { IonButton, IonButtons, IonChip, IonContent, IonHeader, IonIcon, IonItem, IonLabel, IonList, IonMenuButton, IonPage, IonSearchbar, IonTitle, IonToggle, IonToolbar, onIonViewWillEnter } from "@ionic/vue";
+import { filterOutline, flashOutline, informationCircleOutline, openOutline, storefrontOutline } from "ionicons/icons";
 import { translate } from "@/i18n";
 import { useRouter } from "vue-router";
 import { computed } from "vue";
 import { useStore } from "vuex";
-import ShopifyConnectionActionsPopover from "@/components/ShopifyConnectionActionsPopover.vue";
+
 import ShopifyConnectionFilters from "@/components/ShopifyConnectionFilters.vue";
 
 const router = useRouter();
@@ -82,15 +81,7 @@ onIonViewWillEnter(async () => {
   await store.dispatch("shopify/fetchShopifyShops")
 })
 
-async function openShopifyConnectionActionsPopover(event: Event) {
-  const shopifyConnectionActionsPopover = await popoverController.create({
-    component: ShopifyConnectionActionsPopover,
-    event,
-    showBackdrop: false
-  });
 
-  shopifyConnectionActionsPopover.present()
-}
 
 function openShopifyConnectionDetails(shop: any) {
   store.dispatch("shopify/updateCurrentShop", shop)

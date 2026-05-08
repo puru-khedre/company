@@ -42,14 +42,13 @@
           :last-sync-relative-label="lastSyncRelativeLabel"
           :next-sync-label="nextSyncLabel"
           :next-sync-relative-label="nextSyncRelativeLabel"
-          :system-message-send-job-next-run-label="systemMessageSendJobNextRunLabel"
-          :bulk-operation-poll-job-next-run-label="bulkOperationPollJobNextRunLabel"
-          :system-message-meta-label="systemMessageMetaLabel"
           :system-message-progress-label="systemMessageProgressLabel"
           :bulk-operation-progress-label="bulkOperationProgressLabel"
           :mdm-log-meta-label="mdmLogMetaLabel"
           :mdm-log-progress-label="mdmLogProgressLabel"
           :current-sync-run="currentSyncRun"
+          :system-message-fsm-state="systemMessageFsmState"
+          :system-message-action-loading-id="systemMessageActionLoadingId"
           :recent-sync-updates="recentSyncUpdates"
           :selected-product-store-name="selectedProductStoreName"
           :summary-subtitle="syncSummarySubtitle"
@@ -90,6 +89,7 @@
           @open-resync-entire-catalog="openResyncEntireCatalogModal"
           @open-replay-sync="openReplaySyncModal"
           @open-step-details="openStepDetails"
+          @run-system-message-action="runSystemMessageAction"
           @run-job="runSyncJob"
           @download-file="downloadRawFile"
           :is-webhook-subscribed="isWebhookSubscribed"
@@ -122,9 +122,9 @@
           :progress-badge-color="progressBadgeColor"
           :progress-state="progressState"
           :progress-status="progressStatus"
-          :system-message-send-job-next-run-label="systemMessageSendJobNextRunLabel"
-          :bulk-operation-poll-job-next-run-label="bulkOperationPollJobNextRunLabel"
           :current-sync-run="currentSyncRun"
+          :system-message-fsm-state="systemMessageFsmState"
+          :system-message-action-loading-id="systemMessageActionLoadingId"
           :is-progress-complete="isProgressComplete"
           :recommended-identifier-enum-id="recommendedIdentifierEnumId"
           :related-shops="relatedShops"
@@ -134,12 +134,10 @@
           :setup-completion-action-label="setupCompletionActionLabel"
           :selected-identifier-label="selectedIdentifierLabel"
           :setup-completion-message="setupCompletionMessage"
-          :setup-completion-subtitle="setupCompletionSubtitle"
           :selected-product-store-name="selectedProductStoreName"
           :send-update-request-last-run-label="bulkOperationSendJobLastRunLabel"
           :import-completed-requests-last-run-label="bulkOperationPollJobLastRunLabel"
           :setup-completion-action-disabled="!canCompleteSetup"
-          :setup-completion-schedule-label="setupCompletionScheduleLabel"
           :shopify-access-badge-color="shopifyAccessBadgeColor"
           :shopify-access-blocking-message="shopifyAccessBlockingMessage"
           :shopify-access-detail="shopifyAccessDetail"
@@ -152,7 +150,6 @@
           :is-sync-job-configuring="isSyncJobConfiguring"
           :sync-job-configured="syncJobConfigured"
           :sync-job-obj="syncJobObj"
-          :sync-job-audit-history="syncJobAuditHistory"
           :latest-sync-job-audit-label="latestSyncJobAuditLabel"
           @accept-preflight-and-open-start-sync="acceptPreflightAndOpenStartSync"
           @close-mistake-modal="showMistakeModal = false"
@@ -172,9 +169,7 @@
           @toggle-product-store-verification="toggleProductStoreVerification"
           @toggle-start-confirmation="toggleStartConfirmation"
           @open-step-details="openStepDetails"
-          @run-job-now="runJobNow"
-          :bulk-operation-send-job="bulkOperationSendJob"
-          :bulk-operation-poll-job="bulkOperationPollJob"
+          @run-system-message-action="runSystemMessageAction"
         />
       </template>
 
@@ -542,15 +537,38 @@
                       {{ translate("Status") }}
                       <p>{{ translate("Message ID") }}: {{ currentStepDetail.id }}</p>
                     </ion-label>
-                    <ion-label slot="end">{{ getStatusDescription(latestSystemMessage?.statusId) }}</ion-label>
+                    <ion-label slot="end">{{ currentSyncRun?.systemMessage?.statusLabel || getStatusDescription(latestSystemMessage?.statusId) }}</ion-label>
                   </ion-item>
                   <ion-item>
                     <ion-label>
-                      {{ translate("Next send time") }}
-                      <p>{{ translate("The send job posts produced messages to Shopify.") }}</p>
-                      <p>{{ BULK_OPERATION_SEND_JOB_NAME }}</p>
+                      {{ translate("Next step") }}
+                      <p>{{ systemMessageFsmState.nextJobReason }}</p>
+                      <p v-if="systemMessageFsmState.nextJob">
+                        {{ systemMessageFsmState.nextJob.label }} · {{ systemMessageFsmState.nextJob.nextRunLabel }}
+                      </p>
                     </ion-label>
-                    <ion-label slot="end">{{ systemMessageSendJobNextRunLabel }}</ion-label>
+                    <ion-buttons slot="end">
+                      <ion-button
+                        v-if="systemMessageFsmState.primaryAction"
+                        fill="clear"
+                        :disabled="!!systemMessageActionLoadingId"
+                        @click="runSystemMessageAction(systemMessageFsmState.primaryAction.id)"
+                      >
+                        <ion-spinner v-if="systemMessageActionLoadingId === systemMessageFsmState.primaryAction.id" slot="start" name="crescent" />
+                        <span v-else>{{ systemMessageFsmState.primaryAction.label }}</span>
+                      </ion-button>
+                      <ion-button
+                        v-for="action in systemMessageFsmState.secondaryActions"
+                        :key="action.id"
+                        fill="clear"
+                        color="medium"
+                        :disabled="!!systemMessageActionLoadingId"
+                        @click="runSystemMessageAction(action.id)"
+                      >
+                        <ion-spinner v-if="systemMessageActionLoadingId === action.id" slot="start" name="crescent" />
+                        <span v-else>{{ action.label }}</span>
+                      </ion-button>
+                    </ion-buttons>
                   </ion-item>
                   <ion-item>
                     <ion-label>
@@ -563,14 +581,26 @@
                   </ion-item>
                 </ion-list>
                 <ion-accordion-group>
-                  <ion-accordion v-if="latestSystemMessage?.messageText" value="system-message-text">
+                  <ion-accordion v-if="currentSyncRun?.systemMessage?.messageText" value="system-message-text">
                     <ion-item slot="header">
                       <ion-label>{{ translate("Message Text") }}</ion-label>
                     </ion-item>
                     <ion-list slot="content" lines="full">
                       <ion-item>
                         <ion-label>
-                          <p>{{ latestSystemMessage.messageText }}</p>
+                          <p>{{ currentSyncRun.systemMessage.messageText }}</p>
+                        </ion-label>
+                      </ion-item>
+                    </ion-list>
+                  </ion-accordion>
+                  <ion-accordion v-if="currentSyncRun?.systemMessage?.errorText" value="system-message-error-text">
+                    <ion-item slot="header">
+                      <ion-label>{{ translate("Error Text") }}</ion-label>
+                    </ion-item>
+                    <ion-list slot="content" lines="full">
+                      <ion-item>
+                        <ion-label>
+                          <p>{{ currentSyncRun.systemMessage.errorText }}</p>
                         </ion-label>
                       </ion-item>
                     </ion-list>
@@ -590,11 +620,10 @@
                   </ion-item>
                   <ion-item>
                     <ion-label>
-                      {{ translate("Next poll time") }}
-                      <p>{{ translate("The poll job checks whether Shopify finished the bulk operation.") }}</p>
-                      <p>{{ BULK_OPERATION_POLL_JOB_NAME }}</p>
+                      {{ translate("Status") }}
+                      <p>{{ translate("The system message controls when Shopify polling is relevant.") }}</p>
                     </ion-label>
-                    <ion-label slot="end">{{ bulkOperationPollJobNextRunLabel }}</ion-label>
+                    <ion-label slot="end">{{ currentSyncRun?.bulkOperation?.statusLabel || translate("Pending") }}</ion-label>
                   </ion-item>
                 </ion-list>
               </template>
@@ -745,6 +774,7 @@ import { useDataManagerLog } from "@/composables/useDataManagerLog";
 import { useProductUpdateHistory } from "@/composables/useProductUpdateHistory";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
 import { getSystemMessageBulkOperationId } from "@/utils/shopifyBulkOperation";
+import { getProductSyncFsmState, type ProductSyncFsmActionId } from "@/utils/shopifyProductSyncFsm";
 import { deleteErrorRecords } from "@/utils/storage";
 
 const props = defineProps(["id"]);
@@ -872,6 +902,7 @@ const syncJobRecentRuns = ref<any[]>([]);
 const detailedErrorSearchQuery = ref("");
 const selectedErrorRecord = ref<any>(null);
 const showErrorDetailsModal = ref(false);
+const systemMessageActionLoadingId = ref("");
 const webhookSubscriptions = ref<any[]>([]);
 const isWebhookLoading = ref(false);
 const isWebhookSupported = ref(false);
@@ -1065,38 +1096,35 @@ const setupCompletionMessage = computed(() => {
 
   return `${translate("Setup is complete.")} ${translate("Schedule the recurring sync job to run")} ${setupCompletionScheduleLabel.value}, ${translate("then continue to the regular sync page.")}`;
 });
-const setupCompletionSubtitle = computed(() => {
-  if (hasActiveSyncJob.value) {
-    return translate("Initial import is complete. Background sync is already active for this shop.");
-  }
-
-  return translate("Initial import is complete. Schedule the recurring sync job to keep products in sync.");
-});
 const systemMessageSendJobNextRunLabel = computed(() => {
   return getJobNextRunLabel(bulkOperationSendJob.value);
+});
+const systemMessageSendJobRelativeNextRunLabel = computed(() => {
+  return getRelativeNextRunLabel(bulkOperationSendJob.value);
 });
 const bulkOperationPollJobNextRunLabel = computed(() => {
   return getJobNextRunLabel(bulkOperationPollJob.value);
 });
-const systemMessageMetaLabel = computed(() => {
-  const systemMessageId = currentSyncRun.value?.systemMessageId || "";
-  const createdAtLabel = getRelativeOrAbsoluteLabel(getSystemMessageCreatedAt(currentSyncRun.value?.systemMessage));
-
-  if (systemMessageId && createdAtLabel) {
-    return `${systemMessageId} · ${translate("Created")} ${createdAtLabel}`;
-  }
-  if (systemMessageId) return systemMessageId;
-  if (createdAtLabel) return `${translate("Created")} ${createdAtLabel}`;
-  return translate("No system message details available");
+const bulkOperationPollJobRelativeNextRunLabel = computed(() => {
+  return getRelativeNextRunLabel(bulkOperationPollJob.value);
+});
+const systemMessageFsmState = computed(() => {
+  return getProductSyncFsmState({
+    statusId: currentSyncRun.value?.systemMessage?.statusId || progressState.value?.systemMessageState,
+    statusLabel: currentSyncRun.value?.systemMessage?.statusLabel || getStatusDescription(progressState.value?.systemMessageState),
+    sendJob: bulkOperationSendJob.value,
+    pollJob: bulkOperationPollJob.value,
+    sendJobNextRunLabel: systemMessageSendJobNextRunLabel.value,
+    sendJobRelativeNextRunLabel: systemMessageSendJobRelativeNextRunLabel.value,
+    pollJobNextRunLabel: bulkOperationPollJobNextRunLabel.value,
+    pollJobRelativeNextRunLabel: bulkOperationPollJobRelativeNextRunLabel.value,
+    isSendJobPaused: isBulkOperationSendJobPaused.value,
+    isPollJobPaused: isBulkOperationPollJobPaused.value
+  });
 });
 const systemMessageProgressLabel = computed(() => {
-  const statusId = normalizeSyncStepStatus(currentSyncRun.value?.systemMessage?.statusId);
   const statusLabel = currentSyncRun.value?.systemMessage?.statusLabel || translate("Pending");
   const statusTimeLabel = getRelativeOrAbsoluteLabel(getSystemMessageStatusAt(currentSyncRun.value?.systemMessage));
-
-  if (statusId === "smsgproduced") {
-    return `${translate("Next send attempt")}: ${systemMessageSendJobNextRunLabel.value}`;
-  }
 
   if (statusTimeLabel) {
     return `${statusLabel} ${statusTimeLabel}`;
@@ -1113,10 +1141,6 @@ const bulkOperationProgressLabel = computed(() => {
   const bulkOperationStatus = normalizeSyncStepStatus(currentSyncRun.value?.bulkOperation?.status);
   if (bulkOperationStatus === "unavailable") {
     return translate("Status unavailable");
-  }
-
-  if (["created", "running", "canceling"].includes(bulkOperationStatus)) {
-    return `${translate("Next poll attempt")}: ${bulkOperationPollJobNextRunLabel.value}`;
   }
 
   const statusTimeLabel = getRelativeOrAbsoluteLabel(getBulkOperationStatusAt(currentSyncRun.value?.bulkOperation));
@@ -1851,6 +1875,7 @@ async function openUnsyncedUpdatesModal() {
     componentProps: {
       mode: "unsynced",
       systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+      shopId: props.id,
       lastSyncedAt: lastProductUpdateSyncedAt.value,
       shopifyShopProductCount: shopifyShopProductCount.value
     },
@@ -1904,7 +1929,7 @@ async function handleSelectedProductsForSync(data: any) {
   try {
     const result = await ShopifyProductSyncService.syncShopifyProductsOnDemand({
       shopId: props.id,
-      shopifyProductIds
+      shopifyProductId: shopifyProductIds
     });
 
     showToast(getSelectedProductSyncResultMessage(result, shopifyProductIds.length));
@@ -2034,7 +2059,7 @@ async function resyncProduct(record: any) {
   try {
     const result = await ShopifyProductSyncService.syncShopifyProductsOnDemand({
       shopId: props.id,
-      shopifyProductIds: [shopifyProductId]
+      shopifyProductId: [shopifyProductId]
     });
 
     showToast(getSelectedProductSyncResultMessage(result, 1));
@@ -2083,10 +2108,6 @@ function getConnectedShopLabel(productStoreId: string) {
     return shopifyShop.productStoreId === productStoreId;
   }).length;
   return translate("{count} Shopify stores connected", { count });
-}
-
-function getSystemMessageCreatedAt(systemMessage: any) {
-  return systemMessage?.createdDate || systemMessage?.createdStamp || systemMessage?.initDate || "";
 }
 
 function getSystemMessageStatusAt(systemMessage: any) {
@@ -2804,16 +2825,80 @@ async function startProductSync() {
   }
 }
 
-async function runJobNow(job: any) {
-  if (!job?.jobName) return;
+async function confirmCancelSystemMessage() {
+  return new Promise<boolean>((resolve) => {
+    alertController.create({
+      header: translate("Cancel this run?"),
+      message: translate("Canceling discards this system message so the current Shopify product sync run will not continue."),
+      buttons: [
+        {
+          text: translate("Keep run"),
+          role: "cancel",
+          handler: () => resolve(false)
+        },
+        {
+          text: translate("Cancel run"),
+          role: "destructive",
+          handler: () => resolve(true)
+        }
+      ]
+    }).then((alert) => alert.present());
+  });
+}
+
+async function refreshAfterSystemMessageAction() {
+  const refreshTasks: Promise<any>[] = [loadProgress()];
+
+  if (activeExperienceMode.value === "returning") {
+    refreshTasks.push(loadSecondaryData());
+  }
+
+  await Promise.all(refreshTasks);
+}
+
+async function runSystemMessageAction(actionId: ProductSyncFsmActionId) {
+  if (systemMessageActionLoadingId.value) return;
+
+  const systemMessageId = currentSyncRun.value?.systemMessageId || progressState.value?.systemMessageId;
+  if (!systemMessageId && actionId === "cancel") {
+    showToast(translate("System message is not available."));
+    return;
+  }
+
+  if (actionId === "cancel") {
+    const confirmed = await confirmCancelSystemMessage();
+    if (!confirmed) return;
+  }
+
+  systemMessageActionLoadingId.value = actionId;
   try {
-    await runNow(job.jobName);
-    showToast(translate("Job started."));
-    // Refresh progress after a short delay to reflect the job start
-    setTimeout(() => loadProgress(), 2000);
+    if (actionId === "send") {
+      await ShopifyProductSyncService.sendShopifyBulkQueryMessage({
+        systemMessageRemoteId: selectedShopSystemMessageRemoteId.value,
+        queryText: currentSyncRun.value?.systemMessage?.messageText
+      });
+      showToast(translate("Product export request sent to Shopify."));
+    } else if (actionId === "poll") {
+      await ShopifyProductSyncService.pollBulkOperationResult({
+        parentSystemMessageTypeId: "ShopifyBulkQuery"
+      });
+      showToast(translate("Shopify bulk operation polled."));
+    } else if (actionId === "cancel") {
+      await ShopifyProductSyncService.cancelSystemMessage(systemMessageId);
+      showToast(translate("Product sync run cancelled."));
+    }
+
+    await refreshAfterSystemMessageAction();
   } catch (err) {
-    showToast(translate("Failed to start job."));
+    const actionLabel = actionId === "send"
+      ? translate("send the product export request")
+      : actionId === "poll"
+        ? translate("poll the Shopify bulk operation")
+        : translate("cancel the product sync run");
+    showToast(getErrorMessage(err, translate("Failed to {actionLabel}.", { actionLabel })));
     logger.error(err);
+  } finally {
+    systemMessageActionLoadingId.value = "";
   }
 }
 
