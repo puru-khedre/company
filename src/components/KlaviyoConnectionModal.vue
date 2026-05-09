@@ -11,7 +11,7 @@
   </ion-header>
 
   <ion-content>
-    <ion-list inset>
+    <ion-list>
       <ion-item>
         <ion-label>
           {{ isEdit ? form.description || translate("Untitled connection") : translate("Connect a Klaviyo account") }}

@@ -73,46 +73,7 @@
           </ion-item>
         </ion-list>
 
-        <ion-card>
-          <ion-card-header>
-            <ion-card-title>{{ translate("Email events") }}</ion-card-title>
-          </ion-card-header>
-          <ion-card-content>
-            <p>{{ translate("Choose which transactional emails this Klaviyo connection sends, and for which stores.") }}</p>
-            <ion-button expand="block" fill="outline" @click="openEventsModal()">
-              <ion-icon slot="start" :icon="mailOutline" />
-              {{ translate("Manage email events") }}
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-
-        <ion-card v-if="!eventsForThisConnection.length">
-          <ion-card-header>
-            <ion-card-title>{{ translate("No emails are being sent yet") }}</ion-card-title>
-          </ion-card-header>
-          <ion-card-content>
-            <p>{{ translate("Pick a product store and turn on the events you want this connection to handle.") }}</p>
-            <ion-button expand="block" @click="openEventsModal()">
-              {{ translate("Configure email events") }}
-            </ion-button>
-          </ion-card-content>
-        </ion-card>
-
-        <ion-list v-else inset>
-          <ion-item
-            v-for="event in eventsForThisConnection"
-            :key="event.productStoreId + ':' + event.emailType"
-            button
-            detail
-            @click="openEventsModal(event.productStoreId)"
-          >
-            <ion-label>
-              <h2>{{ getEventLabel(event.emailType) }}</h2>
-              <p>{{ getStoreName(event.productStoreId) }}</p>
-              <p>{{ event.subject || translate("(no subject)") }}</p>
-            </ion-label>
-          </ion-item>
-        </ion-list>
+        <klaviyo-email-events-modal :connection="connection" />
 
         <ion-card>
           <ion-card-header>
@@ -226,7 +187,7 @@ import {
   modalController,
   onIonViewWillEnter,
 } from "@ionic/vue";
-import { closeOutline, createOutline, mailOutline, trashOutline } from "ionicons/icons";
+import { closeOutline, createOutline, trashOutline } from "ionicons/icons";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import { translate } from "@/i18n";
@@ -258,10 +219,6 @@ const connection = computed(() => store.getters["klaviyo/getConnectionById"](dec
 const eventsForThisConnection = computed(() => {
   return store.getters["klaviyo/getEmailSettingsForGateway"](decodedId.value) || [];
 });
-
-const productStoresList = computed(() => store.getters["productStore/getProductStores"] || []);
-const emailTypes = computed(() => store.getters["util/getEmailTypes"] || []);
-
 const maskedKey = computed(() => KlaviyoService.maskApiKey(connection.value?.publicKey) || translate("Not set"));
 
 const canConfirmDelete = computed(() => {
@@ -272,9 +229,6 @@ const canConfirmDelete = computed(() => {
 onIonViewWillEnter(async () => {
   isLoading.value = true;
   try {
-    if (!productStoresList.value?.length) {
-      store.dispatch("productStore/fetchProductStores");
-    }
     await store.dispatch("klaviyo/hydrate");
   } catch (error) {
     logger.error(error);
@@ -283,26 +237,6 @@ onIonViewWillEnter(async () => {
   }
 });
 
-function getStoreName(productStoreId: string) {
-  const store = productStoresList.value.find((item: any) => item.productStoreId === productStoreId);
-  return store?.storeName || productStoreId;
-}
-
-// Curated fallback labels for Klaviyo-relevant email types — used when the
-// PRDS_EMAIL enum row isn't registered on this OMS instance.
-const KLAVIYO_EMAIL_LABEL_FALLBACKS: Record<string, string> = {
-  READY_FOR_PICKUP: "BOPIS Order Ready for Pickup",
-  REJECT_BOPIS_ORDER: "BOPIS Order Rejection",
-  CANCEL_BOPIS_ORDER: "BOPIS Order Cancellation",
-  HANDOVER_BOPIS_ORDER: "BOPIS Order Handover/Completion",
-  CREATE_KLAVIYO_EVENT: "Create Klaviyo Event",
-};
-
-function getEventLabel(emailType: string) {
-  const enumRow = emailTypes.value.find((item: any) => item.enumId === emailType);
-  return enumRow?.enumName || enumRow?.description || KLAVIYO_EMAIL_LABEL_FALLBACKS[emailType] || emailType;
-}
-
 async function openEditModal() {
   const modal = await modalController.create({
     component: KlaviyoConnectionModal,
@@ -310,18 +244,6 @@ async function openEditModal() {
   });
   modal.onDidDismiss().then(async () => {
     await store.dispatch("klaviyo/fetchConnections");
-  });
-  modal.present();
-}
-
-async function openEventsModal(initialProductStoreId?: string) {
-  if (!connection.value) return;
-  const modal = await modalController.create({
-    component: KlaviyoEmailEventsModal,
-    componentProps: { connection: connection.value, initialProductStoreId },
-  });
-  modal.onDidDismiss().then(async () => {
-    await store.dispatch("klaviyo/fetchAllEmailSettings");
   });
   modal.present();
 }
