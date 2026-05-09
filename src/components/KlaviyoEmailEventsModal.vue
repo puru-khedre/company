@@ -85,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineProps, onMounted, ref } from "vue";
+import { computed, defineProps, onMounted, ref, watch } from "vue";
 import {
   IonButton,
   IonButtons,
@@ -171,6 +171,16 @@ const eventsForStore = computed(() => {
     };
   });
 });
+
+watch(
+  () => productStores.value,
+  (stores) => {
+    if (!selectedStoreId.value && stores?.length) {
+      selectedStoreId.value = stores[0]?.productStoreId || "";
+    }
+  },
+  { immediate: true }
+);
 
 onMounted(async () => {
   isLoading.value = true;
