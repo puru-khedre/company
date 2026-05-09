@@ -1,4 +1,5 @@
 import Dexie, { Table } from 'dexie';
+import logger from "@/logger";
 
 const EXPIRATION_TIME = 2 * 60 * 60 * 1000; // 2 hour in milliseconds
 
@@ -59,7 +60,7 @@ export const setErrorRecords = async (logContentId: string, records: any[]): Pro
     // Also trigger a background cleanup for other old logs
     cleanupExpiredRecords();
   } catch (err) {
-    console.error("Dexie: Failed to save error records", err);
+    logger.error("Dexie: Failed to save error records", err);
   }
 };
 
@@ -87,7 +88,7 @@ export const getErrorRecords = async (logContentId: string): Promise<any[]> => {
       error: r.error
     }));
   } catch (err) {
-    console.error("Dexie: Failed to get error records", err);
+    logger.error("Dexie: Failed to get error records", err);
     return [];
   }
 };
@@ -99,7 +100,7 @@ export const deleteErrorRecords = async (logContentId: string): Promise<void> =>
   try {
     await db.errorLogRecords.where({ logContentId }).delete();
   } catch (err) {
-    console.error("Dexie: Failed to delete records", err);
+    logger.error("Dexie: Failed to delete records", err);
   }
 };
 
@@ -111,7 +112,7 @@ export const cleanupExpiredRecords = async (): Promise<void> => {
     const expirationLimit = Date.now() - EXPIRATION_TIME;
     await db.errorLogRecords.where('createdAt').below(expirationLimit).delete();
   } catch (err) {
-    console.error("Dexie: Cleanup failed", err);
+    logger.error("Dexie: Cleanup failed", err);
   }
 };
 

@@ -85,6 +85,7 @@ import { useStore } from "@/store";
 import { getCurrentTime } from "@/utils"
 import { translate } from "@/i18n"
 import { UserService } from "@/services/UserService";
+import logger from "@/logger";
 
 const store = useStore();
 let queryString = ref("")
@@ -124,7 +125,7 @@ onBeforeMount(async() => {
       timeZones.value = resp.data;
     }
   } catch(error) {
-    console.error(error);
+    logger.error(error);
   }
   
   if(userProfile.value && userProfile.value.timeZone) {

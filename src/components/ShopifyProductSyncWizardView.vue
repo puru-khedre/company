@@ -614,11 +614,7 @@ import {
 import {
   arrowForwardOutline,
   closeOutline,
-  documentTextOutline,
   pulseOutline,
-  sendOutline,
-  serverOutline,
-  syncCircleOutline,
   checkmarkCircleOutline,
   shirtOutline,
   timeOutline,
@@ -772,29 +768,10 @@ const bulkOperationProgress = computed(() => {
   return getProductSyncBulkOperationProgress(bulkOperationObjectCount.value, props.reviewStats?.shopifyProductCount);
 });
 
-const hasBulkOperationProgress = computed(() => {
-  return bulkOperationProgress.value.hasTotalCount;
-});
-
 const bulkOperationProgressValue = computed(() => {
   const status = (props.currentSyncRun?.bulkOperation?.status || props.progressState?.bulkOperationStatus || "").toLowerCase();
   if (status === "complete" || status === "completed") return 1;
   return bulkOperationProgress.value.value;
-});
-
-const bulkOperationProgressLabel = computed(() => {
-  if (!bulkOperationProgress.value.hasTotalCount) {
-    return translate("{count} objects processed", { count: formatCount(bulkOperationProgress.value.processedCount) });
-  }
-
-  return translate("{processed} objects processed / {total} products requested", {
-    processed: formatCount(bulkOperationProgress.value.processedCount),
-    total: formatCount(bulkOperationProgress.value.totalCount)
-  });
-});
-
-const queuedJobsAhead = computed(() => {
-  return Math.max(Number(props.progressState?.queuedJobsAhead || 0), 0);
 });
 
 const mdmLogId = computed(() => {

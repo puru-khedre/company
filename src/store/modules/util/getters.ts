@@ -21,6 +21,9 @@ const getters: GetterTree <UtilState, RootState> = {
   getShipmentMethodTypes(state) {
     return state.shipmentMethodTypes;
   },
+  getEmailTypes(state) {
+    return state.emailTypes;
+  },
   getOrganizationPartyId(state) {
     return state.organizationPartyId;
   },

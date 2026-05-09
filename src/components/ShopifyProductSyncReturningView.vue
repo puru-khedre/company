@@ -463,8 +463,6 @@ import {
   IonCardSubtitle,
   IonCardTitle,
   IonIcon,
-  IonInfiniteScroll,
-  IonInfiniteScrollContent,
   IonItem,
   IonChip,
   IonLabel,
@@ -476,8 +474,8 @@ import {
 } from "@ionic/vue";
 import { translate } from "@/i18n";
 import { computed, defineEmits, defineProps, ref } from "vue";
-import { checkmarkCircleOutline, closeOutline, ellipsisVerticalOutline, flashOutline, openOutline, pauseCircleOutline, refreshOutline, timeOutline } from "ionicons/icons";
-import { modalController, popoverController } from "@ionic/vue";
+import { checkmarkCircleOutline, ellipsisVerticalOutline, flashOutline, openOutline, pauseCircleOutline, refreshOutline, timeOutline } from "ionicons/icons";
+import { popoverController } from "@ionic/vue";
 import AnimatedNumber from "@/components/AnimatedNumber.vue";
 import AnimatedDuration from "@/components/AnimatedDuration.vue";
 
@@ -657,7 +655,7 @@ ion-buttons {
 .sync-summary {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  align-items: start;
+  align-items: flex-start;
 }
 
 .summary{
@@ -671,7 +669,7 @@ ion-buttons {
 .sync-monitor {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-  align-items: start;
+  align-items: flex-start;
 }
 
 .sync-monitor ion-item {
@@ -701,7 +699,7 @@ ion-buttons {
   display: flex;
   flex-wrap: nowrap;
   overflow-x: scroll;
-  align-items: start;
+  align-items: flex-start;
 }
 
 .stat-data ion-card {
@@ -711,7 +709,7 @@ ion-buttons {
 .list-transition-group {
   display: flex;
   flex-wrap: nowrap;
-  align-items: start;
+  align-items: flex-start;
 }
 
 .list-enter-active,

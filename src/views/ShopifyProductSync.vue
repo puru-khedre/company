@@ -764,8 +764,7 @@ import {
   ProductSyncWizardStep,
   requiresPreflightConfirmation,
   resolveProductSyncExperienceMode,
-  selectProductStore,
-  shouldShowProductSyncProgress
+  selectProductStore
 } from "@/utils/shopifyProductSyncWizard";
 import { downloadTextFile, formatDateTime, getDownloadFileContent, hasError, parseDateTimeValue, showToast } from "@/utils";
 import logger from "@/logger";
@@ -775,7 +774,6 @@ import { useProductUpdateHistory } from "@/composables/useProductUpdateHistory";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
 import { getSystemMessageBulkOperationId } from "@/utils/shopifyBulkOperation";
 import { getProductSyncFsmState, type ProductSyncFsmActionId } from "@/utils/shopifyProductSyncFsm";
-import { deleteErrorRecords } from "@/utils/storage";
 
 const props = defineProps(["id"]);
 const store = useStore();
@@ -788,7 +786,6 @@ const {
   fetchJobDetail,
   fetchJobRuns,
   fetchJobAuditHistory,
-  fetchProductDetail,
   updateJob,
   runNow
 } = useServiceJob();
@@ -1260,12 +1257,6 @@ const isSyncJobDraftScheduleValid = computed(() => {
 });
 const syncJobDraftScheduleDescription = computed(() => {
   return getCronDescription(syncJobDraftCronExpression.value);
-});
-const syncJobDraftNextRunLabel = computed(() => {
-  if (!isSyncJobDraftScheduleValid.value) return translate("Invalid");
-  const nextRun = getNextRunDateTime({ cronExpression: syncJobDraftCronExpression.value });
-  if (!nextRun) return translate("Not scheduled");
-  return nextRun.toLocaleString(DateTime.DATETIME_SHORT);
 });
 const syncJobDraftNextRunRelativeLabel = computed(() => {
   if (!isSyncJobDraftScheduleValid.value) return translate("Invalid");
@@ -2010,24 +2001,6 @@ async function downloadRawFile(item: any) {
   } catch (error) {
     logger.error(`Failed to download raw file for ${item.id}`, error);
     showToast(translate("Failed to download raw file"));
-  }
-}
-
-async function viewErrorDetails(item: any) {
-  const logId = item.logId;
-  if (!logId) {
-    showToast(translate("Log ID is not available"));
-    return;
-  }
-
-  try {
-    await fetchLogDetails(logId);
-    if (!errorLogs.value.length) {
-       showToast(translate("No detailed error records found in this log"));
-    }
-  } catch (error) {
-    logger.error(`Failed to fetch log details for ${logId}`, error);
-    showToast(translate("Failed to fetch detailed error records"));
   }
 }
 

@@ -122,6 +122,27 @@ const actions: ActionTree<UtilState, RootState> = {
     commit(types.UTIL_PRODUCT_IDENTIFIERS_UPDATED, productIdentifiers)
   },
 
+  async fetchEmailTypes({ commit, state }) {
+    if(state.emailTypes.length) return;
+    commit(types.UTIL_FETCH_STATUS_UPDATED, { emailTypes: 'pending' })
+
+    let emailTypes = [] as any;
+
+    try {
+      const resp = await UtilService.fetchEnums({ enumTypeId: "PRDS_EMAIL", pageSize: 100 })
+      if(!hasError(resp)) {
+        emailTypes = resp.data;
+        commit(types.UTIL_FETCH_STATUS_UPDATED, { emailTypes: 'success', lastFetched: Date.now() })
+      } else {
+        throw resp.data;
+      }
+    } catch(error: any) {
+      logger.error(error);
+      commit(types.UTIL_FETCH_STATUS_UPDATED, { emailTypes: 'error' })
+    }
+    commit(types.UTIL_EMAIL_TYPES_UPDATED, emailTypes)
+  },
+
   async fetchShipmentMethodTypes({ commit, state }) {
     if(state.shipmentMethodTypes.length) return;
     commit(types.UTIL_FETCH_STATUS_UPDATED, { shipmentMethodTypes: 'pending' })

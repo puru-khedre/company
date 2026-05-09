@@ -5,6 +5,7 @@ export default interface UtilState {
   dbicCountries: any;
   productIdentifiers: any;
   shipmentMethodTypes: any;
+  emailTypes: any[];
   organizationPartyId: string;
   statusItems: any;
   fetchStatus: {
@@ -16,6 +17,7 @@ export default interface UtilState {
     operatingCountries: string;
     productIdentifiers: string;
     shipmentMethodTypes: string;
+    emailTypes: string;
     lastFetched: number;
   };
 }

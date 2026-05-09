@@ -4,11 +4,12 @@ import getters  from "./getters"
 import actions from "./actions"
 import RootState from "./RootState"
 import createPersistedState from "vuex-persistedstate";
-import userModule from "./modules/user";
-import productStoreModule from "./modules/productStore";
-import utilModule from "./modules/util"
-import netSuiteModule from "./modules/netSuite"
-import shopifyModule from "./modules/shopify"
+import userModule from "./modules/user/index";
+import productStoreModule from "./modules/productStore/index";
+import utilModule from "./modules/util/index"
+import netSuiteModule from "./modules/netSuite/index"
+import shopifyModule from "./modules/shopify/index"
+import klaviyoModule from "./modules/klaviyo/index"
 import { setPermissions } from "@/authorization"
 
 // TODO check how to register it from the components only
@@ -34,7 +35,8 @@ const store = createStore<RootState>({
     "productStore": productStoreModule,
     "util": utilModule,
     "netSuite": netSuiteModule,
-    "shopify": shopifyModule
+    "shopify": shopifyModule,
+    "klaviyo": klaviyoModule
   },
 })
 

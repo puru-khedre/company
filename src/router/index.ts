@@ -15,6 +15,8 @@ import Departments from "@/views/Departments.vue";
 import { DxpLogin, useAuthStore } from "@hotwax/dxp-components";
 import { loader } from '@/user-utils';
 import ShopifyConnectionDetails from "@/views/ShopifyConnectionDetails.vue";
+import Klaviyo from "@/views/Klaviyo.vue";
+import KlaviyoConnectionDetails from "@/views/KlaviyoConnectionDetails.vue";
 import { translate } from "@/i18n";
 
 const authGuard = async (to: any, from: any, next: any) => {
@@ -128,6 +130,19 @@ const routes: Array<RouteRecordRaw> = [
     path: '/shopify-connection-details/:id/instance-details',
     name: 'ShopifyInstanceDetails',
     component: () => import('@/views/ShopifyShopDetails.vue'),
+    props: true,
+    beforeEnter: authGuard,
+  },
+  {
+    path: "/klaviyo",
+    name: "Klaviyo",
+    component: Klaviyo,
+    beforeEnter: authGuard,
+  },
+  {
+    path: "/klaviyo/:id",
+    name: "KlaviyoConnectionDetails",
+    component: KlaviyoConnectionDetails,
     props: true,
     beforeEnter: authGuard,
   },

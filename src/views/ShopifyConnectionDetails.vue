@@ -225,7 +225,6 @@ import { useRouter } from "vue-router";
 import ShopifyProductStoreModal from "@/components/ShopifyProductStoreModal.vue";
 import { ShopifyProductSyncService } from "@/services/ShopifyProductSyncService";
 import { ShopifyProductSyncMigrationService } from "@/services/ShopifyProductSyncMigrationService";
-import { useDataManagerLog } from "@/composables/useDataManagerLog";
 import { useShopifyProductSyncRun } from "@/composables/useShopifyProductSyncRun";
 import logger from "@/logger";
 
@@ -240,7 +239,6 @@ const PRODUCT_SYNC_ACTIVITY_GRAPH_HEIGHT = 96;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_PADDING_X = 12;
 const PRODUCT_SYNC_ACTIVITY_GRAPH_PADDING_Y = 12;
 type DebugPageState = "live" | "setup-required" | "incompatible" | "upgrade-ready" | "teardown-needed" | "upgraded";
-const { fetchMdmLogBySystemMessageId } = useDataManagerLog();
 const { currentSyncRun, fetchSyncRun } = useShopifyProductSyncRun();
 const debugPageState = ref<DebugPageState>("live");
 const productSyncSummary = ref<any>({
@@ -717,10 +715,6 @@ function getSystemMessageTime(systemMessage: any) {
 
 function getSystemMessageTimeValue(systemMessage: any) {
   return systemMessage?.initDate || systemMessage?.lastUpdatedStamp || systemMessage?.processedDate || "";
-}
-
-function normalizeStatusValue(statusId: string) {
-  return String(statusId || "").toLowerCase().replace(/[_\-\s]/g, "");
 }
 
 function getHourKey(value: any) {

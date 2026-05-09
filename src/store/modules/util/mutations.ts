@@ -22,12 +22,16 @@ const mutations: MutationTree <UtilState> = {
   [types.UTIL_SHIPMENT_METHOD_TYPES_UPDATED] (state, payload) {
     state.shipmentMethodTypes = payload;
   },
+  [types.UTIL_EMAIL_TYPES_UPDATED] (state, payload) {
+    state.emailTypes = payload;
+  },
   [types.UTIL_CLEARED] (state) {
     state.facilityGroups = []
     state.operatingCountries = []
     state.dbicCountries = {}
     state.productIdentifiers = []
     state.shipmentMethodTypes = []
+    state.emailTypes = []
     state.statusItems = {}
   },
   [types.UTIL_ORGANIZATION_PARTY_ID_UPDATED](state, payload) {
