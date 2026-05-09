@@ -43,6 +43,9 @@
             <ion-card-title>
               {{ oms }}
             </ion-card-title>
+            <ion-card-subtitle>
+              {{ omsVersionLabel }}
+            </ion-card-subtitle> 
           </ion-card-header>
           <ion-card-content>
             {{ $t('This is the name of the OMS you are connected to right now. Make sure that you are connected to the right instance before proceeding.') }}
@@ -130,16 +133,20 @@ import { DateTime } from "luxon";
 import { translate } from "@/i18n"
 import { openOutline, syncOutline, checkmarkCircle, closeCircle } from "ionicons/icons"
 import { goToOms } from "@hotwax/dxp-components";
+import api from "@/api";
+import logger from "@/logger";
 import { getCurrentTime } from "../utils"
 import useServiceJob from "@/composables/useServiceJob";
 const store = useStore()
 const { jobs, loading: loadingJobs, fetchJobs } = useServiceJob();
 const appVersion = ref("")
+const omsVersion = ref("")
 const appInfo = (process.env.VUE_APP_VERSION_INFO ? JSON.parse(process.env.VUE_APP_VERSION_INFO) : {}) as any
 
 const userProfile = computed(() => store.getters["user/getUserProfile"])
 const oms = computed(() => store.getters["user/getInstanceUrl"])
 const omsRedirectionInfo = computed(() => store.getters["user/getOmsRedirectionInfo"])
+const omsVersionLabel = computed(() => omsVersion.value || translate("Not available"))
 const currentTimeZoneId = computed(() => userProfile.value.timeZone)
 const statusItems = computed(() => store.state.util.statusItems)
 const facilities = computed(() => store.state.util.facilities)
@@ -288,9 +295,10 @@ function refreshCache() {
   store.dispatch('productStore/fetchProductStores');
   store.dispatch('shopify/fetchShopifyShops');
   fetchJobs();
+  fetchOmsVersion();
 }
 
-const props = defineProps({
+defineProps({
   showBrowserTimeZone: {
     type: Boolean,
     default: true
@@ -306,7 +314,22 @@ const props = defineProps({
 })
 onMounted(() => {
   appVersion.value = appInfo.branch ? (appInfo.branch + "-" + appInfo.revision) : appInfo.tag;
+  fetchOmsVersion();
 })
+
+async function fetchOmsVersion() {
+  try {
+    const response = await api({
+      url: "admin/maarg",
+      method: "GET"
+    }) as any;
+
+    omsVersion.value = String(response?.data?.instanceInfo?.componentRelease || "").trim();
+  } catch (error) {
+    omsVersion.value = "";
+    logger.warn("Failed to fetch OMS version", error);
+  }
+}
 
 async function changeTimeZone() {
   const timeZoneModal = await modalController.create({

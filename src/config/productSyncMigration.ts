@@ -1,9 +1,11 @@
+import semver from 'semver';
+
 export const PRODUCT_SYNC_MIGRATION_CONFIG = {
-  minimumComponentRelease: "v5.2.0",
+  minimumComponentRelease: "v5.1.0",
   eligibleComponentReleases: [
     "product-sync",
     "UpcomingRelease",
-    "v5.2.0",
+    "feature-shopify-delta-sync-seevices",
     "main"
   ],
   outgoing: {
@@ -70,5 +72,17 @@ export const PRODUCT_SYNC_MIGRATION_CONFIG = {
 
 export function isProductSyncMigrationEligibleRelease(componentRelease: string) {
   const normalizedRelease = String(componentRelease || "").trim();
-  return (PRODUCT_SYNC_MIGRATION_CONFIG.eligibleComponentReleases as readonly string[]).includes(normalizedRelease);
+  
+  // 1. Check if explicitly in the list (handles branch names and special tags)
+  if ((PRODUCT_SYNC_MIGRATION_CONFIG.eligibleComponentReleases as readonly string[]).includes(normalizedRelease)) {
+    return true;
+  }
+  
+  // 2. Check if it's a valid semver and >= minimumComponentRelease
+  const minRelease = PRODUCT_SYNC_MIGRATION_CONFIG.minimumComponentRelease;
+  if (semver.valid(normalizedRelease) && semver.valid(minRelease)) {
+    return semver.gte(normalizedRelease, minRelease);
+  }
+  
+  return false;
 }

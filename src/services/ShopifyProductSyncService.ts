@@ -133,6 +133,12 @@ export interface ShopifyProductSyncOnDemandResult {
   rejectedCount?: number;
 }
 
+export interface ShopifyProductSyncActionResult {
+  jobOutput?: string;
+  message?: string;
+  systemMessageId?: string;
+}
+
 interface ShopifyGraphqlResponse {
   response?: any;
   data?: any;
@@ -361,6 +367,8 @@ export interface ShopifyProductSyncRun {
     statusId?: string;
     statusLabel?: string;
     statusColor?: string;
+    errorText?: string;
+    messageText?: string;
   };
   bulkOperation: {
     id?: string;
@@ -496,6 +504,12 @@ function getTimestampValue(value: any): number {
 
 function getTimestampDate(value: any): string | undefined {
   return parseDateTimeValue(value)?.toISO() || undefined;
+}
+
+function getEntityValueList(response: any, context: string): any[] {
+  if (Array.isArray(response?.entityValueList)) return response.entityValueList;
+  if (Number(response?.entityValueListCount || 0) === 0) return [];
+  throw new Error(`${context} response must include array entityValueList.`);
 }
 
 function resolveSystemMessageRemoteId(payload: any): string {
@@ -718,8 +732,7 @@ const fetchProductUpdateSyncRunState = async (payload: any): Promise<ShopifyProd
     }
   });
 
-  assertArrayField(response?.entityValueList, "entityValueList", "Product sync system message history");
-  const systemMessages = response.entityValueList;
+  const systemMessages = getEntityValueList(response, "Product sync system message history");
 
   const confirmedMessages = systemMessages.filter((systemMessage: any) => systemMessage.statusId === "SmsgConfirmed" || systemMessage.statusId === "SmsgConsumed");
   const consumedMessages = systemMessages.filter((systemMessage: any) => {
@@ -862,7 +875,7 @@ const fetchShopifyShopProductCount = async (payload: any): Promise<ShopifyShopPr
   }
 
   const lastSyncedAt = payload.lastSyncedAt || payload.syncRunState?.lastSyncedAt ||
-    (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+    (await fetchProductUpdateSyncRunState(payload)).lastSyncedAt;
   const response = await requestBackend<ShopifyGraphqlResponse>({
     url: "shopify/graphql",
     method: "post",
@@ -890,7 +903,7 @@ const fetchUnsyncedProductUpdates = async (payload: any): Promise<ShopifyUnsynce
   }
 
   const lastSyncedAt = payload.lastSyncedAt || payload.syncRunState?.lastSyncedAt ||
-    (await fetchProductUpdateSyncRunState(systemMessageRemoteId)).lastSyncedAt;
+    (await fetchProductUpdateSyncRunState(payload)).lastSyncedAt;
   const response = await requestBackend<ShopifyGraphqlResponse>({
     url: "shopify/graphql",
     method: "post",
@@ -1025,17 +1038,19 @@ const syncShopifyProductsOnDemand = async (payload: any): Promise<ShopifyProduct
   if (!payload.shopId) {
     throw new Error("Shopify shop id is required to sync products on demand.");
   }
+  if (!payload.shopifyProductId) {
+    throw new Error("Shopify product id is required to sync products on demand.");
+  }
 
-  const shopifyProductIds = Array.isArray(payload.shopifyProductId) ? payload.shopifyProductId : [payload.shopifyProductId];
   const data: any = {
     shopId: payload.shopId,
-    shopifyProductId: shopifyProductIds
+    shopifyProductId: payload.shopifyProductId
   };
   if (payload.namespace) data.namespace = payload.namespace;
   if (payload.additionalParameters) data.additionalParameters = payload.additionalParameters;
 
   return requestBackend<ShopifyProductSyncOnDemandResult>({
-    url: "shopify/products/syncOnDemand",
+    url: "sob/shopify/syncShopifyProductsOnDemand",
     method: "post",
     data
   }, "Shopify product sync on demand endpoint");
@@ -1061,6 +1076,53 @@ const syncShopifyProducts = async (payload: any): Promise<ShopifyProductSyncOnDe
     method: "post",
     data
   }, "Shopify product sync endpoint");
+};
+
+const sendShopifyBulkQueryMessage = async (payload: any): Promise<ShopifyProductSyncActionResult> => {
+  const systemMessageRemoteId = String(payload?.systemMessageRemoteId || "").trim();
+  const queryText = String(payload?.queryText || "").trim();
+
+  if (!systemMessageRemoteId) {
+    throw new Error("System message remote id is required to send a Shopify bulk query message.");
+  }
+  if (!queryText) {
+    throw new Error("Query text is required to send a Shopify bulk query message.");
+  }
+
+  return requestBackend<ShopifyProductSyncActionResult>({
+    url: "shopify/graphql",
+    method: "post",
+    data: {
+      systemMessageRemoteId,
+      queryText
+    }
+  }, "Shopify GraphQL send endpoint");
+};
+
+const pollBulkOperationResult = async (payload: any): Promise<ShopifyProductSyncActionResult> => {
+  const parentSystemMessageTypeId = String(payload?.parentSystemMessageTypeId || "").trim();
+  if (!parentSystemMessageTypeId) {
+    throw new Error("Parent system message type id is required to poll a Shopify bulk operation result.");
+  }
+
+  return requestBackend<ShopifyProductSyncActionResult>({
+    url: "shopify/bulk/result/poll",
+    method: "post",
+    data: {
+      parentSystemMessageTypeId
+    }
+  }, "Shopify bulk result poll endpoint");
+};
+
+const cancelSystemMessage = async (systemMessageId: string): Promise<ShopifyProductSyncActionResult> => {
+  if (!String(systemMessageId || "").trim()) {
+    throw new Error("System message id is required to cancel a Shopify product sync message.");
+  }
+
+  return requestBackend<ShopifyProductSyncActionResult>({
+    url: `admin/systemMessages/${encodeURIComponent(systemMessageId)}/cancel`,
+    method: "post"
+  }, "System message cancel endpoint");
 };
 
 const fetchProductStoreContext = async (payload: any): Promise<any> => {
@@ -1348,7 +1410,7 @@ const fetchDashboardSummary = async (payload: any): Promise<ShopifyProductSyncDa
 
 const fetchWebhookSubscriptions = async (payload: any): Promise<any> => {
   const response = await requestBackend<any>({
-    url: "shopify/webhook-subscription",
+    url: "shopify/webhook",
     method: "get",
     params: {
       systemMessageRemoteId: payload.systemMessageRemoteId,
@@ -1363,7 +1425,7 @@ const fetchWebhookSubscriptions = async (payload: any): Promise<any> => {
 
 const subscribeWebhook = async (payload: any): Promise<any> => {
   return await requestBackend<any>({
-    url: "shopify/webhook-subscription",
+    url: "shopify/webhook",
     method: "post",
     data: {
       systemMessageRemoteId: payload.systemMessageRemoteId,
@@ -1374,7 +1436,7 @@ const subscribeWebhook = async (payload: any): Promise<any> => {
 
 const unsubscribeWebhook = async (payload: any): Promise<any> => {
   return await requestBackend<any>({
-    url: "shopify/webhook-subscription",
+    url: "shopify/webhook",
     method: "delete",
     data: {
       systemMessageRemoteId: payload.systemMessageRemoteId,
@@ -1396,6 +1458,9 @@ export const ShopifyProductSyncService = {
   searchShopifyProducts,
   syncShopifyProductsOnDemand,
   syncShopifyProducts,
+  sendShopifyBulkQueryMessage,
+  pollBulkOperationResult,
+  cancelSystemMessage,
   fetchSetupState,
   fetchProductStoreContext,
   fetchReviewStats,

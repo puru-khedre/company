@@ -79,6 +79,7 @@
         v-else
         :runs="historyRuns"
         @download-raw-file="downloadRawShopifyFile"
+        @download-failed-records-file="downloadFailedRecordsFile"
       />
 
       <ion-infinite-scroll
@@ -161,8 +162,11 @@ let historyLoadToken = 0;
 interface ShopifyProductSyncHistoryRun {
   id: string;
   createdTime: any;
+  systemMessageStatusId: string;
   systemMessageStatus: string;
   systemMessageStatusColor: string;
+  systemMessageMessageText: string;
+  systemMessageErrorText: string;
   bulkOperationId: string;
   bulkOperationStatus: string;
   bulkOperationStatusLabel: string;
@@ -177,6 +181,7 @@ interface ShopifyProductSyncHistoryRun {
   totalRecordCount: number;
   failedRecordCount: number;
   mdmLogContentId: string;
+  mdmErrorLogContentId: string;
   mdmLogConfigId: string;
   mdmLogFileName: string;
   loading?: boolean;
@@ -415,8 +420,11 @@ function getInitialHistoryRun(msg: any) {
   return {
     id: msg.systemMessageId,
     createdTime: msg.initDate,
+    systemMessageStatusId: msg.statusId || "",
     systemMessageStatus: getStatusLabel(msg.statusId),
     systemMessageStatusColor: getStatusColor(msg.statusId),
+    systemMessageMessageText: String(msg.messageText || "").trim(),
+    systemMessageErrorText: "",
     bulkOperationId,
     bulkOperationStatus: bulkOperationId ? "pending" : "",
     bulkOperationStatusLabel: bulkOperationId ? translate("Pending") : translate("Not started"),
@@ -431,6 +439,7 @@ function getInitialHistoryRun(msg: any) {
     totalRecordCount: Number(msg.totalRecordCount || 0),
     failedRecordCount: Number(msg.failedRecordCount || 0),
     mdmLogContentId: msg.logContentId || msg.logFileContentId || msg.uploadFileContentId || msg.exportFileContentId || "",
+    mdmErrorLogContentId: msg.errorLogContentId || "",
     mdmLogConfigId: msg.configId || PRODUCT_SYNC_MDM_CONFIG_ID,
     mdmLogFileName: msg.fileName || msg.logFileName || msg.configDescription || "",
     loading: !!bulkOperationId
@@ -461,6 +470,7 @@ async function hydrateRunDetails(run: ShopifyProductSyncHistoryRun, systemMessag
   try {
     const {
       systemMessage,
+      systemMessageErrors = [],
       shopifyBulkOperation,
       bulkOperationId
     } = await fetchShopifyBulkOperationBySystemMessageId(run.id, msg);
@@ -471,8 +481,11 @@ async function hydrateRunDetails(run: ShopifyProductSyncHistoryRun, systemMessag
     const mdmStatus = run.mdmStatus === "pending" && isSkipped ? "skipped" : run.mdmStatus;
 
     updateHistoryRun(run.id, {
+      systemMessageStatusId: systemMessage?.statusId || run.systemMessageStatusId,
       systemMessageStatus: getStatusLabel(systemMessage?.statusId),
       systemMessageStatusColor: getStatusColor(systemMessage?.statusId),
+      systemMessageMessageText: String(systemMessage?.messageText || run.systemMessageMessageText || "").trim(),
+      systemMessageErrorText: getSystemMessageErrorText(systemMessageErrors),
       bulkOperationId: shopifyBulkOperation?.id || bulkOperationId || run.bulkOperationId,
       bulkOperationStatus: shopifyBulkOperation?.status || run.bulkOperationStatus,
       bulkOperationStatusLabel: shopifyBulkOperation?.status ? getStatusLabel(shopifyBulkOperation.status) : run.bulkOperationStatusLabel,
@@ -489,6 +502,17 @@ async function hydrateRunDetails(run: ShopifyProductSyncHistoryRun, systemMessag
     logger.error(`Failed to hydrate product sync history run ${run.id}`, error);
     if (!isStaleHistoryLoad(loadToken)) updateHistoryRun(run.id, { loading: false });
   }
+}
+
+function getSystemMessageErrorText(systemMessageErrors: any[]) {
+  const errors = Array.isArray(systemMessageErrors) ? systemMessageErrors : [];
+
+  for (const error of errors) {
+    const errorText = String(error?.errorText || "").trim();
+    if (errorText) return errorText;
+  }
+
+  return "";
 }
 
 function getStatusColor(status: string) {
@@ -595,8 +619,31 @@ async function downloadRawShopifyFile(run: ShopifyProductSyncHistoryRun) {
   }
 }
 
+async function downloadFailedRecordsFile(run: ShopifyProductSyncHistoryRun) {
+  try {
+    const downloadableRun = await getDownloadableHistoryRun(run);
+    if (!downloadableRun?.mdmLogConfigId || !downloadableRun?.mdmErrorLogContentId) {
+      showToast(translate("Failed records file is not available"));
+      return;
+    }
+
+    const response = await downloadDataManagerFile(downloadableRun.mdmLogConfigId, downloadableRun.mdmErrorLogContentId);
+    const fileContent = getDownloadFileContent(response?.data);
+
+    if (!fileContent) {
+      throw new Error("No failed records file content returned");
+    }
+
+    downloadTextFile(fileContent, getFailedRecordsFileName(downloadableRun));
+    showToast(translate("File downloaded successfully"));
+  } catch (error) {
+    logger.error(`Failed to download failed records file for message ${run.id}`, error);
+    showToast(translate("Failed to download failed records file"));
+  }
+}
+
 async function getDownloadableHistoryRun(run: ShopifyProductSyncHistoryRun) {
-  if (run?.mdmLogConfigId && run?.mdmLogContentId) return run;
+  if (run?.mdmLogConfigId && (run?.mdmLogContentId || run?.mdmErrorLogContentId)) return run;
   if (!run?.mdmImportId) return run;
 
   const logDetails = await fetchLogDetails(run.mdmImportId);
@@ -608,10 +655,17 @@ async function getDownloadableHistoryRun(run: ShopifyProductSyncHistoryRun) {
       logDetails?.uploadFileContentId ||
       logDetails?.exportFileContentId ||
       run.mdmLogContentId,
+    mdmErrorLogContentId: logDetails?.errorLogContentId || run.mdmErrorLogContentId,
     mdmLogFileName: logDetails?.fileName || logDetails?.logFileName || run.mdmLogFileName
   };
   updateHistoryRun(run.id, updatedRun);
   return updatedRun;
+}
+
+function getFailedRecordsFileName(run: ShopifyProductSyncHistoryRun) {
+  const baseName = String(run?.mdmLogFileName || run?.id || "failed-records").trim();
+  const sanitizedBaseName = baseName.replace(/\.(json|jsonl|csv|txt)$/i, "");
+  return `${sanitizedBaseName}-failed-records.csv`;
 }
 
 function getErrorMessage(error: any, defaultMessage: string) {
