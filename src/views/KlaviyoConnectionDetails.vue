@@ -5,7 +5,7 @@
         <ion-buttons slot="start">
           <ion-back-button default-href="/klaviyo" />
         </ion-buttons>
-        <ion-title>{{ ("Klaviyo connection") }}</ion-title>
+        <ion-title>{{ connection?.description || translate("Klaviyo connection") }}</ion-title>
         <ion-buttons slot="end" v-if="connection">
           <ion-button @click="openEditModal">
             <ion-icon slot="start" :icon="createOutline" />
@@ -97,15 +97,6 @@
           </ion-card-content>
         </ion-card>
 
-        <ion-list v-else-if="isLoading" inset>
-          <ion-item v-for="item in 4" :key="item">
-            <ion-label>
-              <h2><ion-skeleton-text animated /></h2>
-              <p><ion-skeleton-text animated /></p>
-            </ion-label>
-          </ion-item>
-        </ion-list>
-
         <ion-list v-else inset>
           <template v-for="evt in eventsForStore" :key="evt.emailType">
             <ion-item>
@@ -121,7 +112,7 @@
             <ion-item v-if="evt.enabled && evt.ownedByThisGateway">
               <ion-input
                 :value="evt.subject"
-                :label="translate('Edit Subject')"
+                :label="translate('Subject')"
                 label-placement="stacked"
                 :placeholder="translate('Email subject your customer sees')"
                 @ionInput="onSubjectInput(evt, $event.detail.value)"
