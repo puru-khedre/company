@@ -294,7 +294,6 @@ function refreshCache() {
   store.dispatch('productStore/fetchProductStores');
   store.dispatch('shopify/fetchShopifyShops');
   fetchJobs();
-  fetchOmsVersion();
 }
 
 defineProps({

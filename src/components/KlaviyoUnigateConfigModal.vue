@@ -220,7 +220,7 @@ async function save() {
   try {
     const payload: any = {
       internalId: form.internalId.trim(),
-      sendUrl: form.sendUrl.trim() || recommendedSendUrl.value,
+      sendUrl: form.sendUrl.trim(),
       description: form.description.trim(),
       authHeaderName: form.authHeaderName.trim() || "api_key",
     };
