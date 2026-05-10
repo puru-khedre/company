@@ -4,25 +4,10 @@
       <ion-toolbar>
         <ion-menu-button slot="start" />
         <ion-title>{{ translate("Klaviyo") }}</ion-title>
-        <ion-buttons slot="end" v-if="hasUnigateConfig && klaviyoConnections.length">
-          <ion-button @click="openConnectionModal()">
-            <ion-icon slot="start" :icon="addCircleOutline" />
-            {{ translate("Add connection") }}
-          </ion-button>
-        </ion-buttons>
       </ion-toolbar>
     </ion-header>
 
     <ion-content>
-      <ion-card v-if="mockFallbackTriggered" color="warning">
-        <ion-card-header>
-          <ion-card-title>{{ translate("Showing mock data") }}</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <p>{{ translate("The OMS instance has not deployed the Klaviyo endpoints yet. The UI is running against in-memory mock data so you can preview the experience.") }}</p>
-        </ion-card-content>
-      </ion-card>
-
       <ion-list v-if="isInitialLoading" inset>
         <ion-item v-for="item in 3" :key="item">
           <ion-label>
@@ -93,6 +78,16 @@
             <ion-label>{{ translate("Trigger custom Klaviyo flows on cancellations") }}</ion-label>
           </ion-item>
         </ion-list>
+
+        <ion-list inset>
+          <ion-item button detail @click="openUnigateConfigModal()">
+            <ion-icon slot="start" :icon="serverOutline" />
+            <ion-label>
+              <h3>{{ translate("Unigate tenant") }}</h3>
+              <p>{{ translate("Review the OMS-side tenant that proxies every Klaviyo call.") }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
       </template>
 
       <template v-else>
@@ -121,6 +116,17 @@
           </ion-item>
         </ion-list>
       </template>
+
+      <ion-fab
+        v-if="hasUnigateConfig && klaviyoConnections.length"
+        vertical="bottom"
+        horizontal="end"
+        slot="fixed"
+      >
+        <ion-fab-button @click="openConnectionModal()">
+          <ion-icon :icon="addOutline" />
+        </ion-fab-button>
+      </ion-fab>
     </ion-content>
   </ion-page>
 </template>
@@ -130,12 +136,13 @@ import { computed, ref } from "vue";
 import {
   IonBadge,
   IonButton,
-  IonButtons,
   IonCard,
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
   IonContent,
+  IonFab,
+  IonFabButton,
   IonHeader,
   IonIcon,
   IonItem,
@@ -150,12 +157,13 @@ import {
   modalController,
   onIonViewWillEnter,
 } from "@ionic/vue";
-import { addCircleOutline } from "ionicons/icons";
+import { addCircleOutline, addOutline, serverOutline } from "ionicons/icons";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import { translate } from "@/i18n";
-import { KlaviyoService, klaviyoServiceState } from "@/services/KlaviyoService";
+import { KlaviyoService } from "@/services/KlaviyoService";
 import KlaviyoConnectionModal from "@/components/KlaviyoConnectionModal.vue";
+import KlaviyoUnigateConfigModal from "@/components/KlaviyoUnigateConfigModal.vue";
 
 const store = useStore();
 const router = useRouter();
@@ -166,7 +174,6 @@ const isRechecking = ref(false);
 const hasUnigateConfig = computed(() => store.getters["klaviyo/hasUnigateConfig"]);
 const klaviyoConnections = computed(() => store.getters["klaviyo/getKlaviyoConnections"] || []);
 const eventCountByGateway = computed(() => store.getters["klaviyo/getEventCountByGateway"] || {});
-const mockFallbackTriggered = computed(() => klaviyoServiceState.mockFallbackTriggered || klaviyoServiceState.forceMock);
 
 onIonViewWillEnter(async () => {
   if (!store.getters["klaviyo/hasCheckedUnigate"]) {
@@ -207,6 +214,11 @@ async function openConnectionModal() {
       router.push(`/klaviyo/${encodeURIComponent(event.data.connection.commGatewayAuthId)}`);
     }
   });
+  modal.present();
+}
+
+async function openUnigateConfigModal() {
+  const modal = await modalController.create({ component: KlaviyoUnigateConfigModal });
   modal.present();
 }
 

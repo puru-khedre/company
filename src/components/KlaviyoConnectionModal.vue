@@ -121,21 +121,18 @@
         </ion-label>
       </ion-item>
     </ion-list>
-  </ion-content>
 
-  <ion-footer>
-    <ion-toolbar>
-      <ion-buttons slot="start">
-        <ion-button fill="clear" @click="closeModal" :disabled="isSaving">{{ translate("Cancel") }}</ion-button>
-      </ion-buttons>
-      <ion-buttons slot="end">
-        <ion-button @click="save" :disabled="!canSave || isSaving">
-          <ion-spinner v-if="isSaving" name="crescent" />
-          <span v-else>{{ isEdit ? translate("Save changes") : translate("Connect Klaviyo") }}</span>
-        </ion-button>
-      </ion-buttons>
-    </ion-toolbar>
-  </ion-footer>
+    <ion-fab vertical="bottom" horizontal="end" slot="fixed">
+      <ion-fab-button
+        :disabled="!canSave || isSaving"
+        @click="save"
+        :aria-label="isEdit ? translate('Save changes') : translate('Connect Klaviyo')"
+      >
+        <ion-spinner v-if="isSaving" name="crescent" />
+        <ion-icon v-else :icon="isEdit ? saveOutline : checkmarkOutline" />
+      </ion-fab-button>
+    </ion-fab>
+  </ion-content>
 </template>
 
 <script setup lang="ts">
@@ -145,7 +142,8 @@ import {
   IonButtons,
   IonCheckbox,
   IonContent,
-  IonFooter,
+  IonFab,
+  IonFabButton,
   IonHeader,
   IonIcon,
   IonInput,
@@ -157,7 +155,7 @@ import {
   IonToolbar,
   modalController,
 } from "@ionic/vue";
-import { closeOutline, eyeOffOutline, eyeOutline } from "ionicons/icons";
+import { checkmarkOutline, closeOutline, eyeOffOutline, eyeOutline, saveOutline } from "ionicons/icons";
 import { useStore } from "vuex";
 import { translate } from "@/i18n";
 import { KlaviyoService } from "@/services/KlaviyoService";
