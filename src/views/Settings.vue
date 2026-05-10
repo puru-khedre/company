@@ -133,14 +133,13 @@ import { DateTime } from "luxon";
 import { translate } from "@/i18n"
 import { openOutline, syncOutline, checkmarkCircle, closeCircle } from "ionicons/icons"
 import { goToOms } from "@hotwax/dxp-components";
-import api from "@/api";
-import logger from "@/logger";
 import { getCurrentTime } from "../utils"
 import useServiceJob from "@/composables/useServiceJob";
 const store = useStore()
 const { jobs, loading: loadingJobs, fetchJobs } = useServiceJob();
 const appVersion = ref("")
-const omsVersion = ref("")
+const maargInfo = computed(() => store.getters["util/getMaargInfo"])
+const omsVersion = computed(() => String(maargInfo.value?.instanceInfo?.componentRelease || "").trim())
 const appInfo = (process.env.VUE_APP_VERSION_INFO ? JSON.parse(process.env.VUE_APP_VERSION_INFO) : {}) as any
 
 const userProfile = computed(() => store.getters["user/getUserProfile"])
@@ -314,22 +313,11 @@ defineProps({
 })
 onMounted(() => {
   appVersion.value = appInfo.branch ? (appInfo.branch + "-" + appInfo.revision) : appInfo.tag;
-  fetchOmsVersion();
+  // maargInfo is fetched once on login via util/fetchMaargInfo. Dispatch
+  // again here as a safety net for sessions that pre-date that wiring or
+  // where the initial dispatch failed; the action itself is idempotent.
+  store.dispatch("util/fetchMaargInfo");
 })
-
-async function fetchOmsVersion() {
-  try {
-    const response = await api({
-      url: "admin/maarg",
-      method: "GET"
-    }) as any;
-
-    omsVersion.value = String(response?.data?.instanceInfo?.componentRelease || "").trim();
-  } catch (error) {
-    omsVersion.value = "";
-    logger.warn("Failed to fetch OMS version", error);
-  }
-}
 
 async function changeTimeZone() {
   const timeZoneModal = await modalController.create({

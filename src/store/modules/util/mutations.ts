@@ -33,12 +33,16 @@ const mutations: MutationTree <UtilState> = {
     state.shipmentMethodTypes = []
     state.emailTypes = []
     state.statusItems = {}
+    state.maargInfo = null
   },
   [types.UTIL_ORGANIZATION_PARTY_ID_UPDATED](state, payload) {
     state.organizationPartyId = payload
   },
   [types.UTIL_STATUS_ITEMS_UPDATED](state, payload) {
     state.statusItems = payload
+  },
+  [types.UTIL_MAARG_INFO_UPDATED](state, payload) {
+    state.maargInfo = payload
   },
   [types.UTIL_FETCH_STATUS_UPDATED](state, payload) {
     state.fetchStatus = {

@@ -72,6 +72,7 @@ const actions: ActionTree<UserState, RootState> = {
       commit(types.USER_TOKEN_CHANGED, { newToken: api_key })
       this.dispatch('util/fetchOrganizationPartyId');
       this.dispatch('util/fetchStatusItems');
+      this.dispatch('util/fetchMaargInfo');
       useServiceJob().fetchJobs();
       emitter.emit("dismissLoader")
 

@@ -38,6 +38,12 @@
           :placeholder="'https://unigate.example.com/rest/s1/unigate/'"
         />
       </ion-item>
+      <ion-item v-if="sendUrlWarning" color="warning">
+        <ion-label>
+          <h3>{{ translate("Check this Unigate URL") }}</h3>
+          <p>{{ sendUrlWarning }}</p>
+        </ion-label>
+      </ion-item>
       <ion-item>
         <ion-input
           v-model="form.description"
@@ -152,13 +158,17 @@ import { translate } from "@/i18n";
 import { KlaviyoService } from "@/services/KlaviyoService";
 import { getResponseErrorMessage, showToast } from "@/utils";
 import logger from "@/logger";
+import { getPreferredUnigateSendUrl, getUnigateSendUrlWarning } from "@/utils/maarg";
 
 const store = useStore();
 const config = computed(() => store.getters["klaviyo/getUnigateConfig"]);
+// maargInfo is fetched once at login (user/login → util/fetchMaargInfo).
+// Read from the store instead of refetching per modal open.
+const maargInfo = computed(() => store.getters["util/getMaargInfo"]);
 
 const form = reactive({
   internalId: config.value?.internalId || "",
-  sendUrl: config.value?.sendUrl || "",
+  sendUrl: getPreferredUnigateSendUrl(config.value?.sendUrl || "", maargInfo.value),
   description: config.value?.description || "",
   authHeaderName: config.value?.authHeaderName || "api_key",
   newApiKey: "",
@@ -185,6 +195,8 @@ const canSave = computed(() => {
   return true;
 });
 
+const sendUrlWarning = computed(() => getUnigateSendUrlWarning(form.sendUrl, maargInfo.value));
+
 function closeModal() {
   modalController.dismiss({ dismissed: true });
 }
@@ -208,7 +220,7 @@ async function save() {
   try {
     const payload: any = {
       internalId: form.internalId.trim(),
-      sendUrl: form.sendUrl.trim(),
+      sendUrl: form.sendUrl.trim() || recommendedSendUrl.value,
       description: form.description.trim(),
       authHeaderName: form.authHeaderName.trim() || "api_key",
     };

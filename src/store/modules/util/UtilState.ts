@@ -8,6 +8,7 @@ export default interface UtilState {
   emailTypes: any[];
   organizationPartyId: string;
   statusItems: any;
+  maargInfo: any;
   fetchStatus: {
     facilities: string;
     statuses: string;
@@ -18,6 +19,7 @@ export default interface UtilState {
     productIdentifiers: string;
     shipmentMethodTypes: string;
     emailTypes: string;
+    maargInfo: string;
     lastFetched: number;
   };
 }

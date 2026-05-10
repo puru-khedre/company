@@ -5,6 +5,7 @@ import { hasError } from "@/utils"
 import logger from "@/logger"
 import UtilState from "./UtilState"
 import { UtilService } from "@/services/UtilService"
+import api from "@/api"
 
 const actions: ActionTree<UtilState, RootState> = {
 
@@ -216,9 +217,32 @@ const actions: ActionTree<UtilState, RootState> = {
     commit(types.UTIL_STATUS_ITEMS_UPDATED, statusItems)
   },
 
+  // /admin/maarg returns the OMS instance metadata (instancePurpose,
+  // componentRelease, deployed component versions, etc.). The values are
+  // stable for the lifetime of a session, so this action is idempotent —
+  // callers can dispatch it freely and only the first call hits the API.
+  async fetchMaargInfo({ commit, state }) {
+    if (state.maargInfo) return
+    if (state.fetchStatus.maargInfo === 'pending') return
+    commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'pending' })
+    try {
+      const resp: any = await api({ url: "admin/maarg", method: "get" })
+      if (resp?.data && typeof resp.data === 'object' && !hasError(resp)) {
+        commit(types.UTIL_MAARG_INFO_UPDATED, resp.data)
+        commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'success', lastFetched: Date.now() })
+      } else {
+        commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'error' })
+      }
+    } catch (error) {
+      logger.warn("Failed to fetch maarg info", error)
+      commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'error' })
+    }
+  },
+
   async clearUtilState({ commit }) {
     commit(types.UTIL_CLEARED)
     commit(types.UTIL_ORGANIZATION_PARTY_ID_UPDATED, "")
+    commit(types.UTIL_MAARG_INFO_UPDATED, null)
   }
 }
 

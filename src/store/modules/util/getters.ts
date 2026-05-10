@@ -30,6 +30,9 @@ const getters: GetterTree <UtilState, RootState> = {
   getStatusItems(state) {
     return state.statusItems;
   },
+  getMaargInfo(state) {
+    return state.maargInfo;
+  },
   getFetchStatus(state) {
     return state.fetchStatus;
   }

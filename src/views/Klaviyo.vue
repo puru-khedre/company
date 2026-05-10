@@ -56,6 +56,15 @@
       </template>
 
       <template v-else-if="!klaviyoConnections.length">
+        <ion-list v-if="unigateConfigWarning" inset>
+          <ion-item color="warning">
+            <ion-label>
+              <h2>{{ translate("Check the Unigate tenant") }}</h2>
+              <p>{{ unigateConfigWarning }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+
         <ion-card>
           <ion-card-header>
             <ion-card-title>{{ translate("Send your first Klaviyo email") }}</ion-card-title>
@@ -86,6 +95,15 @@
       </template>
 
       <template v-else>
+        <ion-list v-if="unigateConfigWarning" inset>
+          <ion-item color="warning">
+            <ion-label>
+              <h2>{{ translate("Check the Unigate tenant") }}</h2>
+              <p>{{ unigateConfigWarning }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+
         <ion-card>
           <ion-card-content>
             <p>{{ translate("Each connection is one Klaviyo account or brand. Open one to control which transactional emails are sent for which product stores.") }}</p>
@@ -160,6 +178,7 @@ import { translate } from "@/i18n";
 import { KlaviyoService } from "@/services/KlaviyoService";
 import KlaviyoConnectionModal from "@/components/KlaviyoConnectionModal.vue";
 import KlaviyoUnigateConfigModal from "@/components/KlaviyoUnigateConfigModal.vue";
+import { getUnigateSendUrlWarning } from "@/utils/maarg";
 
 const store = useStore();
 const router = useRouter();
@@ -168,8 +187,16 @@ const isInitialLoading = ref(false);
 const isRechecking = ref(false);
 
 const hasUnigateConfig = computed(() => store.getters["klaviyo/hasUnigateConfig"]);
+const unigateConfig = computed(() => store.getters["klaviyo/getUnigateConfig"]);
 const klaviyoConnections = computed(() => store.getters["klaviyo/getKlaviyoConnections"] || []);
 const eventCountByGateway = computed(() => store.getters["klaviyo/getEventCountByGateway"] || {});
+// maargInfo is fetched once at login (see user/login → util/fetchMaargInfo)
+// and lives in the util Vuex module. Read it from the store instead of
+// triggering a per-screen fetch.
+const maargInfo = computed(() => store.getters["util/getMaargInfo"]);
+const unigateConfigWarning = computed(() => {
+  return getUnigateSendUrlWarning(unigateConfig.value?.sendUrl, maargInfo.value);
+});
 
 onIonViewWillEnter(async () => {
   if (!store.getters["klaviyo/hasCheckedUnigate"]) {
@@ -215,6 +242,9 @@ async function openConnectionModal() {
 
 async function openUnigateConfigModal() {
   const modal = await modalController.create({ component: KlaviyoUnigateConfigModal });
+  modal.onDidDismiss().then(async () => {
+    await store.dispatch("klaviyo/fetchUnigateConfig");
+  });
   modal.present();
 }
 
