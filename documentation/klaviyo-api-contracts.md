@@ -299,13 +299,6 @@ Deletion shows the count of `ProductStoreEmailSetting` rows that point at this
 `commGatewayAuthId`. The user has to type `DELETE` to confirm if there are
 any. (Same pattern as Shopify's destructive flows.)
 
-### Mock mode
-
-`KlaviyoService.ts` exposes a `useMockData` flag. When the backend endpoints
-return 404 (because the OMS instance hasn't deployed them yet), the service
-falls back to a mock layer (`src/services/klaviyoMockData.ts`) so the UI is
-testable end-to-end. The mock layer mirrors every shape in this document.
-
 ---
 
 ## 9. Error contract
