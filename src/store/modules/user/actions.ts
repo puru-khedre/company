@@ -21,30 +21,18 @@ const actions: ActionTree<UserState, RootState> = {
   */
   async login ({ commit, dispatch, state }, payload) {
     try {
-
-      // TODO: implement support for permission check
-
       const { token, oms, omsRedirectionUrl } = payload;
       dispatch("setUserInstanceUrl", oms);
-      
-      // Getting the permissions list from server
-      const permissionId = process.env.VUE_APP_PERMISSION_ID;
-      // Prepare permissions list
-      const serverPermissionsFromRules = getServerPermissionsFromRules();
-      if (permissionId) serverPermissionsFromRules.push(permissionId);
 
-      const serverPermissions: Array<string> = await UserService.getUserPermissions({
-        permissionIds: [...new Set(serverPermissionsFromRules)]
-      }, omsRedirectionUrl, token);
-      const appPermissions = prepareAppPermissions(serverPermissions);
-
+      // As the token is not yet set in the state passing url and token headers explicitly
+      await dispatch("fetchPermissions", { url: omsRedirectionUrl, token })
 
       // Checking if the user has permission to access the app
       // If there is no configuration, the permission check is not enabled
-      if (permissionId) {
-        // As the token is not yet set in the state passing token headers explicitly
+      const permissionId = process.env.VUE_APP_PERMISSION_ID;
+      if(permissionId) {
         // TODO Abstract this out, how token is handled should be part of the method not the callee
-        const hasPermission = appPermissions.some((appPermission: any) => appPermission.action === permissionId );
+        const hasPermission = state.permissions.some((appPermission: any) => appPermission.action === permissionId );
         // If there are any errors or permission check fails do not allow user to login
         if (!hasPermission) {
           const permissionError = 'You do not have permission to access the app.';
@@ -57,10 +45,7 @@ const actions: ActionTree<UserState, RootState> = {
       emitter.emit("presentLoader", { message: "Logging in..." })
       const api_key = await UserService.login(token)
 
-      await Promise.all([
-        dispatch('fetchUserProfile', api_key),
-        dispatch('fetchPermissions', { params: { permissionIds: [...new Set(serverPermissionsFromRules)] }, url: omsRedirectionUrl, token })
-      ])
+      await dispatch('fetchUserProfile', api_key)
 
       setPermissions(state.permissions);
       if(omsRedirectionUrl && token) {
@@ -105,8 +90,16 @@ const actions: ActionTree<UserState, RootState> = {
   async fetchPermissions({ commit }, payload) {
     commit(types.USER_FETCH_STATUS_UPDATED, { permissions: 'pending' })
     try {
-      const resp = await UserService.getUserPermissions(payload.params, payload.url, payload.token);
-      const appPermissions = prepareAppPermissions(resp);
+      // Getting the permissions list from server
+      const permissionId = process.env.VUE_APP_PERMISSION_ID;
+      // Prepare permissions list
+      const serverPermissionsFromRules = getServerPermissionsFromRules();
+      if (permissionId) serverPermissionsFromRules.push(permissionId);
+
+      const serverPermissions: Array<string> = await UserService.getUserPermissions({
+        permissionIds: [...new Set(serverPermissionsFromRules)]
+      }, payload?.url, payload.token);
+      const appPermissions = prepareAppPermissions(serverPermissions);
       commit(types.USER_PERMISSIONS_UPDATED, appPermissions);
       commit(types.USER_FETCH_STATUS_UPDATED, { permissions: 'success', lastFetched: Date.now() })
     } catch (error) {

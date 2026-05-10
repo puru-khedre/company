@@ -283,7 +283,7 @@ const browserTimeZone = ref({
 
 function refreshCache() {
   store.dispatch('user/fetchUserProfile', store.state.user.token);
-  store.dispatch('user/fetchPermissions', { params: { permissionIds: [process.env.VUE_APP_PERMISSION_ID] }, url: store.getters['user/getOmsRedirectionInfo'].url, token: store.getters['user/getOmsRedirectionInfo'].token });
+  store.dispatch("user/fetchPermissions", { url: store.getters["user/getOmsRedirectionInfo"].url, token: store.getters["user/getOmsRedirectionInfo"].token });
   store.dispatch('util/fetchStatusItems');
   store.dispatch('util/fetchFacilities');
   store.dispatch('util/fetchOrganizationPartyId');
