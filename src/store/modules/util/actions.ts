@@ -7,6 +7,11 @@ import UtilState from "./UtilState"
 import { UtilService } from "@/services/UtilService"
 import api from "@/api"
 
+// Module-local promise that holds the in-flight maarg fetch. Concurrent
+// callers await the same request instead of seeing an empty store while a
+// fetch is mid-flight.
+let inflightMaargFetch: Promise<any> | null = null
+
 const actions: ActionTree<UtilState, RootState> = {
 
   async fetchFacilityGroups({ commit }) {
@@ -219,24 +224,40 @@ const actions: ActionTree<UtilState, RootState> = {
 
   // /admin/maarg returns the OMS instance metadata (instancePurpose,
   // componentRelease, deployed component versions, etc.). The values are
-  // stable for the lifetime of a session, so this action is idempotent —
-  // callers can dispatch it freely and only the first call hits the API.
+  // stable for the lifetime of a session, so this action is idempotent:
+  //
+  //   - Already populated → resolves to the cached value with no network I/O.
+  //   - Fetch already in flight → awaits the in-flight promise so concurrent
+  //     callers all observe the same outcome rather than racing.
+  //   - Otherwise → makes the request, commits, and resolves with the data.
+  //
+  // Errors (network failures, malformed responses) propagate to the caller so
+  // that consumers like ShopifyProductSyncMigrationService can surface the
+  // actual failure instead of a generic fallback. Fire-and-forget callers
+  // (Settings.vue onMounted, user/login bootstrap) attach .catch() handlers.
   async fetchMaargInfo({ commit, state }) {
-    if (state.maargInfo) return
-    if (state.fetchStatus.maargInfo === 'pending') return
+    if (state.maargInfo) return state.maargInfo
+    if (inflightMaargFetch) return inflightMaargFetch
+
     commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'pending' })
-    try {
-      const resp: any = await api({ url: "admin/maarg", method: "get" })
-      if (resp?.data && typeof resp.data === 'object' && !hasError(resp)) {
+    inflightMaargFetch = (async () => {
+      try {
+        const resp: any = await api({ url: "admin/maarg", method: "get" })
+        if (!resp?.data || typeof resp.data !== 'object' || hasError(resp)) {
+          throw new Error("Maarg version response is unavailable.")
+        }
         commit(types.UTIL_MAARG_INFO_UPDATED, resp.data)
         commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'success', lastFetched: Date.now() })
-      } else {
+        return resp.data
+      } catch (error) {
+        logger.warn("Failed to fetch maarg info", error)
         commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'error' })
+        throw error
+      } finally {
+        inflightMaargFetch = null
       }
-    } catch (error) {
-      logger.warn("Failed to fetch maarg info", error)
-      commit(types.UTIL_FETCH_STATUS_UPDATED, { maargInfo: 'error' })
-    }
+    })()
+    return inflightMaargFetch
   },
 
   async clearUtilState({ commit }) {

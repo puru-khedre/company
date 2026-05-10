@@ -316,7 +316,9 @@ onMounted(() => {
   // maargInfo is fetched once on login via util/fetchMaargInfo. Dispatch
   // again here as a safety net for sessions that pre-date that wiring or
   // where the initial dispatch failed; the action itself is idempotent.
-  store.dispatch("util/fetchMaargInfo");
+  // Failures are surfaced via the empty omsVersion label, so swallow the
+  // rejection here to avoid an unhandled promise warning.
+  store.dispatch("util/fetchMaargInfo").catch(() => { /* noop */ });
 })
 
 async function changeTimeZone() {

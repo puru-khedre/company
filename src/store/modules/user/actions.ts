@@ -72,7 +72,11 @@ const actions: ActionTree<UserState, RootState> = {
       commit(types.USER_TOKEN_CHANGED, { newToken: api_key })
       this.dispatch('util/fetchOrganizationPartyId');
       this.dispatch('util/fetchStatusItems');
-      this.dispatch('util/fetchMaargInfo');
+      // Fire-and-forget: callers that need the result (e.g. Klaviyo, Shopify
+      // sync migration) re-dispatch and await it themselves. Swallow here so a
+      // /admin/maarg failure on a brand-new session doesn't surface as an
+      // unhandled rejection while the user is still in the login flow.
+      this.dispatch('util/fetchMaargInfo').catch(() => { /* noop */ });
       useServiceJob().fetchJobs();
       emitter.emit("dismissLoader")
 
