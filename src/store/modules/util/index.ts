@@ -17,6 +17,7 @@ const utilModule: Module<UtilState, RootState> = {
     emailTypes: [],
     organizationPartyId: "",
     statusItems: {},
+    maargInfo: null,
     fetchStatus: {
       facilities: 'none',
       statuses: 'none',
@@ -27,6 +28,7 @@ const utilModule: Module<UtilState, RootState> = {
       productIdentifiers: 'none',
       shipmentMethodTypes: 'none',
       emailTypes: 'none',
+      maargInfo: 'none',
       lastFetched: 0
     }
   },

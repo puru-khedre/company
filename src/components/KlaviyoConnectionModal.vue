@@ -45,16 +45,14 @@
       <ion-item>
         <ion-input
           v-model="form.privateApiKey"
-          :type="showKey ? 'text' : 'password'"
+          type="password"
           :label="translate('Klaviyo private API key')"
           label-placement="stacked"
           :placeholder="'pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
           autocomplete="off"
           spellcheck="false"
         >
-          <ion-button slot="end" fill="clear" @click="showKey = !showKey" :aria-label="translate(showKey ? 'Hide key' : 'Show key')">
-            <ion-icon slot="icon-only" :icon="showKey ? eyeOffOutline : eyeOutline" />
-          </ion-button>
+          <ion-input-password-toggle slot="end" />
         </ion-input>
       </ion-item>
       <ion-item>
@@ -86,25 +84,24 @@
         <ion-item>
           <ion-input
             v-model="form.privateApiKey"
-            :type="showKey ? 'text' : 'password'"
+            type="password"
             :label="translate('New Klaviyo private API key')"
             label-placement="stacked"
             :placeholder="'pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
             autocomplete="off"
             spellcheck="false"
           >
-            <ion-button slot="end" fill="clear" @click="showKey = !showKey" :aria-label="translate(showKey ? 'Hide key' : 'Show key')">
-              <ion-icon slot="icon-only" :icon="showKey ? eyeOffOutline : eyeOutline" />
-            </ion-button>
+            <ion-input-password-toggle slot="end" />
           </ion-input>
         </ion-item>
         <ion-item>
           <ion-checkbox
-            slot="start"
             :checked="confirmedKeyReplacement"
             @ionChange="confirmedKeyReplacement = $event.detail.checked"
-          />
-          <ion-label>{{ translate("I understand the previous key will stop working immediately.") }}</ion-label>
+            justify="space-between"
+          >
+          {{ translate("I understand the previous key will stop working immediately.") }}
+          </ion-checkbox>
         </ion-item>
         <ion-item lines="none">
           <ion-button fill="clear" expand="block" @click="cancelReplaceKey">{{ translate("Cancel key replacement") }}</ion-button>
@@ -121,21 +118,18 @@
         </ion-label>
       </ion-item>
     </ion-list>
-  </ion-content>
 
-  <ion-footer>
-    <ion-toolbar>
-      <ion-buttons slot="start">
-        <ion-button fill="clear" @click="closeModal" :disabled="isSaving">{{ translate("Cancel") }}</ion-button>
-      </ion-buttons>
-      <ion-buttons slot="end">
-        <ion-button @click="save" :disabled="!canSave || isSaving">
-          <ion-spinner v-if="isSaving" name="crescent" />
-          <span v-else>{{ isEdit ? translate("Save changes") : translate("Connect Klaviyo") }}</span>
-        </ion-button>
-      </ion-buttons>
-    </ion-toolbar>
-  </ion-footer>
+    <ion-fab vertical="bottom" horizontal="end" slot="fixed">
+      <ion-fab-button
+        :disabled="!canSave || isSaving"
+        @click="save"
+        :aria-label="isEdit ? translate('Save changes') : translate('Connect Klaviyo')"
+      >
+        <ion-spinner v-if="isSaving" name="crescent" />
+        <ion-icon v-else :icon="isEdit ? saveOutline : checkmarkOutline" />
+      </ion-fab-button>
+    </ion-fab>
+  </ion-content>
 </template>
 
 <script setup lang="ts">
@@ -145,10 +139,12 @@ import {
   IonButtons,
   IonCheckbox,
   IonContent,
-  IonFooter,
+  IonFab,
+  IonFabButton,
   IonHeader,
   IonIcon,
   IonInput,
+  IonInputPasswordToggle,
   IonItem,
   IonLabel,
   IonList,
@@ -157,7 +153,7 @@ import {
   IonToolbar,
   modalController,
 } from "@ionic/vue";
-import { closeOutline, eyeOffOutline, eyeOutline } from "ionicons/icons";
+import { checkmarkOutline, closeOutline, saveOutline } from "ionicons/icons";
 import { useStore } from "vuex";
 import { translate } from "@/i18n";
 import { KlaviyoService } from "@/services/KlaviyoService";
@@ -177,7 +173,6 @@ const form = ref({
   privateApiKey: "",
 });
 
-const showKey = ref(false);
 const isReplacingKey = ref(false);
 const confirmedKeyReplacement = ref(false);
 const isSaving = ref(false);

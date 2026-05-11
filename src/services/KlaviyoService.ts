@@ -1,74 +1,57 @@
 import api from "@/api";
-import logger from "@/logger";
-import { klaviyoMockData } from "./klaviyoMockData";
-import type {
-  CommGatewayAuth,
-  CommGatewayConfig,
-  ProductStoreEmailSetting,
-  SystemMessageRemote,
-} from "./klaviyoMockData";
 
 // All Klaviyo backend endpoints are documented in
 // `documentation/klaviyo-api-contracts.md`. The functions in this file are the
 // single layer that translates Vue components → REST.
-//
-// The OMS instance behind `dev-maarg` may not yet have the new endpoints
-// deployed. To keep the UI usable end-to-end, every function here falls back
-// to a local mock layer when the backend returns a recognisable
-// "not deployed" error (404, 405, network error). The fallback is purely a
-// dev convenience — a banner is shown in the UI when it kicks in.
 
-// Public so the rest of the app (banner, debug menu) can read/toggle.
-// QA/dev affordance: visiting any Klaviyo URL with `?mock=1` flips forceMock on
-// for the rest of the session so the UI is testable without a live OMS.
-const detectForceMock = () => {
-  if (typeof window === "undefined") return false;
-  try {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("mock") === "1") {
-      window.sessionStorage?.setItem("klaviyoForceMock", "1");
-      return true;
-    }
-    return window.sessionStorage?.getItem("klaviyoForceMock") === "1";
-  } catch {
-    return false;
-  }
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type CommGatewayAuth = {
+  commGatewayAuthId: string;
+  commGatewayConfigId: string;
+  tenantPartyId?: string;
+  description: string;
+  baseUrl: string;
+  authHeaderName: string;
+  publicKey: string;
+  username?: string | null;
+  password?: string | null;
+  modeEnumId?: string | null;
+  authTypeEnumId?: string | null;
 };
 
-export const klaviyoServiceState = {
-  // Set to `true` when any call has fallen back to mock data this session.
-  mockFallbackTriggered: false,
-  // Forces mock mode even when the backend is reachable. Intended for QA.
-  forceMock: detectForceMock(),
+export type CommGatewayConfig = {
+  commGatewayConfigId: string;
+  description: string;
+  sendEmailServiceName?: string;
+  createEventServiceName?: string;
 };
 
-const isNotDeployedError = (error: any) => {
-  const status = error?.response?.status;
-  if (status === 404 || status === 405 || status === 501) return true;
-  // Network-level errors (CORS preflight failures, DNS, etc.).
-  if (!error?.response && error?.message) return true;
-  return false;
+export type ProductStoreEmailSetting = {
+  productStoreId: string;
+  emailType: string;
+  subject: string;
+  fromAddress?: string | null;
+  systemMessageRemoteId: string;
+  gatewayAuthId: string;
 };
 
-const tryReal = async <T>(real: () => Promise<T>, mock: () => Promise<T>): Promise<T> => {
-  if (klaviyoServiceState.forceMock) return mock();
-  try {
-    return await real();
-  } catch (error: any) {
-    if (isNotDeployedError(error)) {
-      klaviyoServiceState.mockFallbackTriggered = true;
-      logger.warn("[Klaviyo] backend endpoint unavailable, falling back to mock data", error?.message || error);
-      return mock();
-    }
-    throw error;
-  }
+export type SystemMessageRemote = {
+  systemMessageRemoteId: string;
+  internalId?: string;
+  description?: string;
+  sendUrl?: string;
+  publicKey?: string;
+  authHeaderName?: string;
 };
 
 // ---------------------------------------------------------------------------
-// Tenant readiness — UNIGATE_CONFIG check
+// Response shape helpers
 // ---------------------------------------------------------------------------
 
-// The OMS service returns either a bare array OR `{ systemMessageRemoteList: [...] }`
+// The OMS service returns either a bare array OR `{ <listKey>: [...] }`
 // depending on which underlying service handles the request. Normalize here.
 const unwrapList = (data: any, key?: string): any[] => {
   if (Array.isArray(data)) return data;
@@ -76,17 +59,13 @@ const unwrapList = (data: any, key?: string): any[] => {
   return [];
 };
 
+// ---------------------------------------------------------------------------
+// Tenant readiness — UNIGATE_CONFIG check
+// ---------------------------------------------------------------------------
+
 const fetchSystemMessageRemotes = async (): Promise<SystemMessageRemote[]> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({ url: "oms/systemMessageRemotes", method: "get" });
-      return unwrapList(resp?.data, "systemMessageRemoteList");
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.fetchSystemMessageRemotes();
-      return resp.data;
-    }
-  );
+  const resp: any = await api({ url: "oms/systemMessageRemotes", method: "get" });
+  return unwrapList(resp?.data, "systemMessageRemoteList");
 };
 
 const fetchUnigateConfig = async (): Promise<SystemMessageRemote | null> => {
@@ -94,78 +73,51 @@ const fetchUnigateConfig = async (): Promise<SystemMessageRemote | null> => {
   return remotes.find((r: any) => r?.systemMessageRemoteId === "UNIGATE_CONFIG") || null;
 };
 
+const updateSystemMessageRemote = async (
+  systemMessageRemoteId: string,
+  payload: Partial<SystemMessageRemote>
+): Promise<SystemMessageRemote> => {
+  const resp: any = await api({
+    url: `oms/systemMessageRemotes/${encodeURIComponent(systemMessageRemoteId)}`,
+    method: "put",
+    data: payload,
+  });
+  return resp.data;
+};
+
 // ---------------------------------------------------------------------------
 // CommGatewayAuth (Klaviyo connections)
 // ---------------------------------------------------------------------------
 
 const fetchCommGatewayAuths = async (): Promise<CommGatewayAuth[]> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({ url: "oms/commGatewayAuths", method: "get" });
-      return unwrapList(resp?.data, "commAuthList");
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.fetchCommGatewayAuths();
-      return resp.data;
-    }
-  );
+  const resp: any = await api({ url: "oms/commGatewayAuths", method: "get" });
+  return unwrapList(resp?.data, "commAuthList");
 };
 
 const fetchCommGatewayConfigs = async (): Promise<CommGatewayConfig[]> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({ url: "oms/commGatewayConfigs", method: "get" });
-      return unwrapList(resp?.data, "commConfigList");
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.fetchCommGatewayConfigs();
-      return resp.data;
-    }
-  );
+  const resp: any = await api({ url: "oms/commGatewayConfigs", method: "get" });
+  return unwrapList(resp?.data, "commConfigList");
 };
 
 const createCommGatewayAuth = async (payload: Partial<CommGatewayAuth>): Promise<CommGatewayAuth> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({ url: "oms/commGatewayAuths", method: "post", data: payload });
-      return resp.data;
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.createCommGatewayAuth(payload);
-      return resp.data;
-    }
-  );
+  const resp: any = await api({ url: "oms/commGatewayAuths", method: "post", data: payload });
+  return resp.data;
 };
 
 const updateCommGatewayAuth = async (commGatewayAuthId: string, payload: Partial<CommGatewayAuth>): Promise<CommGatewayAuth> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({
-        url: `oms/commGatewayAuths/${encodeURIComponent(commGatewayAuthId)}`,
-        method: "put",
-        data: payload,
-      });
-      return resp.data;
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.updateCommGatewayAuth(commGatewayAuthId, payload);
-      return resp.data;
-    }
-  );
+  const resp: any = await api({
+    url: `oms/commGatewayAuths/${encodeURIComponent(commGatewayAuthId)}`,
+    method: "put",
+    data: payload,
+  });
+  return resp.data;
 };
 
 const deleteCommGatewayAuth = async (commGatewayAuthId: string): Promise<void> => {
-  return tryReal(
-    async () => {
-      await api({
-        url: `oms/commGatewayAuths/${encodeURIComponent(commGatewayAuthId)}`,
-        method: "delete",
-      });
-    },
-    async () => {
-      await klaviyoMockData.deleteCommGatewayAuth(commGatewayAuthId);
-    }
-  );
+  await api({
+    url: `oms/commGatewayAuths/${encodeURIComponent(commGatewayAuthId)}`,
+    method: "delete",
+  });
 };
 
 // ---------------------------------------------------------------------------
@@ -173,63 +125,32 @@ const deleteCommGatewayAuth = async (commGatewayAuthId: string): Promise<void> =
 // ---------------------------------------------------------------------------
 
 const fetchEmailSettingsForStore = async (productStoreId: string): Promise<ProductStoreEmailSetting[]> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({
-        url: `oms/productStoreEmailSettings/${encodeURIComponent(productStoreId)}/emailSettings`,
-        method: "get",
-      });
-      return Array.isArray(resp?.data) ? resp.data : [];
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.fetchEmailSettings(productStoreId);
-      return resp.data;
-    }
-  );
+  const resp: any = await api({
+    url: `oms/productStoreEmailSettings/${encodeURIComponent(productStoreId)}/emailSettings`,
+    method: "get",
+  });
+  return Array.isArray(resp?.data) ? resp.data : [];
 };
 
 const fetchAllEmailSettings = async (): Promise<ProductStoreEmailSetting[]> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({ url: "oms/productStoreEmailSettings", method: "get" });
-      return Array.isArray(resp?.data) ? resp.data : [];
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.fetchEmailSettings();
-      return resp.data;
-    }
-  );
+  const resp: any = await api({ url: "oms/productStoreEmailSettings", method: "get" });
+  return Array.isArray(resp?.data) ? resp.data : [];
 };
 
 const upsertEmailSetting = async (payload: ProductStoreEmailSetting): Promise<ProductStoreEmailSetting> => {
-  return tryReal(
-    async () => {
-      const resp: any = await api({
-        url: `oms/productStoreEmailSettings/${encodeURIComponent(payload.productStoreId)}/emailSettings`,
-        method: "post",
-        data: payload,
-      });
-      return resp.data || payload;
-    },
-    async () => {
-      const resp: any = await klaviyoMockData.upsertEmailSetting(payload);
-      return resp.data;
-    }
-  );
+  const resp: any = await api({
+    url: `oms/productStoreEmailSettings/${encodeURIComponent(payload.productStoreId)}/emailSettings`,
+    method: "post",
+    data: payload,
+  });
+  return resp.data || payload;
 };
 
 const deleteEmailSetting = async (productStoreId: string, emailType: string): Promise<void> => {
-  return tryReal(
-    async () => {
-      await api({
-        url: `oms/productStoreEmailSettings/${encodeURIComponent(productStoreId)}/emailSettings/${encodeURIComponent(emailType)}`,
-        method: "delete",
-      });
-    },
-    async () => {
-      await klaviyoMockData.deleteEmailSetting(productStoreId, emailType);
-    }
-  );
+  await api({
+    url: `oms/productStoreEmailSettings/${encodeURIComponent(productStoreId)}/emailSettings/${encodeURIComponent(emailType)}`,
+    method: "delete",
+  });
 };
 
 // Email-type enumerations are not fetched here. They live in the existing
@@ -281,6 +202,7 @@ export const KlaviyoService = {
   // Tenant
   fetchSystemMessageRemotes,
   fetchUnigateConfig,
+  updateSystemMessageRemote,
   // CommGatewayAuth
   fetchCommGatewayAuths,
   fetchCommGatewayConfigs,
@@ -300,5 +222,3 @@ export const KlaviyoService = {
   slugify,
   KLAVIYO_KEY_PREFIX,
 };
-
-export type { CommGatewayAuth, CommGatewayConfig, ProductStoreEmailSetting, SystemMessageRemote };

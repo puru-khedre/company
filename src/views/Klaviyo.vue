@@ -4,25 +4,15 @@
       <ion-toolbar>
         <ion-menu-button slot="start" />
         <ion-title>{{ translate("Klaviyo") }}</ion-title>
-        <ion-buttons slot="end" v-if="hasUnigateConfig && klaviyoConnections.length">
-          <ion-button @click="openConnectionModal()">
-            <ion-icon slot="start" :icon="addCircleOutline" />
-            {{ translate("Add connection") }}
+        <ion-buttons slot="end" v-if="hasUnigateConfig">
+          <ion-button @click="openUnigateConfigModal()" :aria-label="translate('Unigate tenant')">
+            <ion-icon slot="icon-only" :icon="serverOutline" />
           </ion-button>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
 
     <ion-content>
-      <ion-card v-if="mockFallbackTriggered" color="warning">
-        <ion-card-header>
-          <ion-card-title>{{ translate("Showing mock data") }}</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <p>{{ translate("The OMS instance has not deployed the Klaviyo endpoints yet. The UI is running against in-memory mock data so you can preview the experience.") }}</p>
-        </ion-card-content>
-      </ion-card>
-
       <ion-list v-if="isInitialLoading" inset>
         <ion-item v-for="item in 3" :key="item">
           <ion-label>
@@ -66,6 +56,15 @@
       </template>
 
       <template v-else-if="!klaviyoConnections.length">
+        <ion-list v-if="unigateConfigWarning" inset>
+          <ion-item color="warning">
+            <ion-label>
+              <h2>{{ translate("Check the Unigate tenant") }}</h2>
+              <p>{{ unigateConfigWarning }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+
         <ion-card>
           <ion-card-header>
             <ion-card-title>{{ translate("Send your first Klaviyo email") }}</ion-card-title>
@@ -96,6 +95,15 @@
       </template>
 
       <template v-else>
+        <ion-list v-if="unigateConfigWarning" inset>
+          <ion-item color="warning">
+            <ion-label>
+              <h2>{{ translate("Check the Unigate tenant") }}</h2>
+              <p>{{ unigateConfigWarning }}</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+
         <ion-card>
           <ion-card-content>
             <p>{{ translate("Each connection is one Klaviyo account or brand. Open one to control which transactional emails are sent for which product stores.") }}</p>
@@ -121,6 +129,17 @@
           </ion-item>
         </ion-list>
       </template>
+
+      <ion-fab
+        v-if="hasUnigateConfig && klaviyoConnections.length"
+        vertical="bottom"
+        horizontal="end"
+        slot="fixed"
+      >
+        <ion-fab-button @click="openConnectionModal()">
+          <ion-icon :icon="addOutline" />
+        </ion-fab-button>
+      </ion-fab>
     </ion-content>
   </ion-page>
 </template>
@@ -136,6 +155,8 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonContent,
+  IonFab,
+  IonFabButton,
   IonHeader,
   IonIcon,
   IonItem,
@@ -150,12 +171,14 @@ import {
   modalController,
   onIonViewWillEnter,
 } from "@ionic/vue";
-import { addCircleOutline } from "ionicons/icons";
+import { addCircleOutline, addOutline, serverOutline } from "ionicons/icons";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import { translate } from "@/i18n";
-import { KlaviyoService, klaviyoServiceState } from "@/services/KlaviyoService";
+import { KlaviyoService } from "@/services/KlaviyoService";
 import KlaviyoConnectionModal from "@/components/KlaviyoConnectionModal.vue";
+import KlaviyoUnigateConfigModal from "@/components/KlaviyoUnigateConfigModal.vue";
+import { getUnigateSendUrlWarning } from "@/utils/maarg";
 
 const store = useStore();
 const router = useRouter();
@@ -164,9 +187,16 @@ const isInitialLoading = ref(false);
 const isRechecking = ref(false);
 
 const hasUnigateConfig = computed(() => store.getters["klaviyo/hasUnigateConfig"]);
+const unigateConfig = computed(() => store.getters["klaviyo/getUnigateConfig"]);
 const klaviyoConnections = computed(() => store.getters["klaviyo/getKlaviyoConnections"] || []);
 const eventCountByGateway = computed(() => store.getters["klaviyo/getEventCountByGateway"] || {});
-const mockFallbackTriggered = computed(() => klaviyoServiceState.mockFallbackTriggered || klaviyoServiceState.forceMock);
+// maargInfo is fetched once at login (see user/login → util/fetchMaargInfo)
+// and lives in the util Vuex module. Read it from the store instead of
+// triggering a per-screen fetch.
+const maargInfo = computed(() => store.getters["util/getMaargInfo"]);
+const unigateConfigWarning = computed(() => {
+  return getUnigateSendUrlWarning(unigateConfig.value?.sendUrl, maargInfo.value);
+});
 
 onIonViewWillEnter(async () => {
   if (!store.getters["klaviyo/hasCheckedUnigate"]) {
@@ -206,6 +236,14 @@ async function openConnectionModal() {
       await store.dispatch("klaviyo/fetchConnections");
       router.push(`/klaviyo/${encodeURIComponent(event.data.connection.commGatewayAuthId)}`);
     }
+  });
+  modal.present();
+}
+
+async function openUnigateConfigModal() {
+  const modal = await modalController.create({ component: KlaviyoUnigateConfigModal });
+  modal.onDidDismiss().then(async () => {
+    await store.dispatch("klaviyo/fetchUnigateConfig");
   });
   modal.present();
 }
