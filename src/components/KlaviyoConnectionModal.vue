@@ -45,16 +45,14 @@
       <ion-item>
         <ion-input
           v-model="form.privateApiKey"
-          :type="showKey ? 'text' : 'password'"
+          type="password"
           :label="translate('Klaviyo private API key')"
           label-placement="stacked"
           :placeholder="'pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
           autocomplete="off"
           spellcheck="false"
         >
-          <ion-button slot="end" fill="clear" @click="showKey = !showKey" :aria-label="translate(showKey ? 'Hide key' : 'Show key')">
-            <ion-icon slot="icon-only" :icon="showKey ? eyeOffOutline : eyeOutline" />
-          </ion-button>
+          <ion-input-password-toggle slot="end" />
         </ion-input>
       </ion-item>
       <ion-item>
@@ -86,16 +84,14 @@
         <ion-item>
           <ion-input
             v-model="form.privateApiKey"
-            :type="showKey ? 'text' : 'password'"
+            type="password"
             :label="translate('New Klaviyo private API key')"
             label-placement="stacked"
             :placeholder="'pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'"
             autocomplete="off"
             spellcheck="false"
           >
-            <ion-button slot="end" fill="clear" @click="showKey = !showKey" :aria-label="translate(showKey ? 'Hide key' : 'Show key')">
-              <ion-icon slot="icon-only" :icon="showKey ? eyeOffOutline : eyeOutline" />
-            </ion-button>
+            <ion-input-password-toggle slot="end" />
           </ion-input>
         </ion-item>
         <ion-item>
@@ -147,6 +143,7 @@ import {
   IonHeader,
   IonIcon,
   IonInput,
+  IonInputPasswordToggle,
   IonItem,
   IonLabel,
   IonList,
@@ -155,7 +152,7 @@ import {
   IonToolbar,
   modalController,
 } from "@ionic/vue";
-import { checkmarkOutline, closeOutline, eyeOffOutline, eyeOutline, saveOutline } from "ionicons/icons";
+import { checkmarkOutline, closeOutline, saveOutline } from "ionicons/icons";
 import { useStore } from "vuex";
 import { translate } from "@/i18n";
 import { KlaviyoService } from "@/services/KlaviyoService";
@@ -175,7 +172,6 @@ const form = ref({
   privateApiKey: "",
 });
 
-const showKey = ref(false);
 const isReplacingKey = ref(false);
 const confirmedKeyReplacement = ref(false);
 const isSaving = ref(false);

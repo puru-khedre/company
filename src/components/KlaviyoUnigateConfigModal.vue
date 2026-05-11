@@ -85,15 +85,13 @@
         <ion-item>
           <ion-input
             v-model="form.newApiKey"
-            :type="showKey ? 'text' : 'password'"
+            type="password"
             :label="translate('New Unigate API key')"
             label-placement="stacked"
             autocomplete="off"
             spellcheck="false"
           >
-            <ion-button slot="end" fill="clear" @click="showKey = !showKey" :aria-label="translate(showKey ? 'Hide key' : 'Show key')">
-              <ion-icon slot="icon-only" :icon="showKey ? eyeOffOutline : eyeOutline" />
-            </ion-button>
+            <ion-input-password-toggle slot="end" />
           </ion-input>
         </ion-item>
         <ion-item>
@@ -144,6 +142,7 @@ import {
   IonHeader,
   IonIcon,
   IonInput,
+  IonInputPasswordToggle,
   IonItem,
   IonLabel,
   IonList,
@@ -152,7 +151,7 @@ import {
   IonToolbar,
   modalController,
 } from "@ionic/vue";
-import { closeOutline, eyeOffOutline, eyeOutline, saveOutline } from "ionicons/icons";
+import { closeOutline, saveOutline } from "ionicons/icons";
 import { useStore } from "vuex";
 import { translate } from "@/i18n";
 import { KlaviyoService } from "@/services/KlaviyoService";
@@ -175,7 +174,6 @@ const form = reactive({
 });
 
 const isReplacingKey = ref(false);
-const showKey = ref(false);
 const confirmedKeyReplacement = ref(false);
 const isSaving = ref(false);
 
