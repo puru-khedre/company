@@ -791,8 +791,6 @@
   "(generated when you enter a name)": "(generated when you enter a name)",
   "Klaviyo private API key": "Klaviyo private API key",
   "New Klaviyo private API key": "New Klaviyo private API key",
-  "Show key": "Show key",
-  "Hide key": "Hide key",
   "Find this in Klaviyo at Settings → API Keys → Create Private API Key. Paste only the key value (no Authorization header).": "Find this in Klaviyo at Settings → API Keys → Create Private API Key. Paste only the key value (no Authorization header).",
   "API keys are write-only. The full value is never displayed once saved.": "API keys are write-only. The full value is never displayed once saved.",
   "Replace API key": "Replace API key",
