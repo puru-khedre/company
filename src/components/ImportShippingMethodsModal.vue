@@ -20,10 +20,10 @@
 
     <ion-list>
       <ion-item>
-        <ion-checkbox>{{ "<shopifyShippingMethodName>" }}</ion-checkbox>
+        <ion-checkbox justify="space-between">{{ "<shopifyShippingMethodName>" }}</ion-checkbox>
       </ion-item>
       <ion-item>
-        <ion-checkbox>{{ "<shopifyShippingMethodName>" }}</ion-checkbox>
+        <ion-checkbox justify="space-between">{{ "<shopifyShippingMethodName>" }}</ion-checkbox>
       </ion-item>
     </ion-list>
   </ion-content>

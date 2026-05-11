@@ -96,11 +96,12 @@
         </ion-item>
         <ion-item>
           <ion-checkbox
-            slot="start"
             :checked="confirmedKeyReplacement"
             @ionChange="confirmedKeyReplacement = $event.detail.checked"
-          />
-          <ion-label>{{ translate("I understand the previous key will stop working immediately.") }}</ion-label>
+            justify="space-between"
+          >
+          {{ translate("I understand the previous key will stop working immediately.") }}
+          </ion-checkbox>
         </ion-item>
         <ion-item lines="none">
           <ion-button fill="clear" expand="block" @click="cancelReplaceKey">{{ translate("Cancel key replacement") }}</ion-button>

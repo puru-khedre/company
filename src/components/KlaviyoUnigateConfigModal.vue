@@ -14,7 +14,7 @@
     <ion-list inset>
       <ion-item lines="none">
         <ion-label>
-          <h2>{{ translate("This is the OMS-side connection that proxies every Klaviyo call.") }}</h2>
+          {{ translate("This is the OMS-side connection that proxies every Klaviyo call.") }}
           <p>{{ translate("All Klaviyo connections you add here are sent through this tenant. Edit only when the Unigate URL, tenant ID, or API key actually changes.") }}</p>
         </ion-label>
       </ion-item>
@@ -40,7 +40,7 @@
       </ion-item>
       <ion-item v-if="sendUrlWarning" color="warning">
         <ion-label>
-          <h3>{{ translate("Check this Unigate URL") }}</h3>
+          {{ translate("Check this Unigate URL") }}
           <p>{{ sendUrlWarning }}</p>
         </ion-label>
       </ion-item>
@@ -66,7 +66,7 @@
     <ion-list v-if="config" inset>
       <ion-item>
         <ion-label>
-          <h3>{{ translate("Unigate API key") }}</h3>
+          {{ translate("Unigate API key") }}
           <p>{{ existingMaskedKey }}</p>
           <p>{{ translate("API keys are write-only. The full value is never displayed once saved.") }}</p>
         </ion-label>
@@ -78,7 +78,7 @@
       <template v-if="isReplacingKey">
         <ion-item color="danger">
           <ion-label>
-            <h3>{{ translate("This will stop your current key from working") }}</h3>
+            {{ translate("This will stop your current key from working") }}
             <p>{{ translate("As soon as you save, every Klaviyo connection routed through this tenant will start using the new key. If the new key is wrong or missing, customers will stop receiving emails until you fix it.") }}</p>
           </ion-label>
         </ion-item>
@@ -96,11 +96,12 @@
         </ion-item>
         <ion-item>
           <ion-checkbox
-            slot="start"
             :checked="confirmedKeyReplacement"
             @ionChange="confirmedKeyReplacement = $event.detail.checked"
-          />
-          <ion-label>{{ translate("I understand the previous key will stop working immediately.") }}</ion-label>
+            justify="space-between"
+          >
+          {{ translate("I understand the previous key will stop working immediately.") }}
+          </ion-checkbox>
         </ion-item>
         <ion-item lines="none">
           <ion-button fill="clear" expand="block" @click="cancelReplaceKey">{{ translate("Cancel key replacement") }}</ion-button>
@@ -111,7 +112,7 @@
     <ion-list v-else inset>
       <ion-item>
         <ion-label>
-          <h2>{{ translate("UNIGATE_CONFIG isn't set up on this OMS instance yet.") }}</h2>
+          {{ translate("UNIGATE_CONFIG isn't set up on this OMS instance yet.") }}
           <p>{{ translate("From OMS Admin, open Unigate → Communication Gateway, then Setup Tenant. Once it exists, refresh this page.") }}</p>
         </ion-label>
       </ion-item>

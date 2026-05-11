@@ -20,7 +20,7 @@
 
     <ion-list>
       <ion-item>
-        <ion-checkbox>
+        <ion-checkbox justify="space-between">
           <ion-label>
             <p class="overline">{{ "<SHOPIFY LOCATION ID>" }}</p>
             {{ "<locationName>" }}
@@ -29,7 +29,7 @@
       </ion-item>
 
       <ion-item>
-        <ion-checkbox>
+        <ion-checkbox justify="space-between">
           <ion-label>
             <p class="overline">{{ "<SHOPIFY LOCATION ID>" }}</p>
             {{ "<locationName>" }}
