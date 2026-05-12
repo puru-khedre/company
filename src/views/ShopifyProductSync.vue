@@ -349,8 +349,9 @@
                       {{ translate("Run now") }}
                       <p>{{ translate("Create an immediate execution of this service job without changing its schedule.") }}</p>
                     </ion-label>
-                    <ion-button slot="end" fill="outline" color="primary" :disabled="isSyncJobDetailsSaving" @click="runSyncJob(selectedSyncJobDetailsJob)">
-                      {{ translate("Run now") }}
+                    <ion-button slot="end" fill="outline" color="primary" :disabled="isSyncJobDetailsSaving || isSyncJobRunNowLoading(selectedSyncJobDetailsJob)" @click="runSyncJob(selectedSyncJobDetailsJob)">
+                      <ion-spinner v-if="isSyncJobRunNowLoading(selectedSyncJobDetailsJob)" name="crescent" />
+                      <span v-else>{{ translate("Run now") }}</span>
                     </ion-button>
                   </ion-item>
                   <ion-item>
@@ -859,6 +860,7 @@ const syncJobAuditUsers = ref<Record<string, any>>({});
 const latestPauseAuditByJobName = ref<Record<string, any>>({});
 const isSyncJobAuditHistoryLoading = ref(false);
 const syncJobAuditHistoryError = ref("");
+const syncJobRunNowJobName = ref("");
 const selectedSyncJobDetailsJob = ref<any>(null);
 const syncJobId = ref("");
 const selectedShopSystemMessageRemoteId = ref("");
@@ -2235,10 +2237,11 @@ function handleExperienceModeChange(mode: ProductSyncExperienceMode) {
 
 async function runSyncJob(job: any) {
   if (!job?.jobName) return;
+  if (syncJobRunNowJobName.value === job.jobName) return;
 
   const jobAlert = await alertController.create({
     header: translate("Run now"),
-    message: translate("Running this job now will not replace this job. A copy of this job will be created and run immediately. You may not be able to reverse this action."),
+    message: translate("Once this job starts running, it cannot be stopped."),
     buttons: [
       {
         text: translate("Cancel"),
@@ -2246,21 +2249,35 @@ async function runSyncJob(job: any) {
       },
       {
         text: translate("Run now"),
-        handler: async () => {
-          try {
-            await runNow(job.jobName);
-            showToast(translate("Job has been scheduled to run now"));
-            await refreshAfterRunNow(job);
-          } catch (err) {
-            logger.error("Failed to run job now", err);
-            showToast(translate("Failed to run job"));
-          }
+        handler: () => {
+          syncJobRunNowJobName.value = job.jobName;
+          void executeRunSyncJob(job);
+          return true;
         }
       }
     ]
   });
 
   await jobAlert.present();
+}
+
+async function executeRunSyncJob(job: any) {
+  try {
+    await runNow(job.jobName);
+    showToast(translate("Job has been scheduled to run now"));
+    await refreshAfterRunNow(job);
+  } catch (err) {
+    logger.error("Failed to run job now", err);
+    showToast(translate("Failed to run job"));
+  } finally {
+    if (syncJobRunNowJobName.value === job.jobName) {
+      syncJobRunNowJobName.value = "";
+    }
+  }
+}
+
+function isSyncJobRunNowLoading(job: any) {
+  return !!job?.jobName && syncJobRunNowJobName.value === job.jobName;
 }
 
 async function refreshAfterRunNow(job: any) {
@@ -2271,7 +2288,7 @@ async function refreshAfterRunNow(job: any) {
   }
 
   if (!syncJobDetailsDirty.value && selectedSyncJobDetailsJob.value?.jobName === job?.jobName) {
-    refreshTasks.push(refreshSyncJobDetails());
+    refreshTasks.push(refreshSyncJobDetails({ silent: true }));
   }
 
   await Promise.all(refreshTasks);
@@ -2424,12 +2441,14 @@ async function saveSyncJobDetails() {
   }
 }
 
-async function refreshSyncJobDetails() {
+async function refreshSyncJobDetails(opts: { silent?: boolean } = {}) {
   if (!selectedSyncJobDetailsJob.value?.jobName) return;
 
-  isSyncJobDetailsLoading.value = true;
-  syncJobAuditHistory.value = [];
-  syncJobAuditHistoryError.value = "";
+  if (!opts.silent) {
+    isSyncJobDetailsLoading.value = true;
+    syncJobAuditHistory.value = [];
+    syncJobAuditHistoryError.value = "";
+  }
   try {
     const [jobDetails, jobRuns] = await Promise.all([
       fetchJobDetail(selectedSyncJobDetailsJob.value.jobName),
@@ -2444,14 +2463,18 @@ async function refreshSyncJobDetails() {
     void loadSyncJobAuditHistory(jobDetails.jobName);
   } catch (error: any) {
     logger.error(error);
-    syncJobDetails.value = {};
-    syncJobDetailsRecentRuns.value = [];
-    syncJobAuditHistory.value = [];
-    syncJobAuditHistoryError.value = "";
-    resetSyncJobDetailsDraft();
-    showToast(translate("Failed to load sync job details."));
+    if (!opts.silent) {
+      syncJobDetails.value = {};
+      syncJobDetailsRecentRuns.value = [];
+      syncJobAuditHistory.value = [];
+      syncJobAuditHistoryError.value = "";
+      resetSyncJobDetailsDraft();
+      showToast(translate("Failed to load sync job details."));
+    }
   } finally {
-    isSyncJobDetailsLoading.value = false;
+    if (!opts.silent) {
+      isSyncJobDetailsLoading.value = false;
+    }
     updateScheduledJobRefreshAt();
   }
 }
@@ -3178,7 +3201,7 @@ async function evaluateScheduledRefresh(opts: { forceProbe?: boolean } = {}) {
       await loadSecondaryData({ silent: true });
     }
     if (showSyncJobDetailsModal.value && selectedSyncJobDetailsJob.value?.jobName && !syncJobDetailsDirty.value) {
-      await refreshSyncJobDetails();
+      await refreshSyncJobDetails({ silent: true });
     }
   });
 
