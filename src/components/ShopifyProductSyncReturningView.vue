@@ -201,7 +201,7 @@
     <ion-card>
       <ion-card-header>
         <ion-card-title>{{ translate("Product sync jobs") }}</ion-card-title>
-        <ion-card-subtitle>{{ translate("Explain product sync jobs verification") }}</ion-card-subtitle>
+        <ion-card-subtitle>{{ translate("Review the jobs that move product updates through the sync pipeline") }}</ion-card-subtitle>
       </ion-card-header>
       <ion-list>
         <ion-item button detail :disabled="!syncJobObj" @click="emit('open-sync-job-details', syncJobObj)">
